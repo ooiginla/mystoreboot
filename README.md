@@ -1,58 +1,195 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Storeboot
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Storeboot is a modular monolithic SaaS platform for micro and small enterprises. It is designed to help SMEs manage daily operations, understand business performance, and eventually receive explainable recommendations for better decisions.
 
-## About Laravel
+The current build focuses on the cloud admin backend and the operational foundation: tenancy, business setup, branches, departments, roles, users, and subscription-plan module access.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Product Vision
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Storeboot helps businesses move from paper records, WhatsApp messages, notebooks, spreadsheets, and disconnected apps into one structured platform.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Target users include:
 
-## Learning Laravel
+- Retail shops
+- Supermarkets
+- Wholesalers
+- Service businesses
+- Restaurants and food businesses
+- Pharmacies
+- Fashion stores
+- Electronics stores
+- Multi-branch SMEs
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Tech Stack
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- PHP 8.3+
+- Laravel 13+
+- MySQL
+- Laravel Blade for the current admin foundation
+- Planned admin UI stack: Livewire / Volt, Flux, Tailwind
+- Planned customer-facing module: Laravel, Inertia, Vue, TypeScript, Tailwind
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+## Architecture
 
-## Agentic Development
+Storeboot is built as a modular monolith.
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+Modules live in `modules/` and are loaded through a custom module registry:
+
+- `config/modules.php`
+- `app/Providers/ModuleServiceProvider.php`
+- `app/Support/Modules/ModuleServiceProvider.php`
+
+Core modules currently scaffolded:
+
+- Platform
+- Tenancy
+- Access
+- Subscriptions
+- Business
+- Catalog
+- Inventory
+- Sales
+- Customers
+- Procurement
+- Finance
+- Logistics
+- Analytics
+- Storefront
+- Recommendations
+
+Detailed architecture notes are in:
+
+- `docs/PROJECT_REFERENCE.md`
+- `docs/MODULAR_ARCHITECTURE.md`
+
+## Current Features
+
+Implemented foundation:
+
+- Login and logout
+- Platform super admin flag
+- Tenant-aware admin access
+- Business profile setup
+- Business type setup
+- Branch/store setup
+- Department/unit setup
+- User roles
+- Organization users through tenant memberships
+- Platform-admin-only organization directory
+- Subscription plans and module entitlement seed data
+
+Important tenancy model:
+
+- `users` are global login identities.
+- Organizations are represented by `tenants`.
+- Organization-specific users are represented by `tenant_memberships`.
+- This allows one user to belong to one or many organizations without duplicating login accounts.
+
+## Local Setup
+
+Install dependencies:
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer install
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Copy and configure environment:
 
-## Contributing
+```bash
+cp .env.example .env
+php artisan key:generate
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Configure MySQL in `.env`:
 
-## Code of Conduct
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=storeboot
+DB_USERNAME=root
+DB_PASSWORD=
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Run migrations and seeders:
 
-## Security Vulnerabilities
+```bash
+php artisan migrate --seed
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Start the local server:
 
-## License
+```bash
+php artisan serve --host=127.0.0.1 --port=8000
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Open:
+
+```text
+http://127.0.0.1:8000
+```
+
+## Default Development Admin
+
+The current local super admin account is:
+
+```text
+Email: iginla.omotayo@gmail.com
+Password: francis
+```
+
+This account is intended for local development only.
+
+## Testing
+
+Run the test suite:
+
+```bash
+php artisan test
+```
+
+Format PHP code:
+
+```bash
+vendor/bin/pint
+```
+
+Compile Blade views:
+
+```bash
+php artisan view:cache
+```
+
+## Development Notes
+
+- Keep controllers thin.
+- Put business workflows in module `Actions`.
+- Put validation in module `Http/Requests`.
+- Tenant-owned records should be scoped by `tenant_id`.
+- Branch-specific records should include `branch_id` where applicable.
+- Platform-admin views must not leak into tenant-user workflows.
+- Tenant users must only access organizations they belong to through `tenant_memberships`.
+
+## Known Local Environment Note
+
+The local PHP installation may show a warning about a missing `swoole.so` extension. The warning is from local PHP configuration and does not currently block the Laravel app. It should be cleaned up before Laravel Octane work begins.
+
+## Roadmap
+
+Near-term modules:
+
+- Product and service catalog
+- Inventory stock tracking
+- Sales and invoicing
+- Customers and vendors
+- Basic finance
+- Analytics dashboard
+
+Deferred modules:
+
+- Recommendation engine
+- Offline POS sync
+- Advanced accounting
+- Payroll depth
+- Storefront module
+- External integrations
