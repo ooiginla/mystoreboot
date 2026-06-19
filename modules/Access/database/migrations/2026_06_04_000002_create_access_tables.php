@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Modules\Access\Enums\MembershipStatus;
 
 return new class extends Migration
 {
@@ -43,7 +44,7 @@ return new class extends Migration
             $table->foreignUuid('tenant_id')->constrained()->cascadeOnDelete();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->foreignId('role_id')->nullable()->constrained()->nullOnDelete();
-            $table->string('status', 32)->default('active')->index();
+            $table->string('status', 32)->default(MembershipStatus::Active->value)->index();
             $table->timestamp('joined_at')->nullable();
             $table->timestamps();
 

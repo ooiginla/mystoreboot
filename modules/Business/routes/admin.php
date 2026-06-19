@@ -9,5 +9,7 @@ Route::get('/organizations', [BusinessSetupController::class, 'organizations'])-
 Route::get('/organizations/{tenant}', [BusinessSetupController::class, 'organizationDetails'])->name('organizations.show');
 Route::get('/', [BusinessSetupController::class, 'index'])->name('index');
 Route::post('/profile', [BusinessSetupController::class, 'saveProfile'])->name('profile.save');
+Route::post('/online-store', [BusinessSetupController::class, 'saveOnlineStore'])->name('online-store.save');
 Route::post('/branches', [BusinessSetupController::class, 'storeBranch'])->name('branches.store');
+Route::put('/branches/{branch}', [BusinessSetupController::class, 'updateBranch'])->name('branches.update');
 Route::post('/departments', [BusinessSetupController::class, 'storeDepartment'])->name('departments.store');

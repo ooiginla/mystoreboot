@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Modules\Access\Actions\CreateRoleAction;
 use Modules\Access\Actions\CreateTenantUserAction;
+use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Http\Requests\RoleRequest;
 use Modules\Access\Http\Requests\TenantUserRequest;
 use Modules\Access\Models\TenantMembership;
@@ -49,7 +50,7 @@ final class RoleController extends Controller
             TenantMembership::query()
                 ->where('tenant_id', $tenantId)
                 ->where('user_id', $user->id)
-                ->where('status', 'active')
+                ->where('status', MembershipStatus::Active->value)
                 ->exists(),
             403,
         );

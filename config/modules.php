@@ -7,6 +7,7 @@ use Modules\Business\Providers\BusinessServiceProvider;
 use Modules\Catalog\Providers\CatalogServiceProvider;
 use Modules\Customers\Providers\CustomersServiceProvider;
 use Modules\Finance\Providers\FinanceServiceProvider;
+use Modules\HrPayroll\Providers\HrPayrollServiceProvider;
 use Modules\Inventory\Providers\InventoryServiceProvider;
 use Modules\Logistics\Providers\LogisticsServiceProvider;
 use Modules\Platform\Providers\PlatformServiceProvider;
@@ -84,6 +85,11 @@ return [
             'provider' => FinanceServiceProvider::class,
             'depends_on' => ['Business', 'Sales', 'Procurement'],
         ],
+        'HrPayroll' => [
+            'enabled' => true,
+            'provider' => HrPayrollServiceProvider::class,
+            'depends_on' => ['Business'],
+        ],
         'Logistics' => [
             'enabled' => false,
             'provider' => LogisticsServiceProvider::class,
@@ -95,7 +101,7 @@ return [
             'depends_on' => ['Business', 'Inventory', 'Sales', 'Finance'],
         ],
         'Storefront' => [
-            'enabled' => false,
+            'enabled' => true,
             'provider' => StorefrontServiceProvider::class,
             'depends_on' => ['Business', 'Catalog', 'Sales', 'Customers'],
         ],

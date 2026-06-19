@@ -61,6 +61,7 @@ Detailed architecture notes are in:
 
 - `docs/PROJECT_REFERENCE.md`
 - `docs/MODULAR_ARCHITECTURE.md`
+- `docs/STATUS_REFERENCE.md`
 
 ## Current Features
 

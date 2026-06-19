@@ -6,6 +6,7 @@ namespace Modules\Access\Actions;
 
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
 
 final class CreateTenantUserAction
@@ -33,7 +34,7 @@ final class CreateTenantUserAction
                 [
                     'role_id' => $data['role_id'] ?? null,
                     'branch_id' => $data['branch_id'] ?? null,
-                    'status' => 'active',
+                    'status' => MembershipStatus::Active,
                     'joined_at' => now(),
                 ],
             );

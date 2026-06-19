@@ -20,6 +20,7 @@ final class BusinessProfileRequest extends FormRequest
         $this->merge([
             'country_code' => strtoupper((string) $this->input('country_code', 'NG')),
             'currency_code' => strtoupper((string) $this->input('currency_code', 'NGN')),
+            'maintenance_mode' => $this->boolean('maintenance_mode'),
         ]);
     }
 
@@ -49,6 +50,17 @@ final class BusinessProfileRequest extends FormRequest
             'opening_hours.*.is_open' => ['nullable', 'boolean'],
             'opening_hours.*.opens_at' => ['nullable', 'date_format:H:i'],
             'opening_hours.*.closes_at' => ['nullable', 'date_format:H:i'],
+            'payment_methods' => ['nullable', 'string', 'max:1000'],
+            'bank_details' => ['nullable', 'array', 'max:10'],
+            'bank_details.*.bank_name' => ['nullable', 'string', 'max:140'],
+            'bank_details.*.account_name' => ['nullable', 'string', 'max:160'],
+            'bank_details.*.account_number' => ['nullable', 'string', 'max:80'],
+            'bank_details.*.status' => ['nullable', Rule::in(['active', 'inactive'])],
+            'seo.meta_title' => ['nullable', 'string', 'max:180'],
+            'seo.meta_description' => ['nullable', 'string', 'max:500'],
+            'seo.privacy_policy_url' => ['nullable', 'url', 'max:255'],
+            'seo.terms_url' => ['nullable', 'url', 'max:255'],
+            'maintenance_mode' => ['boolean'],
         ];
     }
 }

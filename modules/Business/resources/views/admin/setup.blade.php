@@ -1,9 +1,67 @@
 @php
+    $publicImageUrl = fn (?string $path): ?string => $path ? '/storage/'.ltrim($path, '/') : null;
     $days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
     $hours = old('opening_hours', $tenant?->opening_hours ?? []);
+    $rawPaymentMethods = old('payment_methods');
+    $paymentMethods = is_array($rawPaymentMethods)
+        ? implode(', ', $rawPaymentMethods)
+        : ($rawPaymentMethods ?? implode(', ', $tenant?->settings['payment_methods'] ?? ['Cash', 'Bank transfer', 'POS/Card', 'Cheque']));
+    $bankDetails = collect(old('bank_details', $tenant?->settings['bank_details'] ?? []));
+    $bankDetails = $bankDetails->isNotEmpty() ? $bankDetails : collect([null]);
+    $seo = old('seo', $tenant?->settings['seo'] ?? []);
+    $maintenanceMode = (bool) old('maintenance_mode', $tenant?->settings['maintenance_mode'] ?? false);
+    $rawOnlinePaymentMethods = old('payment_methods', $onlineStore?->payment_methods ?? []);
+    $onlinePaymentMethods = is_array($rawOnlinePaymentMethods)
+        ? $rawOnlinePaymentMethods
+        : array_values(array_filter(array_map('trim', explode(',', (string) $rawOnlinePaymentMethods))));
+    $onlineBankAccounts = collect(old('bank_accounts', $onlineStore?->bank_accounts ?? []));
+    $onlineBankAccounts = $onlineBankAccounts->isNotEmpty() ? $onlineBankAccounts : collect([null]);
+    $onlineShippingOptions = collect(old('shipping_options', $onlineStore?->shipping_options ?? []));
+    $onlineShippingOptions = $onlineShippingOptions->isNotEmpty() ? $onlineShippingOptions : collect([null]);
+    $onlineFaqs = collect(old('faqs', $onlineStore?->faqs ?? []));
+    $onlineFaqs = $onlineFaqs->isNotEmpty() ? $onlineFaqs : collect([null]);
+    $onlinePages = old('pages', $onlineStore?->pages ?? []);
+    $onlineSocials = old('socials', $onlineStore?->social_accounts ?? []);
+    $onlinePaystack = old('paystack', $onlineStore?->payment_settings['paystack'] ?? []);
+    $onlinePaystackMethod = old('paystack_method', in_array('self_hosted_paystack', $onlinePaymentMethods, true) ? 'self_hosted_paystack' : (in_array('storeboot_paystack', $onlinePaymentMethods, true) ? 'storeboot_paystack' : 'none'));
+    $onlineMaintenanceMode = (bool) old('maintenance_mode', $onlineStore?->maintenance_mode ?? false);
+    $selectedOnlineCategories = collect(old('category_ids', $onlineStore?->categories?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id);
+    $onlinePaymentOptions = [
+        'pay_on_delivery' => 'Pay On Delivery',
+        'bank_account' => 'Pay via Transfer',
+        'place_order' => 'Place Order',
+    ];
 @endphp
 
 <x-layouts.admin title="Organization & Branch Management">
+    <style>
+        .setup-line-card { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 14px; display: grid; gap: 12px; }
+        .setup-line-card + .setup-line-card { margin-top: 12px; }
+        .setup-line-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .setup-section { border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 14px; background: #fff; }
+        .setup-section-title { margin: 0; color: #111827; font-size: 16px; font-weight: 900; }
+        .theme-color-input { min-height: 44px; }
+        .check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .check-list { display: grid; grid-template-columns: 1fr; gap: 10px; }
+        .inline-check { display: inline-flex; gap: 8px; align-items: center; color: #344054; font-weight: 750; }
+        .inline-check input { width: auto; min-width: 16px; height: 16px; }
+        .nested-check-list { margin: 10px 0 0 24px; display: grid; grid-template-columns: 1fr; gap: 8px; }
+        .nested-check-list[hidden] { display: none; }
+        .form-grid[hidden] { display: none !important; }
+        .online-store-section-nav { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+        .online-store-section-nav button { white-space: nowrap; }
+        .online-store-section-nav button.active { background: #111827; color: #fff; border-color: #111827; }
+        .online-store-section-panel[hidden] { display: none; }
+        .online-store-section-panel { display: grid; gap: 14px; }
+        .upload-preview { margin-top: 8px; display: grid; gap: 6px; }
+        .upload-preview img { width: 100%; max-width: 220px; height: 96px; border: 1px solid var(--line); border-radius: 8px; object-fit: contain; background: #f8fafc; padding: 6px; }
+        .upload-preview.hero img { max-width: 360px; height: 120px; object-fit: cover; }
+        .setup-empty-line { border: 1px dashed var(--line); border-radius: 8px; padding: 14px; color: #667085; background: #f8fafc; }
+        .setup-row-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .setup-list-toolbar { margin-bottom: 12px; }
+        @media (max-width: 700px) { .check-grid { grid-template-columns: 1fr; } }
+    </style>
+
     <div class="topbar">
         <div>
             <div class="eyebrow">Business administration</div>
@@ -11,11 +69,23 @@
             <p class="subtle">{{ $tenant ? "Managing {$tenant->name}." : 'Register a new organization.' }}</p>
         </div>
 
-        @if ($isPlatformAdmin)
-            <a class="btn accent" href="{{ route('admin.business.index', ['new' => 1]) }}">Create new organization</a>
-        @elseif ($tenant)
-            <span class="badge">{{ $tenant->status }}</span>
-        @endif
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; align-items: center;">
+            @if ($tenants->count() > 1)
+                <form method="GET" action="{{ route('admin.business.index') }}" style="min-width: 260px;">
+                    <select name="tenant" onchange="this.form.submit()" aria-label="Switch organization">
+                        @foreach ($tenants as $visibleTenant)
+                            <option value="{{ $visibleTenant->id }}" @selected($tenant?->id === $visibleTenant->id)>{{ $visibleTenant->name }}</option>
+                        @endforeach
+                    </select>
+                </form>
+            @endif
+
+            @if ($isPlatformAdmin)
+                <a class="btn accent" href="{{ route('admin.business.index', ['new' => 1]) }}">Create new organization</a>
+            @elseif ($tenant)
+                <span class="badge">{{ $tenant->status->label() }}</span>
+            @endif
+        </div>
     </div>
 
     @if (session('status'))
@@ -43,6 +113,7 @@
         <div class="tab-layout">
             <nav class="pill-nav" aria-label="Business setup sections" role="tablist">
                 <a href="#business-profile" role="tab" data-tab-target="business-profile">Business profile</a>
+                <a href="#online-store" role="tab" data-tab-target="online-store">Online Store</a>
                 <a href="#branches" role="tab" data-tab-target="branches">Branches / stores <span class="badge neutral">{{ $branches->count() }}</span></a>
                 <a href="#departments" role="tab" data-tab-target="departments">Departments / units <span class="badge neutral">{{ $departments->count() }}</span></a>
                 <a href="#roles" role="tab" data-tab-target="roles">User roles <span class="badge neutral">{{ $roles->count() }}</span></a>
@@ -65,7 +136,7 @@
                             <div class="summary-grid">
                                 <div class="summary-item"><span>Business name</span><strong>{{ $tenant->name }}</strong></div>
                                 <div class="summary-item"><span>Business type</span><strong>{{ $businessTypes[$tenant->business_type] ?? $tenant->business_type ?? 'Not set' }}</strong></div>
-                                <div class="summary-item"><span>Status</span><strong>{{ $tenant->status }}</strong></div>
+                                <div class="summary-item"><span>Status</span><strong>{{ $tenant->status->label() }}</strong></div>
                                 <div class="summary-item"><span>Email</span><strong>{{ $tenant->email ?: 'Not set' }}</strong></div>
                                 <div class="summary-item"><span>Phone</span><strong>{{ $tenant->phone ?: 'Not set' }}</strong></div>
                                 <div class="summary-item"><span>Website</span><strong>{{ $tenant->website ?: 'Not set' }}</strong></div>
@@ -73,7 +144,297 @@
                                 <div class="summary-item"><span>Tax rate</span><strong>{{ $tenant->default_tax_rate }}%</strong></div>
                                 <div class="summary-item"><span>Timezone</span><strong>{{ $tenant->timezone }}</strong></div>
                                 <div class="summary-item" style="grid-column: 1 / -1;"><span>Address</span><strong>{{ $tenant->address ?: 'Not set' }}</strong></div>
+                                <div class="summary-item"><span>Maintenance mode</span><strong>{{ ($tenant->settings['maintenance_mode'] ?? false) ? 'Enabled' : 'Disabled' }}</strong></div>
+                                <div class="summary-item"><span>Bank accounts</span><strong>{{ count($tenant->settings['bank_details'] ?? []) }}</strong></div>
+                                <div class="summary-item"><span>SEO title</span><strong>{{ $tenant->settings['seo']['meta_title'] ?? 'Not set' }}</strong></div>
                             </div>
+                        @endif
+                    </div>
+                </section>
+
+                <section class="panel tab-panel" id="online-store" role="tabpanel" data-tab-panel hidden>
+                    <div class="panel-header">
+                        <div>
+                            <h2 class="panel-title">Online Store</h2>
+                            <p class="subtle">Collect storefront identity, menu categories, payment, shipping, socials, and page content for the customer-facing shop.</p>
+                        </div>
+                        @if ($onlineStore)
+                            <span class="badge">Saved</span>
+                        @endif
+                    </div>
+                    <div class="panel-body">
+                        @if (! $tenant)
+                            <div class="empty">Save the business profile first, then set up the online store.</div>
+                        @else
+                            <form class="mini-form" method="POST" action="{{ route('admin.business.online-store.save') }}" enctype="multipart/form-data" data-online-store-form>
+                                @csrf
+                                <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+
+                                <div class="online-store-section-nav" role="tablist" aria-label="Online store setup sections">
+                                    <button class="btn secondary active" type="button" role="tab" aria-selected="true" data-online-store-section-target="online-store-basics">Basics</button>
+                                    <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-menu">Menu</button>
+                                    <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-payments">Payment</button>
+                                    <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-shipping">Shipping</button>
+                                    <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-socials">Socials</button>
+                                    <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-pages">Pages & FAQ</button>
+                                </div>
+
+                                <div class="setup-section online-store-section-panel" id="online-store-basics" role="tabpanel" data-online-store-section-panel>
+                                    <h3 class="setup-section-title">Online Store Basics</h3>
+                                    <div class="form-grid">
+                                        <div class="field"><label>Store username</label><input name="username" value="{{ old('username', $onlineStore?->username) }}" placeholder="abc-fashion" required></div>
+                                        <div class="field"><label>Name of Store</label><input name="store_name" value="{{ old('store_name', $onlineStore?->store_name ?? $tenant->name) }}" required></div>
+                                        <div class="field full"><label>Description of Store</label><textarea name="description" rows="3" placeholder="A short description customers will see on your online store.">{{ old('description', $onlineStore?->description) }}</textarea></div>
+                                        <div class="field">
+                                            <label>Image Logo of the Store</label>
+                                            <input name="logo" type="file" accept="image/*">
+                                            @if ($onlineStore?->logo_path)
+                                                <div class="upload-preview">
+                                                    <img src="{{ $publicImageUrl($onlineStore->logo_path) }}" alt="{{ $onlineStore->store_name }} logo preview">
+                                                    <span class="subtle">Current logo uploaded.</span>
+                                                </div>
+                                            @endif
+                                        </div>
+                                        <div class="field">
+                                            <label>Banner / Hero Image <span class="subtle">(recommended 1600 x 600px)</span></label>
+                                            <input name="hero_image" type="file" accept="image/*">
+                                            @if ($onlineStore?->hero_image_path)
+                                                <div class="upload-preview hero">
+                                                    <img src="{{ $publicImageUrl($onlineStore->hero_image_path) }}" alt="{{ $onlineStore->store_name }} banner preview">
+                                                    <span class="subtle">Current banner uploaded.</span>
+                                                </div>
+                                            @endif
+                                        </div>
+                                        <div class="field"><label>Site Email</label><input name="site_email" type="email" value="{{ old('site_email', $onlineStore?->site_email ?? $tenant->email) }}"></div>
+                                        <div class="field"><label>Store Phone number</label><input name="store_phone" value="{{ old('store_phone', $onlineStore?->store_phone ?? $tenant->phone) }}"></div>
+                                        <div class="field"><label>Store WhatsApp Number</label><input name="store_whatsapp" value="{{ old('store_whatsapp', $onlineStore?->store_whatsapp) }}"></div>
+                                        <div class="field"><label>Banner Image Text</label><input name="hero_image_text" value="{{ old('hero_image_text', $onlineStore?->hero_image_text) }}"></div>
+                                        <div class="field"><label>Banner Image Description</label><input name="hero_image_description" value="{{ old('hero_image_description', $onlineStore?->hero_image_description) }}"></div>
+                                        <div class="field"><label>Banner Image Tag</label><input name="hero_image_tag" value="{{ old('hero_image_tag', $onlineStore?->hero_image_tag) }}"></div>
+                                        <div class="field"><label>Theme primary color</label><input class="theme-color-input" name="theme_primary_color" type="color" value="{{ old('theme_primary_color', $onlineStore?->theme_primary_color ?? '#006554') }}" style="background-color: {{ old('theme_primary_color', $onlineStore?->theme_primary_color ?? '#006554') }};" data-theme-color-field></div>
+                                        <div class="field"><label>Theme secondary color</label><input class="theme-color-input" name="theme_secondary_color" type="color" value="{{ old('theme_secondary_color', $onlineStore?->theme_secondary_color ?? '#f59e0b') }}" style="background-color: {{ old('theme_secondary_color', $onlineStore?->theme_secondary_color ?? '#f59e0b') }};" data-theme-color-field></div>
+                                        <div class="field"><label>Fulfilment branch</label><select name="fulfilment_branch_id"><option value="">Select branch</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((string) old('fulfilment_branch_id', $onlineStore?->fulfilment_branch_id) === (string) $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
+                                        <div class="field"><label>Store status</label><label class="inline-check"><input type="checkbox" name="maintenance_mode" value="1" @checked($onlineMaintenanceMode)> Enable maintenance mode</label></div>
+                                        <div class="field full"><label>Address</label><textarea name="address" rows="2">{{ old('address', $onlineStore?->address ?? $tenant->address) }}</textarea></div>
+                                        <div class="field full"><label>Announcement</label><textarea name="announcement" rows="2">{{ old('announcement', $onlineStore?->announcement) }}</textarea></div>
+                                    </div>
+                                    <div class="button-row"><button class="btn primary" type="submit">Save basics</button></div>
+                                </div>
+
+                                <div class="setup-section online-store-section-panel" id="online-store-menu" role="tabpanel" data-online-store-section-panel hidden>
+                                    <h3 class="setup-section-title">Menu Setup</h3>
+                                    <div class="check-grid">
+                                        @forelse ($productCategories as $category)
+                                            <label class="inline-check"><input type="checkbox" name="category_ids[]" value="{{ $category->id }}" @checked($selectedOnlineCategories->contains($category->id))> {{ $category->name }}</label>
+                                        @empty
+                                            <span class="subtle">No product categories yet.</span>
+                                        @endforelse
+                                    </div>
+                                    <div class="button-row"><button class="btn primary" type="submit">Save menu setup</button></div>
+                                </div>
+
+                                <div class="setup-section online-store-section-panel" id="online-store-payments" role="tabpanel" data-online-store-section-panel hidden>
+                                    <h3 class="setup-section-title">Payment Method</h3>
+                                    <div class="check-list">
+                                        @foreach ($onlinePaymentOptions as $value => $label)
+                                            <label class="inline-check"><input type="checkbox" name="payment_methods[]" value="{{ $value }}" @checked(in_array($value, $onlinePaymentMethods, true))> {{ $label }}</label>
+                                        @endforeach
+                                        <div>
+                                            <label class="inline-check"><input type="checkbox" data-paystack-toggle @checked($onlinePaystackMethod !== 'none')> Paystack</label>
+                                            <div class="nested-check-list" data-paystack-options @if ($onlinePaystackMethod === 'none') hidden @endif>
+                                                <input type="hidden" name="paystack_method" value="none" data-paystack-method-fallback @disabled($onlinePaystackMethod !== 'none')>
+                                                <label class="inline-check"><input type="radio" name="paystack_method" value="storeboot_paystack" @checked($onlinePaystackMethod === 'storeboot_paystack') @disabled($onlinePaystackMethod === 'none') data-paystack-method-option> Storeboot Paystack</label>
+                                                <label class="inline-check"><input type="radio" name="paystack_method" value="self_hosted_paystack" @checked($onlinePaystackMethod === 'self_hosted_paystack') @disabled($onlinePaystackMethod === 'none') data-paystack-method-option> Self Hosted Paystack</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="form-grid" data-self-hosted-paystack-fields @if ($onlinePaystackMethod !== 'self_hosted_paystack') hidden @endif>
+                                        <div class="field"><label>Self Hosted Paystack Live Public Key</label><input name="paystack[public_key]" value="{{ $onlinePaystack['public_key'] ?? '' }}"><span class="subtle">Required only when Self Hosted Paystack is selected.</span></div>
+                                        <div class="field"><label>Self Hosted Paystack Live Private Key</label><input name="paystack[private_key]" value="{{ $onlinePaystack['private_key'] ?? '' }}"><span class="subtle">Required only when Self Hosted Paystack is selected.</span></div>
+                                    </div>
+                                    <div>
+                                        <div class="setup-line-header setup-list-toolbar">
+                                            <label>Pay via Transfer</label>
+                                            <button class="btn primary" type="button" data-open-online-bank-account-dialog>Add bank account</button>
+                                        </div>
+                                        <div data-online-bank-accounts>
+                                            @foreach ($onlineBankAccounts as $index => $account)
+                                                @php
+                                                    $bankName = trim((string) ($account['bank_name'] ?? ''));
+                                                    $accountName = trim((string) ($account['account_name'] ?? ''));
+                                                    $accountNumber = trim((string) ($account['account_number'] ?? ''));
+                                                @endphp
+                                                @continue($bankName === '' && $accountName === '' && $accountNumber === '')
+                                                <div class="setup-line-card" data-online-bank-account>
+                                                    <div class="setup-line-header">
+                                                        <div>
+                                                            <strong data-bank-summary>{{ $bankName ?: 'Bank account' }}</strong>
+                                                            <div class="subtle"><span data-bank-account-name>{{ $accountName ?: 'Account name not set' }}</span> · <span data-bank-account-number>{{ $accountNumber ?: 'Account number not set' }}</span></div>
+                                                        </div>
+                                                        <div class="setup-row-actions">
+                                                            <button class="btn secondary" type="button" data-edit-online-bank-account>Edit</button>
+                                                            <button class="btn danger" type="button" data-delete-online-bank-account>Delete</button>
+                                                        </div>
+                                                    </div>
+                                                    <input type="hidden" data-bank-field="bank_name" name="bank_accounts[{{ $index }}][bank_name]" value="{{ $bankName }}">
+                                                    <input type="hidden" data-bank-field="account_name" name="bank_accounts[{{ $index }}][account_name]" value="{{ $accountName }}">
+                                                    <input type="hidden" data-bank-field="account_number" name="bank_accounts[{{ $index }}][account_number]" value="{{ $accountNumber }}">
+                                                </div>
+                                            @endforeach
+                                            <div class="setup-empty-line" data-online-bank-empty @if ($onlineBankAccounts->filter(fn ($account) => trim((string) ($account['bank_name'] ?? '')) !== '' || trim((string) ($account['account_name'] ?? '')) !== '' || trim((string) ($account['account_number'] ?? '')) !== '')->isNotEmpty()) hidden @endif>No bank accounts added yet.</div>
+                                        </div>
+                                    </div>
+                                    <div class="button-row"><button class="btn primary" type="submit">Save payment method</button></div>
+                                </div>
+
+                                <div class="setup-section online-store-section-panel" id="online-store-shipping" role="tabpanel" data-online-store-section-panel hidden>
+                                    <h3 class="setup-section-title">Shipping Details</h3>
+                                    <div class="setup-line-header">
+                                        <label>Shipping Options</label>
+                                        <button class="btn primary" type="button" data-open-online-shipping-dialog>Add shipping option</button>
+                                    </div>
+                                    <div data-online-shipping-options>
+                                        @foreach ($onlineShippingOptions as $index => $option)
+                                            @php
+                                                $location = trim((string) ($option['location'] ?? ''));
+                                                $price = (string) ($option['price'] ?? 0);
+                                            @endphp
+                                            @continue($location === '')
+                                            <div class="setup-line-card" data-online-shipping-option>
+                                                <div class="setup-line-header">
+                                                    <div>
+                                                        <strong data-shipping-location>{{ $location }}</strong>
+                                                        <div class="subtle">Price: <span data-shipping-price>{{ $price }}</span></div>
+                                                    </div>
+                                                    <div class="setup-row-actions">
+                                                        <button class="btn secondary" type="button" data-edit-online-shipping-option>Edit</button>
+                                                        <button class="btn danger" type="button" data-delete-online-shipping-option>Delete</button>
+                                                    </div>
+                                                </div>
+                                                <input type="hidden" data-shipping-field="location" name="shipping_options[{{ $index }}][location]" value="{{ $location }}">
+                                                <input type="hidden" data-shipping-field="price" name="shipping_options[{{ $index }}][price]" value="{{ $price }}">
+                                            </div>
+                                        @endforeach
+                                        <div class="setup-empty-line" data-online-shipping-empty @if ($onlineShippingOptions->filter(fn ($option) => trim((string) ($option['location'] ?? '')) !== '')->isNotEmpty()) hidden @endif>No shipping options added yet.</div>
+                                    </div>
+                                    <div class="button-row"><button class="btn primary" type="submit">Save shipping details</button></div>
+                                </div>
+
+                                <div class="setup-section online-store-section-panel" id="online-store-socials" role="tabpanel" data-online-store-section-panel hidden>
+                                    <h3 class="setup-section-title">Social Accounts</h3>
+                                    <div class="form-grid">
+                                        <div class="field"><label>Instagram</label><input name="socials[instagram]" value="{{ $onlineSocials['instagram'] ?? '' }}"></div>
+                                        <div class="field"><label>TikTok</label><input name="socials[tiktok]" value="{{ $onlineSocials['tiktok'] ?? '' }}"></div>
+                                        <div class="field"><label>Facebook</label><input name="socials[facebook]" value="{{ $onlineSocials['facebook'] ?? '' }}"></div>
+                                        <div class="field"><label>WhatsApp</label><input name="socials[whatsapp]" value="{{ $onlineSocials['whatsapp'] ?? '' }}"></div>
+                                    </div>
+                                    <div class="button-row"><button class="btn primary" type="submit">Save social accounts</button></div>
+                                </div>
+
+                                <div class="setup-section online-store-section-panel" id="online-store-pages" role="tabpanel" data-online-store-section-panel hidden>
+                                    <h3 class="setup-section-title">Additional Pages</h3>
+                                    <div class="form-grid">
+                                        <div class="field full"><label>About Us Page</label><textarea name="pages[about_us]" rows="4">{{ $onlinePages['about_us'] ?? '' }}</textarea></div>
+                                        <div class="field full"><label>Terms of Use</label><textarea name="pages[terms_of_use]" rows="4">{{ $onlinePages['terms_of_use'] ?? '' }}</textarea></div>
+                                        <div class="field full"><label>Return Policy</label><textarea name="pages[return_policy]" rows="4">{{ $onlinePages['return_policy'] ?? '' }}</textarea></div>
+                                        <div class="field full"><label>Privacy Policy</label><textarea name="pages[privacy_policy]" rows="4">{{ $onlinePages['privacy_policy'] ?? '' }}</textarea></div>
+                                        <div class="field full"><label>Shipping Information</label><textarea name="pages[shipping_information]" rows="4">{{ $onlinePages['shipping_information'] ?? '' }}</textarea></div>
+                                    </div>
+                                    <div class="setup-line-header setup-list-toolbar">
+                                        <label>FAQ</label>
+                                        <button class="btn primary" type="button" data-add-online-faq>Add FAQ</button>
+                                    </div>
+                                    <div data-online-faqs>
+                                        @foreach ($onlineFaqs as $index => $faq)
+                                            @php
+                                                $question = trim((string) ($faq['question'] ?? ''));
+                                                $answer = trim((string) ($faq['answer'] ?? ''));
+                                            @endphp
+                                            @continue($question === '' && $answer === '')
+                                            <div class="setup-line-card" data-online-faq>
+                                                <div class="setup-line-header">
+                                                    <div>
+                                                        <strong data-faq-question>{{ $question ?: 'FAQ item' }}</strong>
+                                                        <div class="subtle" data-faq-answer>{{ $answer ?: 'Answer not set' }}</div>
+                                                    </div>
+                                                    <div class="setup-row-actions">
+                                                        <button class="btn secondary" type="button" data-edit-online-faq>Edit</button>
+                                                        <button class="btn danger" type="button" data-delete-online-faq>Delete</button>
+                                                    </div>
+                                                </div>
+                                                <input type="hidden" data-faq-field="question" name="faqs[{{ $index }}][question]" value="{{ $question }}">
+                                                <input type="hidden" data-faq-field="answer" name="faqs[{{ $index }}][answer]" value="{{ $answer }}">
+                                            </div>
+                                        @endforeach
+                                        <div class="setup-empty-line" data-online-faq-empty @if ($onlineFaqs->filter(fn ($faq) => trim((string) ($faq['question'] ?? '')) !== '' || trim((string) ($faq['answer'] ?? '')) !== '')->isNotEmpty()) hidden @endif>No FAQ items added yet.</div>
+                                    </div>
+                                    <div class="button-row"><button class="btn primary" type="submit">Save pages & FAQ</button></div>
+                                </div>
+
+                                <dialog class="dialog" id="online-bank-account-dialog" data-online-bank-account-dialog>
+                                    <div class="dialog-header">
+                                        <div>
+                                            <h2 class="panel-title" data-online-bank-dialog-title>Bank account</h2>
+                                            <p class="subtle">Add or update bank account details for store checkout.</p>
+                                        </div>
+                                        <button class="icon-btn" type="button" data-online-bank-cancel aria-label="Close">x</button>
+                                    </div>
+                                    <div class="dialog-body">
+                                        <input type="hidden" data-online-bank-edit-index>
+                                        <div class="form-grid">
+                                            <div class="field"><label>Bank Name</label><input data-online-bank-input="bank_name"></div>
+                                            <div class="field"><label>Bank Account Name</label><input data-online-bank-input="account_name"></div>
+                                            <div class="field"><label>Bank Account Number</label><input data-online-bank-input="account_number"></div>
+                                        </div>
+                                        <div class="button-row">
+                                            <button class="btn secondary" type="button" data-online-bank-cancel>Cancel</button>
+                                            <button class="btn primary" type="button" data-save-online-bank-account>Save bank account</button>
+                                        </div>
+                                    </div>
+                                </dialog>
+
+                                <dialog class="dialog" id="online-shipping-dialog" data-online-shipping-dialog>
+                                    <div class="dialog-header">
+                                        <div>
+                                            <h2 class="panel-title" data-online-shipping-dialog-title>Shipping option</h2>
+                                            <p class="subtle">Add or update a delivery location and price.</p>
+                                        </div>
+                                        <button class="icon-btn" type="button" data-online-shipping-cancel aria-label="Close">x</button>
+                                    </div>
+                                    <div class="dialog-body">
+                                        <input type="hidden" data-online-shipping-edit-index>
+                                        <div class="form-grid">
+                                            <div class="field"><label>Location</label><input data-online-shipping-input="location"></div>
+                                            <div class="field"><label>Price</label><input data-online-shipping-input="price" type="number" min="0" step="0.01" value="0"></div>
+                                        </div>
+                                        <div class="button-row">
+                                            <button class="btn secondary" type="button" data-online-shipping-cancel>Cancel</button>
+                                            <button class="btn primary" type="button" data-save-online-shipping-option>Save shipping option</button>
+                                        </div>
+                                    </div>
+                                </dialog>
+
+                                <dialog class="dialog" id="online-faq-dialog" data-online-faq-dialog>
+                                    <div class="dialog-header">
+                                        <div>
+                                            <h2 class="panel-title" data-online-faq-dialog-title>FAQ item</h2>
+                                            <p class="subtle">Add or update a question and answer for the storefront FAQ page.</p>
+                                        </div>
+                                        <button class="icon-btn" type="button" data-online-faq-cancel aria-label="Close">x</button>
+                                    </div>
+                                    <div class="dialog-body">
+                                        <input type="hidden" data-online-faq-edit-index>
+                                        <div class="form-grid">
+                                            <div class="field"><label>Question</label><input data-online-faq-input="question"></div>
+                                            <div class="field full"><label>Answer</label><textarea data-online-faq-input="answer" rows="4"></textarea></div>
+                                        </div>
+                                        <div class="button-row">
+                                            <button class="btn secondary" type="button" data-online-faq-cancel>Cancel</button>
+                                            <button class="btn primary" type="button" data-save-online-faq>Save FAQ item</button>
+                                        </div>
+                                    </div>
+                                </dialog>
+                            </form>
                         @endif
                     </div>
                 </section>
@@ -98,10 +459,16 @@
                                         <div>
                                             <div class="item-title">{{ $branch->name }}</div>
                                             <div class="subtle">{{ $branch->code }} · {{ $branch->status }} · {{ $branch->currency_code ?: $tenant->currency_code }}</div>
+                                            @if (collect($branch->settings['delivery_methods'] ?? [])->isNotEmpty())
+                                                <div class="subtle">Delivery: {{ collect($branch->settings['delivery_methods'])->pluck('name')->join(', ') }}</div>
+                                            @endif
                                         </div>
-                                        @if ($branch->is_primary)
-                                            <span class="badge">Primary</span>
-                                        @endif
+                                        <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+                                            @if ($branch->is_primary)
+                                                <span class="badge">Primary</span>
+                                            @endif
+                                            <button class="btn secondary" type="button" data-dialog-open="branch-edit-{{ $branch->id }}">Edit</button>
+                                        </div>
                                     </div>
                                 @empty
                                     <div class="empty">No branches yet. Add the first store or operating location.</div>
@@ -198,7 +565,7 @@
                                                 @if ($membership->branch) · {{ $membership->branch->name }} @endif
                                             </div>
                                         </div>
-                                        <span class="badge neutral">{{ $membership->status }}</span>
+                                        <span class="badge neutral">{{ $membership->status->label() }}</span>
                                     </div>
                                 @empty
                                     <div class="empty">No users belong to this organization yet.</div>
@@ -248,6 +615,34 @@
                         <div class="field"><label for="currency_code">Currency</label><input id="currency_code" name="currency_code" maxlength="3" value="{{ old('currency_code', $tenant?->currency_code ?? 'NGN') }}" required></div>
                         <div class="field"><label for="tax_identifier">Tax identifier</label><input id="tax_identifier" name="tax_identifier" value="{{ old('tax_identifier', $tenant?->tax_identifier) }}"></div>
                         <div class="field"><label for="default_tax_rate">Default tax rate (%)</label><input id="default_tax_rate" name="default_tax_rate" type="number" step="0.01" min="0" max="100" value="{{ old('default_tax_rate', $tenant?->default_tax_rate ?? 0) }}" required></div>
+                        <div class="field full"><label for="payment_methods">Payment methods</label><input id="payment_methods" name="payment_methods" value="{{ $paymentMethods }}" placeholder="Cash, Bank transfer, POS/Card, Cheque"></div>
+                        <div class="field full">
+                            <label>Bank details</label>
+                            <div data-business-bank-details>
+                                @foreach ($bankDetails as $index => $account)
+                                    <div class="setup-line-card" data-business-bank-detail>
+                                        <div class="setup-line-header"><strong>Bank account</strong><button class="btn danger" type="button" data-remove-business-bank-detail>Remove</button></div>
+                                        <div class="form-grid">
+                                            <div class="field"><label>Bank name</label><input name="bank_details[{{ $index }}][bank_name]" value="{{ $account['bank_name'] ?? '' }}"></div>
+                                            <div class="field"><label>Bank account name</label><input name="bank_details[{{ $index }}][account_name]" value="{{ $account['account_name'] ?? '' }}"></div>
+                                            <div class="field"><label>Bank account number</label><input name="bank_details[{{ $index }}][account_number]" value="{{ $account['account_number'] ?? '' }}"></div>
+                                            <div class="field"><label>Status</label><select name="bank_details[{{ $index }}][status]"><option value="active" @selected(($account['status'] ?? 'active') === 'active')>Active</option><option value="inactive" @selected(($account['status'] ?? 'active') === 'inactive')>Inactive</option></select></div>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                            <button class="btn primary" type="button" data-add-business-bank-detail style="margin-top: 10px;">Add bank account</button>
+                        </div>
+                        <div class="field full">
+                            <label>SEO and policy links</label>
+                            <div class="form-grid">
+                                <div class="field"><label>Meta title</label><input name="seo[meta_title]" value="{{ $seo['meta_title'] ?? '' }}"></div>
+                                <div class="field"><label>Privacy policy URL</label><input name="seo[privacy_policy_url]" type="url" value="{{ $seo['privacy_policy_url'] ?? '' }}"></div>
+                                <div class="field full"><label>Meta description</label><textarea name="seo[meta_description]">{{ $seo['meta_description'] ?? '' }}</textarea></div>
+                                <div class="field"><label>Terms & Conditions URL</label><input name="seo[terms_url]" type="url" value="{{ $seo['terms_url'] ?? '' }}"></div>
+                            </div>
+                        </div>
+                        <div class="field full"><label><input type="checkbox" name="maintenance_mode" value="1" @checked($maintenanceMode)> Enable maintenance mode</label></div>
                         <div class="field">
                             <label for="plan_id">Subscription plan</label>
                             <select id="plan_id" name="plan_id">
@@ -301,12 +696,73 @@
                             <div class="field"><label>Currency</label><input name="currency_code" maxlength="3" value="{{ $tenant->currency_code }}"></div>
                             <div class="field"><label>Tax rate</label><input name="default_tax_rate" type="number" step="0.01" value="{{ $tenant->default_tax_rate }}"></div>
                         </div>
+                        <div class="field">
+                            <label>Delivery methods</label>
+                            <div data-delivery-methods>
+                                <div class="setup-line-card" data-delivery-method>
+                                    <div class="setup-line-header"><strong>Delivery option</strong><button class="btn danger" type="button" data-remove-delivery-method>Remove</button></div>
+                                    <div class="form-grid">
+                                        <div class="field"><label>Method</label><input name="delivery_methods[0][name]" placeholder="Standard delivery"></div>
+                                        <div class="field"><label>Price</label><input name="delivery_methods[0][price]" type="number" min="0" step="0.01" value="0"></div>
+                                        <div class="field"><label>Status</label><select name="delivery_methods[0][status]"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="btn primary" type="button" data-add-delivery-method style="margin-top: 10px;">Add delivery method</button>
+                        </div>
                         <input type="hidden" name="status" value="active">
                         <label><input type="checkbox" name="is_primary" value="1"> Make primary branch</label>
                         <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Cancel</button><button class="btn primary" type="submit">Add branch</button></div>
                     </form>
                 </div>
             </dialog>
+
+            @foreach ($branches as $branch)
+                @php
+                    $branchDeliveryMethods = collect($branch->settings['delivery_methods'] ?? []);
+                    $branchDeliveryMethods = $branchDeliveryMethods->isNotEmpty() ? $branchDeliveryMethods : collect([null]);
+                @endphp
+                <dialog class="dialog" id="branch-edit-{{ $branch->id }}">
+                    <div class="dialog-header"><div><h2 class="panel-title">Edit branch</h2><p class="subtle">Update branch identity, tax, and delivery options.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
+                    <div class="dialog-body">
+                        <form class="mini-form" method="POST" action="{{ route('admin.business.branches.update', $branch) }}">
+                            @csrf
+                            @method('PUT')
+                            <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                            <div class="form-grid">
+                                <div class="field"><label>Name</label><input name="name" value="{{ $branch->name }}" required></div>
+                                <div class="field"><label>Code</label><input name="code" value="{{ $branch->code }}" required></div>
+                            </div>
+                            <div class="field"><label>Address</label><textarea name="address">{{ $branch->address }}</textarea></div>
+                            <div class="form-grid">
+                                <div class="field"><label>Phone</label><input name="phone" value="{{ $branch->phone }}"></div>
+                                <div class="field"><label>Email</label><input name="email" type="email" value="{{ $branch->email }}"></div>
+                                <div class="field"><label>Currency</label><input name="currency_code" maxlength="3" value="{{ $branch->currency_code ?: $tenant->currency_code }}"></div>
+                                <div class="field"><label>Tax rate</label><input name="default_tax_rate" type="number" step="0.01" value="{{ $branch->default_tax_rate ?? $tenant->default_tax_rate }}"></div>
+                                <div class="field"><label>Status</label><select name="status"><option value="active" @selected($branch->status === 'active')>Active</option><option value="inactive" @selected($branch->status === 'inactive')>Inactive</option></select></div>
+                            </div>
+                            <div class="field">
+                                <label>Delivery methods</label>
+                                <div data-delivery-methods>
+                                    @foreach ($branchDeliveryMethods as $index => $method)
+                                        <div class="setup-line-card" data-delivery-method>
+                                            <div class="setup-line-header"><strong>Delivery option</strong><button class="btn danger" type="button" data-remove-delivery-method>Remove</button></div>
+                                            <div class="form-grid">
+                                                <div class="field"><label>Method</label><input name="delivery_methods[{{ $index }}][name]" value="{{ $method['name'] ?? '' }}" placeholder="Standard delivery"></div>
+                                                <div class="field"><label>Price</label><input name="delivery_methods[{{ $index }}][price]" type="number" min="0" step="0.01" value="{{ $method['price'] ?? 0 }}"></div>
+                                                <div class="field"><label>Status</label><select name="delivery_methods[{{ $index }}][status]"><option value="active" @selected(($method['status'] ?? 'active') === 'active')>Active</option><option value="inactive" @selected(($method['status'] ?? 'active') === 'inactive')>Inactive</option></select></div>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                                <button class="btn primary" type="button" data-add-delivery-method style="margin-top: 10px;">Add delivery method</button>
+                            </div>
+                            <label><input type="checkbox" name="is_primary" value="1" @checked($branch->is_primary)> Make primary branch</label>
+                            <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Cancel</button><button class="btn primary" type="submit">Save branch</button></div>
+                        </form>
+                    </div>
+                </dialog>
+            @endforeach
 
             <dialog class="dialog" id="department-dialog">
                 <div class="dialog-header"><div><h2 class="panel-title">Add department</h2><p class="subtle">Create an internal unit for this organization.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
@@ -383,5 +839,517 @@
                 </div>
             </dialog>
         @endif
+
+        <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.storebootBusinessSetupBound) return;
+            window.storebootBusinessSetupBound = true;
+
+            const paintThemeColorField = (field) => {
+                field.style.backgroundColor = field.value;
+            };
+
+            document.querySelectorAll('[data-theme-color-field]').forEach(paintThemeColorField);
+
+            const onlineStoreSectionPanels = Array.from(document.querySelectorAll('[data-online-store-section-panel]'));
+            const onlineStoreSectionTabs = Array.from(document.querySelectorAll('[data-online-store-section-target]'));
+
+            const activateOnlineStoreSection = (id) => {
+                if (!onlineStoreSectionPanels.length) return;
+
+                const panelId = onlineStoreSectionPanels.some((panel) => panel.id === id)
+                    ? id
+                    : onlineStoreSectionPanels[0].id;
+
+                onlineStoreSectionPanels.forEach((panel) => {
+                    panel.hidden = panel.id !== panelId;
+                });
+
+                onlineStoreSectionTabs.forEach((tab) => {
+                    const isActive = tab.dataset.onlineStoreSectionTarget === panelId;
+                    tab.classList.toggle('active', isActive);
+                    tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                });
+            };
+
+            onlineStoreSectionTabs.forEach((tab) => {
+                tab.addEventListener('click', () => {
+                    activateOnlineStoreSection(tab.dataset.onlineStoreSectionTarget);
+                });
+            });
+
+            const syncPaystackOptions = () => {
+                const toggle = document.querySelector('[data-paystack-toggle]');
+                const options = document.querySelector('[data-paystack-options]');
+                const fallback = document.querySelector('[data-paystack-method-fallback]');
+                const selfHostedFields = document.querySelector('[data-self-hosted-paystack-fields]');
+                const radios = Array.from(document.querySelectorAll('[data-paystack-method-option]'));
+                if (!toggle || !options || !fallback) return;
+
+                options.hidden = !toggle.checked;
+                fallback.disabled = toggle.checked;
+                radios.forEach((radio) => {
+                    radio.disabled = !toggle.checked;
+                });
+
+                if (toggle.checked && !radios.some((radio) => radio.checked)) {
+                    const storebootPaystack = radios.find((radio) => radio.value === 'storeboot_paystack');
+                    if (storebootPaystack) storebootPaystack.checked = true;
+                }
+
+                const selectedMethod = radios.find((radio) => radio.checked && !radio.disabled)?.value ?? 'none';
+                if (selfHostedFields) {
+                    selfHostedFields.hidden = !toggle.checked || selectedMethod !== 'self_hosted_paystack';
+                }
+            };
+
+            document.querySelector('[data-paystack-toggle]')?.addEventListener('change', syncPaystackOptions);
+            document.querySelectorAll('[data-paystack-method-option]').forEach((radio) => {
+                radio.addEventListener('change', syncPaystackOptions);
+            });
+            syncPaystackOptions();
+
+            const onlineBankDialog = document.querySelector('[data-online-bank-account-dialog]');
+            const onlineShippingDialog = document.querySelector('[data-online-shipping-dialog]');
+            const onlineFaqDialog = document.querySelector('[data-online-faq-dialog]');
+            const onlineBankList = document.querySelector('[data-online-bank-accounts]');
+            const onlineShippingList = document.querySelector('[data-online-shipping-options]');
+            const onlineFaqList = document.querySelector('[data-online-faqs]');
+
+            const setDialogInputValues = (dialog, selector, values) => {
+                Object.entries(values).forEach(([key, value]) => {
+                    const input = dialog?.querySelector(`${selector}="${key}"]`);
+                    if (input) input.value = value ?? '';
+                });
+            };
+
+            const updateOnlineBankEmptyState = () => {
+                const empty = onlineBankList?.querySelector('[data-online-bank-empty]');
+                if (empty) {
+                    empty.hidden = Boolean(onlineBankList?.querySelector('[data-online-bank-account]'));
+                }
+            };
+
+            const updateOnlineShippingEmptyState = () => {
+                const empty = onlineShippingList?.querySelector('[data-online-shipping-empty]');
+                if (empty) {
+                    empty.hidden = Boolean(onlineShippingList?.querySelector('[data-online-shipping-option]'));
+                }
+            };
+
+            const updateOnlineFaqEmptyState = () => {
+                const empty = onlineFaqList?.querySelector('[data-online-faq-empty]');
+                if (empty) {
+                    empty.hidden = Boolean(onlineFaqList?.querySelector('[data-online-faq]'));
+                }
+            };
+
+            const renumberOnlineBankAccounts = () => {
+                onlineBankList?.querySelectorAll('[data-online-bank-account]').forEach((row, index) => {
+                    row.querySelector('[data-bank-field="bank_name"]').name = `bank_accounts[${index}][bank_name]`;
+                    row.querySelector('[data-bank-field="account_name"]').name = `bank_accounts[${index}][account_name]`;
+                    row.querySelector('[data-bank-field="account_number"]').name = `bank_accounts[${index}][account_number]`;
+                });
+                updateOnlineBankEmptyState();
+            };
+
+            const renumberOnlineShippingOptions = () => {
+                onlineShippingList?.querySelectorAll('[data-online-shipping-option]').forEach((row, index) => {
+                    row.querySelector('[data-shipping-field="location"]').name = `shipping_options[${index}][location]`;
+                    row.querySelector('[data-shipping-field="price"]').name = `shipping_options[${index}][price]`;
+                });
+                updateOnlineShippingEmptyState();
+            };
+
+            const renumberOnlineFaqs = () => {
+                onlineFaqList?.querySelectorAll('[data-online-faq]').forEach((row, index) => {
+                    row.querySelector('[data-faq-field="question"]').name = `faqs[${index}][question]`;
+                    row.querySelector('[data-faq-field="answer"]').name = `faqs[${index}][answer]`;
+                });
+                updateOnlineFaqEmptyState();
+            };
+
+            const updateOnlineBankRow = (row, values) => {
+                const bankName = (values.bank_name ?? '').trim();
+                const accountName = (values.account_name ?? '').trim();
+                const accountNumber = (values.account_number ?? '').trim();
+
+                row.querySelector('[data-bank-summary]').textContent = bankName || 'Bank account';
+                row.querySelector('[data-bank-account-name]').textContent = accountName || 'Account name not set';
+                row.querySelector('[data-bank-account-number]').textContent = accountNumber || 'Account number not set';
+                row.querySelector('[data-bank-field="bank_name"]').value = bankName;
+                row.querySelector('[data-bank-field="account_name"]').value = accountName;
+                row.querySelector('[data-bank-field="account_number"]').value = accountNumber;
+            };
+
+            const createOnlineBankRow = (values) => {
+                const row = document.createElement('div');
+                row.className = 'setup-line-card';
+                row.dataset.onlineBankAccount = '';
+                row.innerHTML = `
+                    <div class="setup-line-header">
+                        <div>
+                            <strong data-bank-summary>Bank account</strong>
+                            <div class="subtle"><span data-bank-account-name>Account name not set</span> · <span data-bank-account-number>Account number not set</span></div>
+                        </div>
+                        <div class="setup-row-actions">
+                            <button class="btn secondary" type="button" data-edit-online-bank-account>Edit</button>
+                            <button class="btn danger" type="button" data-delete-online-bank-account>Delete</button>
+                        </div>
+                    </div>
+                    <input type="hidden" data-bank-field="bank_name">
+                    <input type="hidden" data-bank-field="account_name">
+                    <input type="hidden" data-bank-field="account_number">
+                `;
+                updateOnlineBankRow(row, values);
+                return row;
+            };
+
+            const openOnlineBankDialog = (values = {}, index = '') => {
+                if (!onlineBankDialog) return;
+                onlineBankDialog.querySelector('[data-online-bank-dialog-title]').textContent = index === '' ? 'Add bank account' : 'Edit bank account';
+                onlineBankDialog.querySelector('[data-online-bank-edit-index]').value = index;
+                setDialogInputValues(onlineBankDialog, '[data-online-bank-input', {
+                    bank_name: values.bank_name ?? '',
+                    account_name: values.account_name ?? '',
+                    account_number: values.account_number ?? '',
+                });
+                onlineBankDialog.showModal();
+            };
+
+            const onlineBankValuesFromRow = (row) => ({
+                bank_name: row.querySelector('[data-bank-field="bank_name"]')?.value ?? '',
+                account_name: row.querySelector('[data-bank-field="account_name"]')?.value ?? '',
+                account_number: row.querySelector('[data-bank-field="account_number"]')?.value ?? '',
+            });
+
+            const updateOnlineShippingRow = (row, values) => {
+                const location = (values.location ?? '').trim();
+                const price = `${values.price ?? 0}`.trim() || '0';
+
+                row.querySelector('[data-shipping-location]').textContent = location || 'Shipping option';
+                row.querySelector('[data-shipping-price]').textContent = price;
+                row.querySelector('[data-shipping-field="location"]').value = location;
+                row.querySelector('[data-shipping-field="price"]').value = price;
+            };
+
+            const createOnlineShippingRow = (values) => {
+                const row = document.createElement('div');
+                row.className = 'setup-line-card';
+                row.dataset.onlineShippingOption = '';
+                row.innerHTML = `
+                    <div class="setup-line-header">
+                        <div>
+                            <strong data-shipping-location>Shipping option</strong>
+                            <div class="subtle">Price: <span data-shipping-price>0</span></div>
+                        </div>
+                        <div class="setup-row-actions">
+                            <button class="btn secondary" type="button" data-edit-online-shipping-option>Edit</button>
+                            <button class="btn danger" type="button" data-delete-online-shipping-option>Delete</button>
+                        </div>
+                    </div>
+                    <input type="hidden" data-shipping-field="location">
+                    <input type="hidden" data-shipping-field="price">
+                `;
+                updateOnlineShippingRow(row, values);
+                return row;
+            };
+
+            const openOnlineShippingDialog = (values = {}, index = '') => {
+                if (!onlineShippingDialog) return;
+                onlineShippingDialog.querySelector('[data-online-shipping-dialog-title]').textContent = index === '' ? 'Add shipping option' : 'Edit shipping option';
+                onlineShippingDialog.querySelector('[data-online-shipping-edit-index]').value = index;
+                setDialogInputValues(onlineShippingDialog, '[data-online-shipping-input', {
+                    location: values.location ?? '',
+                    price: values.price ?? '0',
+                });
+                onlineShippingDialog.showModal();
+            };
+
+            const onlineShippingValuesFromRow = (row) => ({
+                location: row.querySelector('[data-shipping-field="location"]')?.value ?? '',
+                price: row.querySelector('[data-shipping-field="price"]')?.value ?? '0',
+            });
+
+            const updateOnlineFaqRow = (row, values) => {
+                const question = (values.question ?? '').trim();
+                const answer = (values.answer ?? '').trim();
+
+                row.querySelector('[data-faq-question]').textContent = question || 'FAQ item';
+                row.querySelector('[data-faq-answer]').textContent = answer || 'Answer not set';
+                row.querySelector('[data-faq-field="question"]').value = question;
+                row.querySelector('[data-faq-field="answer"]').value = answer;
+            };
+
+            const createOnlineFaqRow = (values) => {
+                const row = document.createElement('div');
+                row.className = 'setup-line-card';
+                row.dataset.onlineFaq = '';
+                row.innerHTML = `
+                    <div class="setup-line-header">
+                        <div>
+                            <strong data-faq-question>FAQ item</strong>
+                            <div class="subtle" data-faq-answer>Answer not set</div>
+                        </div>
+                        <div class="setup-row-actions">
+                            <button class="btn secondary" type="button" data-edit-online-faq>Edit</button>
+                            <button class="btn danger" type="button" data-delete-online-faq>Delete</button>
+                        </div>
+                    </div>
+                    <input type="hidden" data-faq-field="question">
+                    <input type="hidden" data-faq-field="answer">
+                `;
+                updateOnlineFaqRow(row, values);
+                return row;
+            };
+
+            const openOnlineFaqDialog = (values = {}, index = '') => {
+                if (!onlineFaqDialog) return;
+                onlineFaqDialog.querySelector('[data-online-faq-dialog-title]').textContent = index === '' ? 'Add FAQ item' : 'Edit FAQ item';
+                onlineFaqDialog.querySelector('[data-online-faq-edit-index]').value = index;
+                setDialogInputValues(onlineFaqDialog, '[data-online-faq-input', {
+                    question: values.question ?? '',
+                    answer: values.answer ?? '',
+                });
+                onlineFaqDialog.showModal();
+            };
+
+            const onlineFaqValuesFromRow = (row) => ({
+                question: row.querySelector('[data-faq-field="question"]')?.value ?? '',
+                answer: row.querySelector('[data-faq-field="answer"]')?.value ?? '',
+            });
+
+            renumberOnlineBankAccounts();
+            renumberOnlineShippingOptions();
+            renumberOnlineFaqs();
+
+            document.addEventListener('input', (event) => {
+                const colorField = event.target.closest('[data-theme-color-field]');
+                if (colorField) {
+                    paintThemeColorField(colorField);
+                }
+            });
+
+            document.addEventListener('click', (event) => {
+                const addDelivery = event.target.closest('[data-add-delivery-method]');
+                if (addDelivery) {
+                    const list = addDelivery.closest('form')?.querySelector('[data-delivery-methods]');
+                    const first = list?.querySelector('[data-delivery-method]');
+                    if (!list || !first) return;
+                    const index = list.querySelectorAll('[data-delivery-method]').length;
+                    const row = first.cloneNode(true);
+                    row.querySelectorAll('[name]').forEach((field) => {
+                        field.name = field.name.replace(/delivery_methods\[\d+\]/, `delivery_methods[${index}]`);
+                        if (field.tagName === 'SELECT') field.value = 'active';
+                        else field.value = field.name.endsWith('[price]') ? '0' : '';
+                    });
+                    list.appendChild(row);
+                    return;
+                }
+
+                const removeDelivery = event.target.closest('[data-remove-delivery-method]');
+                if (removeDelivery) {
+                    const row = removeDelivery.closest('[data-delivery-method]');
+                    const list = removeDelivery.closest('[data-delivery-methods]');
+                    if (row && list?.querySelectorAll('[data-delivery-method]').length > 1) {
+                        row.remove();
+                        return;
+                    }
+                    row?.querySelectorAll('input').forEach((field) => {
+                        field.value = field.name.endsWith('[price]') ? '0' : '';
+                    });
+                    row?.querySelectorAll('select').forEach((field) => {
+                        field.value = 'active';
+                    });
+                    return;
+                }
+
+                const addBank = event.target.closest('[data-add-business-bank-detail]');
+                if (addBank) {
+                    const list = addBank.closest('.field')?.querySelector('[data-business-bank-details]');
+                    const first = list?.querySelector('[data-business-bank-detail]');
+                    if (!list || !first) return;
+                    const index = list.querySelectorAll('[data-business-bank-detail]').length;
+                    const row = first.cloneNode(true);
+                    row.querySelectorAll('[name]').forEach((field) => {
+                        field.name = field.name.replace(/bank_details\[\d+\]/, `bank_details[${index}]`);
+                        if (field.tagName === 'SELECT') field.value = 'active';
+                        else field.value = '';
+                    });
+                    list.appendChild(row);
+                    return;
+                }
+
+                const openBankAccountDialog = event.target.closest('[data-open-online-bank-account-dialog]');
+                if (openBankAccountDialog) {
+                    openOnlineBankDialog();
+                    return;
+                }
+
+                const editOnlineBank = event.target.closest('[data-edit-online-bank-account]');
+                if (editOnlineBank) {
+                    const row = editOnlineBank.closest('[data-online-bank-account]');
+                    const rows = Array.from(onlineBankList?.querySelectorAll('[data-online-bank-account]') ?? []);
+                    if (row) openOnlineBankDialog(onlineBankValuesFromRow(row), rows.indexOf(row));
+                    return;
+                }
+
+                const deleteOnlineBank = event.target.closest('[data-delete-online-bank-account]');
+                if (deleteOnlineBank) {
+                    const row = deleteOnlineBank.closest('[data-online-bank-account]');
+                    if (row) {
+                        row.remove();
+                        renumberOnlineBankAccounts();
+                    }
+                    return;
+                }
+
+                const saveOnlineBank = event.target.closest('[data-save-online-bank-account]');
+                if (saveOnlineBank) {
+                    const values = {
+                        bank_name: onlineBankDialog?.querySelector('[data-online-bank-input="bank_name"]')?.value ?? '',
+                        account_name: onlineBankDialog?.querySelector('[data-online-bank-input="account_name"]')?.value ?? '',
+                        account_number: onlineBankDialog?.querySelector('[data-online-bank-input="account_number"]')?.value ?? '',
+                    };
+                    const index = onlineBankDialog?.querySelector('[data-online-bank-edit-index]')?.value ?? '';
+                    const rows = Array.from(onlineBankList?.querySelectorAll('[data-online-bank-account]') ?? []);
+                    const row = index === '' ? createOnlineBankRow(values) : rows[Number(index)];
+
+                    if (index === '') {
+                        onlineBankList?.appendChild(row);
+                    } else if (row) {
+                        updateOnlineBankRow(row, values);
+                    }
+
+                    renumberOnlineBankAccounts();
+                    onlineBankDialog?.close();
+                    return;
+                }
+
+                const cancelOnlineBank = event.target.closest('[data-online-bank-cancel]');
+                if (cancelOnlineBank) {
+                    onlineBankDialog?.close();
+                    return;
+                }
+
+                const openShippingDialog = event.target.closest('[data-open-online-shipping-dialog]');
+                if (openShippingDialog) {
+                    openOnlineShippingDialog();
+                    return;
+                }
+
+                const editOnlineShipping = event.target.closest('[data-edit-online-shipping-option]');
+                if (editOnlineShipping) {
+                    const row = editOnlineShipping.closest('[data-online-shipping-option]');
+                    const rows = Array.from(onlineShippingList?.querySelectorAll('[data-online-shipping-option]') ?? []);
+                    if (row) openOnlineShippingDialog(onlineShippingValuesFromRow(row), rows.indexOf(row));
+                    return;
+                }
+
+                const deleteOnlineShipping = event.target.closest('[data-delete-online-shipping-option]');
+                if (deleteOnlineShipping) {
+                    const row = deleteOnlineShipping.closest('[data-online-shipping-option]');
+                    if (row) {
+                        row.remove();
+                        renumberOnlineShippingOptions();
+                    }
+                    return;
+                }
+
+                const saveOnlineShipping = event.target.closest('[data-save-online-shipping-option]');
+                if (saveOnlineShipping) {
+                    const values = {
+                        location: onlineShippingDialog?.querySelector('[data-online-shipping-input="location"]')?.value ?? '',
+                        price: onlineShippingDialog?.querySelector('[data-online-shipping-input="price"]')?.value ?? '0',
+                    };
+                    const index = onlineShippingDialog?.querySelector('[data-online-shipping-edit-index]')?.value ?? '';
+                    const rows = Array.from(onlineShippingList?.querySelectorAll('[data-online-shipping-option]') ?? []);
+                    const row = index === '' ? createOnlineShippingRow(values) : rows[Number(index)];
+
+                    if (index === '') {
+                        onlineShippingList?.appendChild(row);
+                    } else if (row) {
+                        updateOnlineShippingRow(row, values);
+                    }
+
+                    renumberOnlineShippingOptions();
+                    onlineShippingDialog?.close();
+                    return;
+                }
+
+                const cancelOnlineShipping = event.target.closest('[data-online-shipping-cancel]');
+                if (cancelOnlineShipping) {
+                    onlineShippingDialog?.close();
+                    return;
+                }
+
+                const addFaq = event.target.closest('[data-add-online-faq]');
+                if (addFaq) {
+                    openOnlineFaqDialog();
+                    return;
+                }
+
+                const editOnlineFaq = event.target.closest('[data-edit-online-faq]');
+                if (editOnlineFaq) {
+                    const row = editOnlineFaq.closest('[data-online-faq]');
+                    const rows = Array.from(onlineFaqList?.querySelectorAll('[data-online-faq]') ?? []);
+                    if (row) openOnlineFaqDialog(onlineFaqValuesFromRow(row), rows.indexOf(row));
+                    return;
+                }
+
+                const deleteOnlineFaq = event.target.closest('[data-delete-online-faq]');
+                if (deleteOnlineFaq) {
+                    const row = deleteOnlineFaq.closest('[data-online-faq]');
+                    if (row) {
+                        row.remove();
+                        renumberOnlineFaqs();
+                    }
+                    return;
+                }
+
+                const saveOnlineFaq = event.target.closest('[data-save-online-faq]');
+                if (saveOnlineFaq) {
+                    const values = {
+                        question: onlineFaqDialog?.querySelector('[data-online-faq-input="question"]')?.value ?? '',
+                        answer: onlineFaqDialog?.querySelector('[data-online-faq-input="answer"]')?.value ?? '',
+                    };
+                    const index = onlineFaqDialog?.querySelector('[data-online-faq-edit-index]')?.value ?? '';
+                    const rows = Array.from(onlineFaqList?.querySelectorAll('[data-online-faq]') ?? []);
+                    const row = index === '' ? createOnlineFaqRow(values) : rows[Number(index)];
+
+                    if (index === '') {
+                        onlineFaqList?.appendChild(row);
+                    } else if (row) {
+                        updateOnlineFaqRow(row, values);
+                    }
+
+                    renumberOnlineFaqs();
+                    onlineFaqDialog?.close();
+                    return;
+                }
+
+                const cancelOnlineFaq = event.target.closest('[data-online-faq-cancel]');
+                if (cancelOnlineFaq) {
+                    onlineFaqDialog?.close();
+                    return;
+                }
+
+                const removeBank = event.target.closest('[data-remove-business-bank-detail]');
+                if (!removeBank) return;
+                const row = removeBank.closest('[data-business-bank-detail]');
+                const list = removeBank.closest('[data-business-bank-details]');
+                if (row && list?.querySelectorAll('[data-business-bank-detail]').length > 1) {
+                    row.remove();
+                    return;
+                }
+                row?.querySelectorAll('input').forEach((field) => {
+                    field.value = '';
+                });
+                row?.querySelectorAll('select').forEach((field) => {
+                    field.value = 'active';
+                });
+            });
+        });
+        </script>
     @endif
 </x-layouts.admin>

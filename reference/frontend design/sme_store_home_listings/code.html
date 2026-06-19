@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+
+<html class="scroll-smooth" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SME Manager | Premium Store &amp; Booking</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=Plus+Jakarta+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#006a61",
+                        "on-background": "#1a1b21",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "inverse-on-surface": "#f1f0f7",
+                        "outline-variant": "#c5c5d3",
+                        "on-tertiary-container": "#ef9900",
+                        "surface-container-highest": "#e3e1e9",
+                        "secondary-fixed-dim": "#6bd8cb",
+                        "surface-container": "#eeedf4",
+                        "primary-fixed-dim": "#b6c4ff",
+                        "on-primary": "#ffffff",
+                        "tertiary-fixed-dim": "#ffb95f",
+                        "surface-container-lowest": "#ffffff",
+                        "on-surface": "#1a1b21",
+                        "on-secondary-container": "#006f66",
+                        "on-secondary": "#ffffff",
+                        "secondary-container": "#86f2e4",
+                        "on-surface-variant": "#444651",
+                        "surface-variant": "#e3e1e9",
+                        "on-primary-fixed-variant": "#264191",
+                        "error-container": "#ffdad6",
+                        "outline": "#757682",
+                        "tertiary-fixed": "#ffddb8",
+                        "tertiary": "#3e2400",
+                        "primary-container": "#1e3a8a",
+                        "on-error": "#ffffff",
+                        "inverse-primary": "#b6c4ff",
+                        "on-primary-fixed": "#00164e",
+                        "background": "#faf8ff",
+                        "surface-container-low": "#f4f3fa",
+                        "surface-container-high": "#e9e7ef",
+                        "error": "#ba1a1a",
+                        "on-primary-container": "#90a8ff",
+                        "surface-tint": "#4059aa",
+                        "on-error-container": "#93000a",
+                        "primary-fixed": "#dce1ff",
+                        "primary": "#00236f",
+                        "secondary-fixed": "#89f5e7",
+                        "surface-dim": "#dad9e1",
+                        "surface-bright": "#faf8ff",
+                        "inverse-surface": "#2f3036",
+                        "on-tertiary": "#ffffff",
+                        "on-secondary-fixed-variant": "#005049",
+                        "on-tertiary-fixed": "#2a1700",
+                        "surface": "#faf8ff",
+                        "on-secondary-fixed": "#00201d",
+                        "tertiary-container": "#5c3800"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "unit-xl": "40px",
+                        "unit-sm": "8px",
+                        "margin-mobile": "16px",
+                        "margin-desktop": "48px",
+                        "unit-md": "16px",
+                        "unit-lg": "24px",
+                        "gutter": "24px",
+                        "container-max": "1280px",
+                        "unit-xs": "4px"
+                    },
+                    "fontFamily": {
+                        "display-xl": ["Hanken Grotesk"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "body-md": ["Plus Jakarta Sans"],
+                        "label-md": ["Hanken Grotesk"],
+                        "body-lg": ["Plus Jakarta Sans"],
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "caption": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "display-xl": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-md": ["14px", { "lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "caption": ["12px", { "lineHeight": "16px", "fontWeight": "400" }]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .tonal-layer-1 {
+            background: #FFFFFF;
+            border: 1px solid #e3e1e9;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md overflow-x-hidden">
+<!-- Announcement Bar -->
+<div class="bg-on-background text-background py-2 text-center overflow-hidden">
+<p class="font-label-md text-label-md tracking-widest animate-pulse">HOT SALE: 50% OFF! LIMITED TIME ONLY</p>
+</div>
+<!-- TopAppBar -->
+<header class="bg-background dark:bg-on-background sticky top-0 z-50 border-b border-outline-variant dark:border-outline">
+<div class="flex justify-between items-center w-full px-margin-desktop h-20">
+<div class="flex items-center gap-12">
+<a class="font-display-xl text-headline-md font-bold text-primary dark:text-primary-fixed" href="#">SME Manager</a>
+<nav class="hidden md:flex gap-8">
+<a class="text-secondary dark:text-secondary-fixed-dim font-bold border-b-2 border-secondary font-body-md text-body-md" href="#">Products</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary font-body-md text-body-md transition-colors duration-200" href="#">Services</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary font-body-md text-body-md transition-colors duration-200" href="#">About</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary font-body-md text-body-md transition-colors duration-200" href="#">FAQ</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary font-body-md text-body-md transition-colors duration-200" href="#">Contact</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden lg:flex items-center bg-surface-container rounded-full px-4 py-2 border border-outline-variant">
+<span class="material-symbols-outlined text-outline">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-body-md" placeholder="Search..." type="text"/>
+</div>
+<button class="p-2 hover:bg-surface-container-low transition-colors duration-200 rounded-full scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-primary">shopping_cart</span>
+</button>
+<button class="p-2 hover:bg-surface-container-low transition-colors duration-200 rounded-full scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-primary">account_circle</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Hero Section -->
+<section class="relative h-[819px] flex items-center overflow-hidden">
+<div class="absolute inset-0 z-0">
+<img class="w-full h-full object-cover" data-alt="A professional, high-end corporate office lobby with minimalist furniture and expansive floor-to-ceiling windows showing a modern city skyline. The lighting is soft and bright, using a light-mode aesthetic with primary blue accents. A clean, high-performance SaaS vibe that feels reliable and efficient, perfect for a business management dashboard background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC1Xpm1DrJwKiSowPKbNG0SzDSva4w2mIcECZCIJEd3297IOaOZf6GG_II0_dk0oIJKqTagrV_jEY76nGXZMFMlwo4jxZ6lkoOPWSoXgQ3BY6K8XYV7mQn3xAHrQQnpbFxNx8W5K56BpLNjRNfvz-GaTV9AN6GfRd-zLMlWuEJw_xSw4H1UzBY1Fy6QYH7uVE543EYs2WnNwBqw6x8RCEBVktAGAEGSbt2B5G_HdmalODhmV94cwgk98YJvYlPrf3BxbXEFI6djI9D7"/>
+<div class="absolute inset-0 bg-gradient-to-r from-background via-background/60 to-transparent"></div>
+</div>
+<div class="relative z-10 px-margin-desktop container mx-auto">
+<div class="max-w-2xl space-y-unit-lg">
+<span class="inline-block py-1 px-4 bg-primary text-on-primary rounded-full font-label-md text-label-md">ENTERPRISE SOLUTIONS</span>
+<h1 class="font-display-xl text-display-xl text-primary leading-tight">Manage Your Store with <br/>Ultimate Efficiency</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant">The all-in-one ecosystem for growing businesses to handle inventory, bookings, and sales with a conversion-focused minimalist interface.</p>
+<div class="flex gap-4">
+<button class="bg-primary text-on-primary px-10 py-4 rounded-full font-label-md text-label-md hover:bg-primary-container transition-all scale-95 active:scale-90 shadow-lg">GET STARTED NOW</button>
+<button class="border border-outline text-primary px-10 py-4 rounded-full font-label-md text-label-md hover:bg-surface-container-low transition-all">VIEW DEMO</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Hot Sales (Bento-style Inspiration) -->
+<section class="py-unit-xl px-margin-desktop">
+<div class="flex justify-between items-end mb-unit-lg">
+<div class="space-y-unit-xs">
+<h2 class="font-headline-lg text-headline-lg text-primary">Hot Sales</h2>
+<p class="text-on-surface-variant font-body-md text-body-md">Limited time offers on our most popular equipment.</p>
+</div>
+<a class="text-secondary font-bold hover:underline flex items-center gap-2" href="#">View all deals <span class="material-symbols-outlined">arrow_forward</span></a>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-gutter">
+<!-- Product Card 1 -->
+<div class="tonal-layer-1 rounded-xl p-unit-sm group cursor-pointer overflow-hidden transition-all duration-300 hover:shadow-2xl">
+<div class="relative aspect-square bg-surface-variant rounded-lg mb-unit-md flex items-center justify-center overflow-hidden">
+<img class="w-4/5 object-contain transition-transform duration-500 group-hover:scale-110" data-alt="A sleek, high-tech industrial hand sanitizer dispenser in brushed chrome finish, isolated on a clean, off-white minimalist background. The lighting is studio-quality, emphasizing the professional build of the product. The overall aesthetic is clean, medical, and high-performance, fitting for a corporate SME environment." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDKG7SiJ5sZzUE5Mvi6TAd1XPmQHhE_qAHpLBkXPO-I6KxAnFCAUIziDIRBeJRW6jh2ZbzleTMfnq2XbTYGpej5UxzA_MlDL2LLui1fhOFR6oDY76J6-wAQDswvHWpJFkamXKYj1l4OgHO86tVji1RMKSjv-Hg5Jw_c9tgHu9Js-qbgg-ExeqY-unwvXbH4mjLj7g0xn_JLXqt1CPis8RZ1SGWM_-0RIPaXLCaPLb9jmC1eIuNe_zfcECg_ieKcyzhMdYxkT8FHClHF"/>
+<span class="absolute top-4 left-4 bg-error text-on-error font-label-md text-label-md px-3 py-1 rounded-full">-50%</span>
+<button class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-on-background text-background px-6 py-2 rounded-full font-label-md text-label-md opacity-0 group-hover:opacity-100 transition-opacity duration-300">Quick View</button>
+</div>
+<div class="px-2 pb-2">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-1">Elite Sanitizer Pro</h3>
+<div class="flex items-center gap-3">
+<span class="text-secondary font-bold text-lg">$49.00</span>
+<span class="text-outline line-through text-sm">$98.00</span>
+</div>
+<button class="w-full mt-4 py-3 bg-secondary text-on-secondary rounded-lg font-label-md text-label-md transition-colors hover:bg-on-secondary-fixed-variant flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">shopping_cart</span> Add to Cart
+                    </button>
+</div>
+</div>
+<!-- Product Card 2 -->
+<div class="tonal-layer-1 rounded-xl p-unit-sm group cursor-pointer overflow-hidden transition-all duration-300 hover:shadow-2xl">
+<div class="relative aspect-square bg-surface-variant rounded-lg mb-unit-md flex items-center justify-center overflow-hidden">
+<img class="w-4/5 object-contain transition-transform duration-500 group-hover:scale-110" data-alt="A professional-grade POS card reader machine with a large touch screen, featuring a sleek dark blue and matte black casing. The device is shown at a dynamic 3/4 angle on a minimalist desk. The background is a soft beige color with ambient lighting, creating a warm and approachable high-end retail feel." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC2P2AAz54Vbm6aNwJ9CalB1qexcEK4iUxnhNiCIVRGFvb1-RWv7iOg-JVErMfTvKRd39TL5ODhWjNL1zAjE7ftjjjOvMCVeNfxsW_JSK1jFsNwKVXdS-IKT3mIm6jeBSIrjvnW4fwSVFZkeP4C3BwSd1je_4Gx4NpWwAih9ruj3TFTCfsUbx4lmW5WU2E_53oJURiKhedV4glp6bOGA_OkHdB8cGMJNBp2yiX_nkFeKAd59IOh_wOwfMiYLuMd6FWFzi0FEGLJf9t3"/>
+<span class="absolute top-4 left-4 bg-primary text-on-primary font-label-md text-label-md px-3 py-1 rounded-full">New Arrival</span>
+</div>
+<div class="px-2 pb-2">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-1">POS Master X1</h3>
+<div class="flex items-center gap-3">
+<span class="text-secondary font-bold text-lg">$199.00</span>
+<span class="text-outline line-through text-sm">$299.00</span>
+</div>
+<button class="w-full mt-4 py-3 bg-secondary text-on-secondary rounded-lg font-label-md text-label-md transition-colors hover:bg-on-secondary-fixed-variant flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">shopping_cart</span> Add to Cart
+                    </button>
+</div>
+</div>
+<!-- Product Card 3 -->
+<div class="tonal-layer-1 rounded-xl p-unit-sm group cursor-pointer overflow-hidden transition-all duration-300 hover:shadow-2xl">
+<div class="relative aspect-square bg-surface-variant rounded-lg mb-unit-md flex items-center justify-center overflow-hidden">
+<img class="w-4/5 object-contain transition-transform duration-500 group-hover:scale-110" data-alt="A set of luxury minimalist office stationary including a leather-bound planner, a high-end designer pen, and a sleek desktop organizer. The products are a deep navy blue with subtle teal accents. The lighting is diffused and bright, creating a clean, professional corporate aesthetic on a white marble surface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDr-LrOPfdPfOqa9jfGcteglcJslcH7Pq5JvK4yz4hQ76L7rGymgThjQLddPMipMXq_DwW0clEJAhr_WHtsHJ5-Pztc0K2ZsbvF_k6_Xy_BXPUhbuejrzIzv4FT1gU2-vvLf2ye00tAWq-Km0oT2K5SysRJczvbw3fvd1oYpy6A-bU8BUMfgUkN7ZPety8-C1WfajXgtxcVUufr5AQ1VP51y7kFyVAJ5IiTo6BvVC0av_ty1YWKFo1TODyhIK6vWURqxFTTKgIHqwYP"/>
+<span class="absolute top-4 left-4 bg-tertiary-container text-on-tertiary-container font-label-md text-label-md px-3 py-1 rounded-full">Trending</span>
+</div>
+<div class="px-2 pb-2">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-1">Executive Suite</h3>
+<div class="flex items-center gap-3">
+<span class="text-secondary font-bold text-lg">$85.00</span>
+<span class="text-outline line-through text-sm">$170.00</span>
+</div>
+<button class="w-full mt-4 py-3 bg-secondary text-on-secondary rounded-lg font-label-md text-label-md transition-colors hover:bg-on-secondary-fixed-variant flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">shopping_cart</span> Add to Cart
+                    </button>
+</div>
+</div>
+<!-- Product Card 4 -->
+<div class="tonal-layer-1 rounded-xl p-unit-sm group cursor-pointer overflow-hidden transition-all duration-300 hover:shadow-2xl">
+<div class="relative aspect-square bg-surface-variant rounded-lg mb-unit-md flex items-center justify-center overflow-hidden">
+<img class="w-4/5 object-contain transition-transform duration-500 group-hover:scale-110" data-alt="A modern digital inventory scanner with an ergonomic handle and a vibrant OLED screen displaying colorful graphs. The device is finished in a high-gloss teal and white. It sits in a high-tech minimalist warehouse environment with soft bokeh background lights. The mood is efficient, technological, and premium." src="https://lh3.googleusercontent.com/aida-public/AB6AXuADL_WRnrmYaXvNFk8KJwQcASH8wznGpT9Y21r7uWXQT9uCZJvdGWRd-Wwm7gLI4QQDh7EJ4tMIck378DEEjQ2rJG2VF5gWrFmjcXPnzT_bGkzr4nRXkdKDj103YXIrIWvQArv3VwNT1e4M4YRdyGd9wrO6aXcw-eHFhr_g6gXHBmLDx9YcR0Yia_OkSyxcP4YYqWVXlD8dqf-WLgNpx8fXqiM8aPl2HhZ6Lh1aOcQBHWqXRVeAB7iHC-HG8Tos3bYdxVYp8XACGaU1"/>
+<span class="absolute top-4 left-4 bg-error text-on-error font-label-md text-label-md px-3 py-1 rounded-full">-30%</span>
+</div>
+<div class="px-2 pb-2">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-1">ScanHub Ultra</h3>
+<div class="flex items-center gap-3">
+<span class="text-secondary font-bold text-lg">$120.00</span>
+<span class="text-outline line-through text-sm">$210.00</span>
+</div>
+<button class="w-full mt-4 py-3 bg-secondary text-on-secondary rounded-lg font-label-md text-label-md transition-colors hover:bg-on-secondary-fixed-variant flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">shopping_cart</span> Add to Cart
+                    </button>
+</div>
+</div>
+</div>
+</section>
+<!-- Our Products Listing -->
+<section class="py-unit-xl bg-surface-container-low px-margin-desktop">
+<div class="text-center max-w-2xl mx-auto mb-unit-xl">
+<h2 class="font-headline-lg text-headline-lg text-primary mb-unit-sm">Our Products</h2>
+<p class="text-on-surface-variant font-body-md text-body-md">Browse our full catalog of high-performance tools designed to scale your business operations from day one.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-gutter">
+<!-- Long Card Item -->
+<div class="md:col-span-2 tonal-layer-1 rounded-2xl flex flex-col md:flex-row overflow-hidden hover:shadow-xl transition-shadow">
+<div class="w-full md:w-1/2">
+<img class="w-full h-full object-cover" data-alt="A wide-angle, high-quality photograph of a modern showroom displaying various professional equipment. The lighting is brilliant and clean, highlighting chrome and glass surfaces. The space uses a corporate blue and white palette. The scene is organized and minimalist, conveying a sense of vast choice and premium quality." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAq09T1KQ9-Z5CV9IWaBx97kCIea2JJq4n1akkpOh_KS2hXzT46-FZ3yi4_dCIHmjagwaWA8CZJPplw33Kfg-JTNISAhMWivZhEpwPhrBBuoSeht6NGhoy7HrrbTO4ErpcmP1cF3_ThngMCR9hxqvX3saL6Z-WNOTZnDQGnJhgAh0vAv7atc3u1n26bOmzW_H0NBmRfOAZ9Iidp-kwAX_jS6aYYX_NG9d6_MfOy2HvUrOftyaafiaPC99CzoWcF5Cv8nPdUd7JDef4Y"/>
+</div>
+<div class="p-unit-lg flex flex-col justify-center space-y-4">
+<h3 class="font-headline-lg text-headline-lg text-on-surface">Integrated Workspace Hub</h3>
+<p class="text-on-surface-variant">The ultimate docking station for your retail counter, featuring built-in charging, card integration, and thermal printing.</p>
+<div class="flex items-center gap-4">
+<span class="text-primary font-bold text-2xl font-headline-lg">$599.00</span>
+<button class="bg-on-background text-background px-8 py-3 rounded-lg font-label-md text-label-md hover:bg-primary transition-colors">Add to Cart</button>
+</div>
+</div>
+</div>
+<!-- Vertical Secondary Card -->
+<div class="tonal-layer-1 rounded-2xl p-unit-lg flex flex-col justify-between hover:shadow-xl transition-shadow">
+<div class="aspect-video bg-surface-variant rounded-xl mb-4 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A sleek, modern label printer machine with a compact white and silver design. A single professional-looking label is printing out. The setting is a clean, minimalist home office desk with a potted plant in the background. The lighting is soft and natural." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDJ98O0uq0kwCdKtL6IUYECRnDAZieNjc8nHZEO8V2n4tgSvxFmAtCsEb-O226GzAxFf0LaesqEwcQ5oQdItxGC_I8j2nMT0E0k3wHQKTAEDcuwXcl9gWGBfJjymlWxWbaWHPQLnEFX29QhZQQ53IotzUlzTxk1fc2VyiV-vweMJUCzu9a1_5BlhausAVgibawYQHUNpb7IXFt-8b6AzlejUZeXlu9BIShIPKDluKakoBlvQtmSYf0b3kG7TWhoRqseFcOe9n9TRr9X"/>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface">Label Pro X</h3>
+<p class="text-on-surface-variant text-sm mt-2">Thermal precision for all your shipping and inventory needs.</p>
+</div>
+<div class="mt-6 flex justify-between items-center">
+<span class="text-secondary font-bold">$129.00</span>
+<button class="p-2 border border-outline rounded-lg hover:bg-primary hover:text-white transition-colors">
+<span class="material-symbols-outlined">add_shopping_cart</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Our Services (Bookings) -->
+<section class="py-unit-xl px-margin-desktop bg-background">
+<div class="flex items-center gap-unit-md mb-unit-lg">
+<div class="h-1 w-20 bg-secondary rounded-full"></div>
+<h2 class="font-headline-lg text-headline-lg text-primary">Our Services</h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-gutter">
+<!-- Service Card 1 -->
+<div class="bg-surface-container-lowest border border-outline-variant p-unit-lg rounded-2xl hover:border-secondary transition-all group">
+<div class="w-16 h-16 rounded-2xl bg-secondary-container flex items-center justify-center mb-unit-md text-on-secondary-container group-hover:bg-secondary group-hover:text-on-secondary transition-colors">
+<span class="material-symbols-outlined text-3xl">calendar_month</span>
+</div>
+<h3 class="font-headline-md text-headline-md mb-2">Inventory Audit</h3>
+<p class="text-on-surface-variant text-sm mb-6">A full digital scan and reconciliation of your current stock levels by our professionals.</p>
+<button class="w-full py-3 border border-secondary text-secondary rounded-lg font-label-md text-label-md hover:bg-secondary hover:text-on-secondary transition-all">Book Now</button>
+</div>
+<!-- Service Card 2 -->
+<div class="bg-surface-container-lowest border border-outline-variant p-unit-lg rounded-2xl hover:border-secondary transition-all group">
+<div class="w-16 h-16 rounded-2xl bg-secondary-container flex items-center justify-center mb-unit-md text-on-secondary-container group-hover:bg-secondary group-hover:text-on-secondary transition-colors">
+<span class="material-symbols-outlined text-3xl">terminal</span>
+</div>
+<h3 class="font-headline-md text-headline-md mb-2">POS Setup</h3>
+<p class="text-on-surface-variant text-sm mb-6">On-site installation and configuration of your new payment terminals and network.</p>
+<button class="w-full py-3 border border-secondary text-secondary rounded-lg font-label-md text-label-md hover:bg-secondary hover:text-on-secondary transition-all">Book Now</button>
+</div>
+<!-- Service Card 3 -->
+<div class="bg-surface-container-lowest border border-outline-variant p-unit-lg rounded-2xl hover:border-secondary transition-all group">
+<div class="w-16 h-16 rounded-2xl bg-secondary-container flex items-center justify-center mb-unit-md text-on-secondary-container group-hover:bg-secondary group-hover:text-on-secondary transition-colors">
+<span class="material-symbols-outlined text-3xl">query_stats</span>
+</div>
+<h3 class="font-headline-md text-headline-md mb-2">Growth Strategy</h3>
+<p class="text-on-surface-variant text-sm mb-6">One-on-one consultation to optimize your store’s digital footprint and conversion rate.</p>
+<button class="w-full py-3 border border-secondary text-secondary rounded-lg font-label-md text-label-md hover:bg-secondary hover:text-on-secondary transition-all">Book Now</button>
+</div>
+<!-- Service Card 4 -->
+<div class="bg-surface-container-lowest border border-outline-variant p-unit-lg rounded-2xl hover:border-secondary transition-all group">
+<div class="w-16 h-16 rounded-2xl bg-secondary-container flex items-center justify-center mb-unit-md text-on-secondary-container group-hover:bg-secondary group-hover:text-on-secondary transition-colors">
+<span class="material-symbols-outlined text-3xl">support_agent</span>
+</div>
+<h3 class="font-headline-md text-headline-md mb-2">24/7 Tech Support</h3>
+<p class="text-on-surface-variant text-sm mb-6">Unlimited remote assistance for all SME Manager software and hardware products.</p>
+<button class="w-full py-3 border border-secondary text-secondary rounded-lg font-label-md text-label-md hover:bg-secondary hover:text-on-secondary transition-all">Book Now</button>
+</div>
+</div>
+</section>
+<!-- SideNavBar (Checkout Drawer Simulation) - Hidden by default -->
+<aside class="fixed right-0 top-0 h-full z-[100] flex flex-col p-unit-lg bg-surface-container-lowest dark:bg-inverse-surface shadow-xl w-[400px] translate-x-full transition-transform duration-300" id="cartDrawer">
+<div class="flex justify-between items-center mb-unit-lg">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-surface-container-highest rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-primary">shopping_bag</span>
+</div>
+<div>
+<h2 class="font-headline-md text-on-surface">Your Cart</h2>
+<p class="font-label-md text-label-md text-on-surface-variant">Complete your purchase</p>
+</div>
+</div>
+<button class="p-2 hover:bg-surface-container rounded-full" onclick="toggleCart()">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<!-- Free Shipping Progress -->
+<div class="mb-unit-lg space-y-2">
+<div class="flex justify-between text-sm">
+<span>Free Shipping Goal</span>
+<span class="text-secondary font-bold">$101.00 away</span>
+</div>
+<div class="w-full h-2 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="w-1/3 h-full bg-secondary"></div>
+</div>
+</div>
+<!-- Cart Items List -->
+<div class="flex-grow overflow-y-auto space-y-4">
+<div class="flex gap-4 p-3 border border-outline-variant rounded-xl">
+<div class="w-20 h-20 bg-surface-variant rounded-lg flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="A small product thumbnail image of a professional card terminal." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBEceZntWcXOsSmdfad5zt6JUAsL70gvb1RSv1AWPDAl6pyX_h6IdsOEsM8jZ2GeGohfOoLU5fRVcj8GyO5W9ZOMrAf7JI1yich2C9lJ6wGt7V0Cr9TwsFmXkbooyNGun0QDwTh1m4q-Kui5HQQs3MbAtNDHAGjoDrBR55xj7STdUFGPMZv_7U-cOVpKUqYCJfABrm36eDBwVSbz3CEeFhCtPsRdN0frtn8RSjJa9RM5JnNgd8p4PntOUa4g9lyucL0iWjpdy6ou4AZ"/>
+</div>
+<div class="flex-grow">
+<h4 class="font-bold text-on-surface">POS Master X1</h4>
+<p class="text-sm text-on-surface-variant">$199.00</p>
+<div class="flex items-center gap-3 mt-2">
+<button class="w-6 h-6 border rounded flex items-center justify-center">-</button>
+<span>1</span>
+<button class="w-6 h-6 border rounded flex items-center justify-center">+</button>
+</div>
+</div>
+<button class="text-error"><span class="material-symbols-outlined">delete</span></button>
+</div>
+</div>
+<!-- Sticky Footer -->
+<div class="pt-unit-lg border-t border-outline-variant mt-unit-lg space-y-4">
+<div class="flex justify-between font-headline-md">
+<span>Subtotal</span>
+<span>$199.00</span>
+</div>
+<button class="w-full py-4 bg-primary text-on-primary rounded-xl font-label-md text-label-md shadow-lg hover:bg-primary-container transition-all">Checkout Now</button>
+<p class="text-center text-xs text-on-surface-variant">Taxes and shipping calculated at checkout</p>
+</div>
+</aside>
+<!-- Footer -->
+<footer class="bg-on-background dark:bg-surface-container-lowest text-background dark:text-on-background">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-gutter px-margin-desktop py-unit-xl w-full">
+<div class="space-y-unit-md">
+<a class="font-display-xl text-headline-md text-background dark:text-primary" href="#">SME Manager</a>
+<p class="font-body-md text-body-md opacity-80">Empowering small and medium enterprises with enterprise-grade tools for growth and operational excellence.</p>
+<div class="flex gap-4">
+<a class="opacity-80 hover:opacity-100 transition-opacity" href="#"><span class="material-symbols-outlined">face_nod</span></a>
+<a class="opacity-80 hover:opacity-100 transition-opacity" href="#"><span class="material-symbols-outlined">alternate_email</span></a>
+<a class="opacity-80 hover:opacity-100 transition-opacity" href="#"><span class="material-symbols-outlined">share</span></a>
+</div>
+</div>
+<div>
+<h4 class="font-headline-md mb-unit-md text-background dark:text-primary">Quick Links</h4>
+<ul class="space-y-2">
+<li><a class="text-outline-variant hover:text-background font-label-md text-label-md transition-colors" href="#">Privacy Policy</a></li>
+<li><a class="text-outline-variant hover:text-background font-label-md text-label-md transition-colors" href="#">Terms of Service</a></li>
+<li><a class="text-outline-variant hover:text-background font-label-md text-label-md transition-colors" href="#">Shipping Info</a></li>
+<li><a class="text-outline-variant hover:text-background font-label-md text-label-md transition-colors" href="#">Refunds</a></li>
+</ul>
+</div>
+<div>
+<h4 class="font-headline-md mb-unit-md text-background dark:text-primary">Contact</h4>
+<ul class="space-y-2">
+<li class="flex items-center gap-2 text-outline-variant"><span class="material-symbols-outlined text-sm">mail</span> support@smemanager.com</li>
+<li class="flex items-center gap-2 text-outline-variant"><span class="material-symbols-outlined text-sm">call</span> +1 (555) 000-1122</li>
+<li class="flex items-center gap-2 text-outline-variant"><span class="material-symbols-outlined text-sm">location_on</span> 123 Business Way, Silicon Valley</li>
+</ul>
+</div>
+<div>
+<h4 class="font-headline-md mb-unit-md text-background dark:text-primary">Newsletter</h4>
+<p class="text-sm text-outline-variant mb-4">Stay updated with our latest SME tools and tips.</p>
+<div class="flex border border-outline rounded-lg overflow-hidden focus-within:ring-2 ring-secondary">
+<input class="bg-transparent border-none w-full px-4 text-sm focus:ring-0" placeholder="Email Address" type="email"/>
+<button class="bg-background dark:bg-primary text-on-background dark:text-on-primary px-4 py-2 hover:bg-secondary-fixed transition-colors">
+<span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+<div class="border-t border-outline-variant/30 py-6 text-center text-xs opacity-60">
+            © 2024 SME Store Manager. All rights reserved.
+        </div>
+</footer>
+<script>
+        function toggleCart() {
+            const cart = document.getElementById('cartDrawer');
+            if (cart.classList.contains('translate-x-full')) {
+                cart.classList.remove('translate-x-full');
+            } else {
+                cart.classList.add('translate-x-full');
+            }
+        }
+
+        // Attach listener to all shopping cart buttons for demo purposes
+        document.querySelectorAll('button').forEach(btn => {
+            if (btn.innerText.includes('shopping_cart') || btn.innerText.includes('Cart')) {
+                btn.addEventListener('click', toggleCart);
+            }
+        });
+    </script>
+</body></html>

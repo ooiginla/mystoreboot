@@ -38,7 +38,7 @@
                                     <span class="subtle">{{ $tenant->email ?: $tenant->slug }}</span>
                                 </td>
                                 <td>{{ $tenant->business_type ?? 'Not set' }}</td>
-                                <td><span class="badge neutral">{{ $tenant->status }}</span></td>
+                                <td><span class="badge neutral">{{ $tenant->status->label() }}</span></td>
                                 <td>{{ $tenant->branches_count }}</td>
                                 <td>{{ $tenant->roles_count }}</td>
                                 <td><a class="btn secondary" href="{{ route('admin.business.organizations.show', $tenant) }}">Details</a></td>

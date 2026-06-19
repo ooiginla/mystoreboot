@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SME Manager | Botanical Hand Sanitizer Gel</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=Plus+Jakarta+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#006a61",
+                        "on-background": "#1a1b21",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "inverse-on-surface": "#f1f0f7",
+                        "outline-variant": "#c5c5d3",
+                        "on-tertiary-container": "#ef9900",
+                        "surface-container-highest": "#e3e1e9",
+                        "secondary-fixed-dim": "#6bd8cb",
+                        "surface-container": "#eeedf4",
+                        "primary-fixed-dim": "#b6c4ff",
+                        "on-primary": "#ffffff",
+                        "tertiary-fixed-dim": "#ffb95f",
+                        "surface-container-lowest": "#ffffff",
+                        "on-surface": "#1a1b21",
+                        "on-secondary-container": "#006f66",
+                        "on-secondary": "#ffffff",
+                        "secondary-container": "#86f2e4",
+                        "on-surface-variant": "#444651",
+                        "surface-variant": "#e3e1e9",
+                        "on-primary-fixed-variant": "#264191",
+                        "error-container": "#ffdad6",
+                        "outline": "#757682",
+                        "tertiary-fixed": "#ffddb8",
+                        "tertiary": "#3e2400",
+                        "primary-container": "#1e3a8a",
+                        "on-error": "#ffffff",
+                        "inverse-primary": "#b6c4ff",
+                        "on-primary-fixed": "#00164e",
+                        "background": "#faf8ff",
+                        "surface-container-low": "#f4f3fa",
+                        "surface-container-high": "#e9e7ef",
+                        "error": "#ba1a1a",
+                        "on-primary-container": "#90a8ff",
+                        "surface-tint": "#4059aa",
+                        "on-error-container": "#93000a",
+                        "primary-fixed": "#dce1ff",
+                        "primary": "#00236f",
+                        "secondary-fixed": "#89f5e7",
+                        "surface-dim": "#dad9e1",
+                        "surface-bright": "#faf8ff",
+                        "inverse-surface": "#2f3036",
+                        "on-tertiary": "#ffffff",
+                        "on-secondary-fixed-variant": "#005049",
+                        "on-tertiary-fixed": "#2a1700",
+                        "surface": "#faf8ff",
+                        "on-secondary-fixed": "#00201d",
+                        "tertiary-container": "#5c3800"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "unit-xl": "40px",
+                        "unit-sm": "8px",
+                        "margin-mobile": "16px",
+                        "margin-desktop": "48px",
+                        "unit-md": "16px",
+                        "unit-lg": "24px",
+                        "gutter": "24px",
+                        "container-max": "1280px",
+                        "unit-xs": "4px"
+                    },
+                    "fontFamily": {
+                        "display-xl": ["Hanken Grotesk"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "body-md": ["Plus Jakarta Sans"],
+                        "label-md": ["Hanken Grotesk"],
+                        "body-lg": ["Plus Jakarta Sans"],
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "caption": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "display-xl": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "caption": ["12px", {"lineHeight": "16px", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .glass-effect { backdrop-filter: blur(12px); background-color: rgba(255, 255, 255, 0.8); }
+        .slide-in-right { animation: slideIn 0.3s ease-out forwards; }
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md text-body-md overflow-x-hidden">
+<!-- Top AppBar -->
+<header class="fixed top-0 left-0 right-0 z-[60] bg-background border-b border-outline-variant h-20 flex justify-between items-center px-margin-desktop">
+<div class="flex items-center gap-unit-lg">
+<span class="font-display-xl text-headline-md font-bold text-primary">SME Manager</span>
+<nav class="hidden md:flex gap-unit-md ml-unit-xl">
+<a class="font-label-md text-label-md text-secondary border-b-2 border-secondary font-bold" href="#">Products</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">Services</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">About</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">FAQ</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">Contact</a>
+</nav>
+</div>
+<div class="flex items-center gap-unit-md">
+<div class="hidden lg:flex items-center bg-surface-container-low px-unit-md py-unit-xs rounded-full border border-outline-variant">
+<span class="material-symbols-outlined text-outline">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-body-md w-48" placeholder="Search products..." type="text"/>
+</div>
+<button class="p-unit-sm hover:bg-surface-container-low rounded-full transition-all active:scale-90">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="shopping_cart">shopping_cart</span>
+</button>
+<button class="p-unit-sm hover:bg-surface-container-low rounded-full transition-all active:scale-90">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="account_circle">account_circle</span>
+</button>
+</div>
+</header>
+<!-- Main Content: Product Details -->
+<main class="mt-20 px-margin-desktop py-unit-xl max-w-container-max mx-auto">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-unit-xl">
+<!-- Left: Product Image Gallery -->
+<div class="lg:col-span-7 flex flex-col gap-unit-md">
+<div class="aspect-[4/5] bg-surface-container-low rounded-xl overflow-hidden relative group">
+<img class="w-full h-full object-contain mix-blend-multiply" data-alt="A clean, minimalist high-quality product photography of two transparent hand sanitizer pump bottles with professional botanical labels. The lighting is soft and high-key, emphasizing a clinical yet organic feel consistent with a premium corporate SME store. The background is a pure, neutral off-white, reflecting an efficient and modern e-commerce aesthetic with a professional blue and teal color scheme." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDWI5Nil38fl1R8aM_qReg5zdGSRiUx-Jb7CVXDMn4nW7TbHM8Zk1zVjVRcWfROMWFk61-d0nM2-vMaxqjwbkvh5dooix4vpOTsN1yRp-kU0YoFze0ojjmSf6A1QvIawob3JkTOHOkXFf-E0chEjX9cVRm0nrCOkuSSm7pguL7zkFQVka-8XqgR7eO3m_WDiNY_FGmdizQRI_LP7Q_v6alWrzjoJNC5xXHaKB_ZDKqjCZIegbaH1pW-soHyJN0-B4N39ToVR909ePcl"/>
+<div class="absolute inset-0 flex items-center justify-between px-unit-md opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="w-10 h-10 rounded-full bg-white shadow-xl flex items-center justify-center hover:bg-surface-container transition-all">
+<span class="material-symbols-outlined">chevron_left</span>
+</button>
+<button class="w-10 h-10 rounded-full bg-white shadow-xl flex items-center justify-center hover:bg-surface-container transition-all">
+<span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+</div>
+<div class="grid grid-cols-4 gap-unit-md">
+<div class="aspect-square bg-surface-container-high rounded-lg cursor-pointer hover:ring-2 ring-primary transition-all"></div>
+<div class="aspect-square bg-surface-container-high rounded-lg cursor-pointer hover:ring-2 ring-primary transition-all"></div>
+<div class="aspect-square bg-surface-container-high rounded-lg cursor-pointer hover:ring-2 ring-primary transition-all"></div>
+<div class="aspect-square bg-surface-container-high rounded-lg cursor-pointer hover:ring-2 ring-primary transition-all"></div>
+</div>
+</div>
+<!-- Right: Product Information -->
+<div class="lg:col-span-5 flex flex-col gap-unit-md">
+<div class="flex flex-col gap-unit-xs">
+<span class="text-secondary font-label-md tracking-widest uppercase">Best Seller</span>
+<h1 class="font-display-xl text-headline-lg text-on-surface">Botanical Hand Sanitizer Gel</h1>
+<p class="font-headline-md text-headline-md text-on-surface-variant font-bold">$14.00</p>
+</div>
+<div class="flex items-center gap-unit-sm py-unit-sm px-unit-md bg-secondary-container text-on-secondary-container rounded-lg w-fit">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">bolt</span>
+<span class="text-label-md">Selling fast! 48 people have this in their carts.</span>
+</div>
+<p class="text-body-lg text-on-surface-variant leading-relaxed">
+                    Elevate your hygiene routine with our premium botanical sanitizer. Infused with vitamin E and aloe vera, it kills 99.9% of germs while keeping your skin hydrated. Perfect for a modern lifestyle that values both safety and sensory experience.
+                </p>
+<!-- Configuration (Placeholder for interactions) -->
+<div class="flex flex-col gap-unit-sm">
+<span class="font-label-md text-on-surface">Quantity</span>
+<div class="flex items-center border border-outline rounded-full w-fit bg-surface-container-lowest overflow-hidden">
+<button class="px-unit-md py-unit-sm hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-[18px]">remove</span>
+</button>
+<span class="px-unit-md font-bold text-headline-md">1</span>
+<button class="px-unit-md py-unit-sm hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-[18px]">add</span>
+</button>
+</div>
+</div>
+<!-- CTA Actions -->
+<div class="flex flex-col gap-unit-sm mt-unit-md">
+<div class="flex gap-unit-sm">
+<button class="flex-1 bg-secondary text-on-secondary py-unit-md rounded-full font-bold transition-transform active:scale-95 hover:shadow-lg">
+                            ADD TO CART
+                        </button>
+<button class="w-14 h-14 rounded-full border border-outline flex items-center justify-center hover:bg-surface-container-low transition-all">
+<span class="material-symbols-outlined">favorite</span>
+</button>
+<button class="w-14 h-14 rounded-full border border-outline flex items-center justify-center hover:bg-surface-container-low transition-all">
+<span class="material-symbols-outlined">open_in_full</span>
+</button>
+</div>
+<button class="w-full bg-on-background text-background py-unit-md rounded-full font-bold transition-transform active:scale-95 hover:bg-opacity-90">
+                        BUY IT NOW
+                    </button>
+</div>
+<hr class="border-outline-variant my-unit-sm"/>
+<div class="flex flex-col gap-unit-xs text-caption text-on-surface-variant">
+<p><span class="font-bold">Availability:</span> In stock</p>
+<p><span class="font-bold">Categories:</span> Medical, Professional Care</p>
+<p><span class="font-bold">Tags:</span> Premium, Organic, Fast-Shipping</p>
+</div>
+<div class="flex gap-unit-md mt-unit-sm">
+<span class="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">face_nod</span>
+<span class="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">share</span>
+<span class="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">alternate_email</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Side Drawer Cart (Always Open for UI presentation as per prompt) -->
+<div class="fixed inset-0 bg-on-surface/40 z-[90] glass-effect backdrop-blur-sm transition-opacity"></div>
+<aside class="fixed right-0 top-0 h-full w-full md:w-[400px] z-[100] bg-surface-container-lowest shadow-2xl flex flex-col slide-in-right">
+<!-- Drawer Header -->
+<div class="p-unit-lg border-b border-outline-variant">
+<div class="flex justify-between items-center mb-unit-md">
+<div class="flex flex-col">
+<h2 class="font-headline-md text-on-surface">Your Cart</h2>
+<span class="text-caption text-on-surface-variant">Complete your purchase</span>
+</div>
+<button class="w-10 h-10 rounded-full hover:bg-surface-container transition-all flex items-center justify-center">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<!-- 4-Step Checkout Progress -->
+<div class="flex items-center justify-between relative mt-unit-md">
+<div class="absolute top-1/2 left-0 w-full h-[2px] bg-surface-container-highest -z-10 -translate-y-1/2"></div>
+<!-- Step 1: Active -->
+<div class="flex flex-col items-center gap-unit-xs">
+<div class="w-8 h-8 rounded-full bg-secondary text-on-secondary flex items-center justify-center font-bold text-label-md">1</div>
+<span class="text-caption font-bold text-secondary">Cart</span>
+</div>
+<!-- Step 2 -->
+<div class="flex flex-col items-center gap-unit-xs">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest text-on-surface-variant flex items-center justify-center font-bold text-label-md">2</div>
+<span class="text-caption text-on-surface-variant">Shipping</span>
+</div>
+<!-- Step 3 -->
+<div class="flex flex-col items-center gap-unit-xs">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest text-on-surface-variant flex items-center justify-center font-bold text-label-md">3</div>
+<span class="text-caption text-on-surface-variant">User</span>
+</div>
+<!-- Step 4 -->
+<div class="flex flex-col items-center gap-unit-xs">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest text-on-surface-variant flex items-center justify-center font-bold text-label-md">4</div>
+<span class="text-caption text-on-surface-variant">Pay</span>
+</div>
+</div>
+</div>
+<!-- Scrollable Content -->
+<div class="flex-1 overflow-y-auto no-scrollbar p-unit-lg flex flex-col gap-unit-lg">
+<!-- Free Shipping Progress -->
+<div class="bg-surface-container-low p-unit-md rounded-xl">
+<div class="flex justify-between items-center mb-unit-xs">
+<span class="text-caption font-medium">Free shipping progress</span>
+<span class="text-caption font-bold text-secondary">$36.00 away</span>
+</div>
+<div class="w-full h-2 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-secondary w-1/4 transition-all duration-500"></div>
+</div>
+</div>
+<!-- Cart Items -->
+<div class="flex flex-col gap-unit-md">
+<div class="flex gap-unit-md">
+<div class="w-20 h-24 bg-surface-container rounded-lg overflow-hidden flex-shrink-0">
+<img class="w-full h-full object-contain" data-alt="A small detailed product thumbnail of a transparent botanical hand sanitizer bottle with a pump dispenser. Neutral white background with soft studio lighting consistent with the main product detail page visual style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC5W7ron-pUfxGBkUwAccXGr4qIVUWKvJMWg8qMzs-JSiag0f66kK1e0IkeZRUfEiui5WWwkHJRyF4U6jApOS3duNd4vm_rEc2cgOxa0oMYROJ4wtbyLR1APu9ZpNMsBe64UuqzJpI5DlaEhohEhUActn90DR3dMS7jkCpMHxz1i8qcbiW5qPdhdZ67gnPjF8jsc34ht_Wv9_foSW0WL5Js_qWJZ3ChDMuHL3kbPUGEgvcWA6aahq6oLvk-k30JkrhDsSxrootVa8PC"/>
+</div>
+<div class="flex-1 flex flex-col justify-between">
+<div>
+<h4 class="font-label-md text-on-surface">Botanical Hand Sanitizer Gel</h4>
+<p class="text-caption text-on-surface-variant">Size: 500ml</p>
+</div>
+<div class="flex justify-between items-center">
+<div class="flex items-center border border-outline-variant rounded-full scale-90 -ml-2">
+<button class="px-unit-sm py-1 hover:bg-surface-container"><span class="material-symbols-outlined text-[14px]">remove</span></button>
+<span class="px-unit-sm font-bold text-caption">1</span>
+<button class="px-unit-sm py-1 hover:bg-surface-container"><span class="material-symbols-outlined text-[14px]">add</span></button>
+</div>
+<span class="font-bold text-on-surface">$14.00</span>
+</div>
+</div>
+</div>
+</div>
+<hr class="border-outline-variant"/>
+<!-- Checkout Step Details: Cart & Shipping -->
+<div class="flex flex-col gap-unit-md">
+<div class="flex flex-col gap-unit-xs">
+<label class="font-label-md text-on-surface">Shipping Option</label>
+<select class="w-full bg-surface-container-low border-outline-variant rounded-xl text-body-md focus:ring-secondary focus:border-secondary transition-all">
+<option>Standard Delivery (3-5 days) - $5.00</option>
+<option>Express Shipping (1-2 days) - $12.00</option>
+<option>Store Pickup - Free</option>
+</select>
+</div>
+<div class="flex flex-col gap-unit-xs">
+<label class="font-label-md text-on-surface">Coupon Code</label>
+<div class="flex gap-unit-xs">
+<input class="flex-1 bg-surface-container-low border-outline-variant rounded-xl text-body-md focus:ring-secondary focus:border-secondary transition-all" placeholder="Enter code" type="text"/>
+<button class="bg-on-background text-background px-unit-md rounded-xl font-bold text-label-md hover:bg-opacity-80 transition-all">Apply</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Sticky Footer -->
+<div class="p-unit-lg border-t border-outline-variant bg-surface-container-lowest space-y-unit-md">
+<div class="flex flex-col gap-unit-xs">
+<div class="flex justify-between text-body-md">
+<span class="text-on-surface-variant">Subtotal</span>
+<span class="font-bold">$14.00</span>
+</div>
+<div class="flex justify-between text-body-md">
+<span class="text-on-surface-variant">Shipping</span>
+<span class="font-bold">$5.00</span>
+</div>
+<div class="flex justify-between text-headline-md border-t border-outline-variant pt-unit-sm mt-unit-sm">
+<span class="font-bold">Total</span>
+<span class="font-extrabold text-primary">$19.00</span>
+</div>
+</div>
+<button class="w-full bg-secondary text-on-secondary py-unit-md rounded-full font-bold text-label-md transition-all active:scale-95 shadow-lg shadow-secondary/20 flex items-center justify-center gap-unit-sm">
+                CHECKOUT NOW
+                <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+</button>
+<p class="text-center text-caption text-on-surface-variant italic">Secure checkout powered by SME Pay</p>
+</div>
+</aside>
+<!-- Footer -->
+<footer class="bg-on-background text-background py-unit-xl px-margin-desktop mt-unit-xl border-t border-outline-variant">
+<div class="max-w-container-max mx-auto grid grid-cols-1 md:grid-cols-4 gap-gutter">
+<div class="flex flex-col gap-unit-md">
+<span class="font-display-xl text-headline-md font-bold text-background">SME Store Manager</span>
+<p class="text-body-md opacity-70">Efficiency and quality at the heart of every transaction. Empowering small businesses with premium digital storefronts.</p>
+</div>
+<div class="flex flex-col gap-unit-md">
+<h4 class="font-label-md text-label-md font-bold">Contact</h4>
+<ul class="flex flex-col gap-unit-sm opacity-80 text-body-md">
+<li>123 Business Lane</li>
+<li>support@sme-manager.com</li>
+<li>+1 (555) 000-0000</li>
+</ul>
+</div>
+<div class="flex flex-col gap-unit-md">
+<h4 class="font-label-md text-label-md font-bold">Quick Links</h4>
+<nav class="flex flex-col gap-unit-sm opacity-80 text-body-md">
+<a class="hover:text-secondary-fixed transition-colors" href="#">Privacy Policy</a>
+<a class="hover:text-secondary-fixed transition-colors" href="#">Terms of Service</a>
+<a class="hover:text-secondary-fixed transition-colors" href="#">Shipping Info</a>
+<a class="hover:text-secondary-fixed transition-colors" href="#">Refunds</a>
+</nav>
+</div>
+<div class="flex flex-col gap-unit-md">
+<h4 class="font-label-md text-label-md font-bold">Newsletter</h4>
+<div class="flex border-b border-outline-variant pb-unit-xs">
+<input class="bg-transparent border-none focus:ring-0 text-background placeholder:opacity-40 w-full" placeholder="Email address" type="email"/>
+<button class="hover:text-secondary-fixed transition-all">
+<span class="material-symbols-outlined">arrow_right_alt</span>
+</button>
+</div>
+<div class="flex gap-unit-md mt-unit-sm">
+<!-- Monochrome social icons -->
+<span class="material-symbols-outlined opacity-60 hover:opacity-100 cursor-pointer">public</span>
+<span class="material-symbols-outlined opacity-60 hover:opacity-100 cursor-pointer">send</span>
+<span class="material-symbols-outlined opacity-60 hover:opacity-100 cursor-pointer">link</span>
+</div>
+</div>
+</div>
+<div class="max-w-container-max mx-auto mt-unit-xl pt-unit-lg border-t border-outline/20 text-center text-caption opacity-40">
+            © 2024 SME Store Manager. All rights reserved.
+        </div>
+</footer>
+<script>
+        // Micro-interactions and simple state management
+        document.addEventListener('DOMContentLoaded', () => {
+            const drawer = document.querySelector('aside');
+            const overlay = document.querySelector('.fixed.inset-0.bg-on-surface\\/40');
+            const closeBtn = drawer.querySelector('button');
+
+            const closeDrawer = () => {
+                drawer.classList.replace('slide-in-right', 'translate-x-full');
+                overlay.classList.add('hidden');
+                document.body.style.overflow = 'auto';
+            };
+
+            closeBtn.addEventListener('click', closeDrawer);
+            overlay.addEventListener('click', closeDrawer);
+        });
+    </script>
+</body></html>

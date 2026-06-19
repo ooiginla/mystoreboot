@@ -27,6 +27,9 @@ final class BranchRequest extends FormRequest
      */
     public function rules(): array
     {
+        $tenantId = $this->string('tenant_id')->toString();
+        $branchId = $this->route('branch')?->id;
+
         return [
             'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
             'name' => ['required', 'string', 'max:140'],
@@ -34,7 +37,7 @@ final class BranchRequest extends FormRequest
                 'required',
                 'string',
                 'max:40',
-                Rule::unique('branches', 'code')->where('tenant_id', $this->string('tenant_id')->toString()),
+                Rule::unique('branches', 'code')->where('tenant_id', $tenantId)->ignore($branchId),
             ],
             'phone' => ['nullable', 'string', 'max:40'],
             'email' => ['nullable', 'email:rfc', 'max:160'],
@@ -43,7 +46,11 @@ final class BranchRequest extends FormRequest
             'currency_code' => ['nullable', 'string', 'size:3'],
             'default_tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'is_primary' => ['nullable', 'boolean'],
-            'status' => ['required', 'in:active,inactive'],
+            'status' => ['required', Rule::in(['active', 'inactive'])],
+            'delivery_methods' => ['nullable', 'array', 'max:10'],
+            'delivery_methods.*.name' => ['nullable', 'string', 'max:120'],
+            'delivery_methods.*.price' => ['nullable', 'numeric', 'min:0', 'max:999999999'],
+            'delivery_methods.*.status' => ['nullable', Rule::in(['active', 'inactive'])],
         ];
     }
 }

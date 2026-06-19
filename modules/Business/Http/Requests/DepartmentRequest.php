@@ -41,7 +41,7 @@ final class DepartmentRequest extends FormRequest
                 Rule::unique('departments', 'code')->where('tenant_id', $this->string('tenant_id')->toString()),
             ],
             'description' => ['nullable', 'string', 'max:1000'],
-            'status' => ['required', 'in:active,inactive'],
+            'status' => ['required', Rule::in(['active', 'inactive'])],
         ];
     }
 }

@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Checkout | SME Manager</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=Plus+Jakarta+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#006a61",
+                        "on-background": "#1a1b21",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "inverse-on-surface": "#f1f0f7",
+                        "outline-variant": "#c5c5d3",
+                        "on-tertiary-container": "#ef9900",
+                        "surface-container-highest": "#e3e1e9",
+                        "secondary-fixed-dim": "#6bd8cb",
+                        "surface-container": "#eeedf4",
+                        "primary-fixed-dim": "#b6c4ff",
+                        "on-primary": "#ffffff",
+                        "tertiary-fixed-dim": "#ffb95f",
+                        "surface-container-lowest": "#ffffff",
+                        "on-surface": "#1a1b21",
+                        "on-secondary-container": "#006f66",
+                        "on-secondary": "#ffffff",
+                        "secondary-container": "#86f2e4",
+                        "on-surface-variant": "#444651",
+                        "surface-variant": "#e3e1e9",
+                        "on-primary-fixed-variant": "#264191",
+                        "error-container": "#ffdad6",
+                        "outline": "#757682",
+                        "tertiary-fixed": "#ffddb8",
+                        "tertiary": "#3e2400",
+                        "primary-container": "#1e3a8a",
+                        "on-error": "#ffffff",
+                        "inverse-primary": "#b6c4ff",
+                        "on-primary-fixed": "#00164e",
+                        "background": "#faf8ff",
+                        "surface-container-low": "#f4f3fa",
+                        "surface-container-high": "#e9e7ef",
+                        "error": "#ba1a1a",
+                        "on-primary-container": "#90a8ff",
+                        "surface-tint": "#4059aa",
+                        "on-error-container": "#93000a",
+                        "primary-fixed": "#dce1ff",
+                        "primary": "#00236f",
+                        "secondary-fixed": "#89f5e7",
+                        "surface-dim": "#dad9e1",
+                        "surface-bright": "#faf8ff",
+                        "inverse-surface": "#2f3036",
+                        "on-tertiary": "#ffffff",
+                        "on-secondary-fixed-variant": "#005049",
+                        "on-tertiary-fixed": "#2a1700",
+                        "surface": "#faf8ff",
+                        "on-secondary-fixed": "#00201d",
+                        "tertiary-container": "#5c3800"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "unit-xl": "40px",
+                        "unit-sm": "8px",
+                        "margin-mobile": "16px",
+                        "margin-desktop": "48px",
+                        "unit-md": "16px",
+                        "unit-lg": "24px",
+                        "gutter": "24px",
+                        "container-max": "1280px",
+                        "unit-xs": "4px"
+                    },
+                    "fontFamily": {
+                        "display-xl": ["Hanken Grotesk"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "body-md": ["Plus Jakarta Sans"],
+                        "label-md": ["Hanken Grotesk"],
+                        "body-lg": ["Plus Jakarta Sans"],
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "caption": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "display-xl": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "caption": ["12px", {"lineHeight": "16px", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .step-transition { transition: all 0.3s ease-in-out; }
+        .backdrop-blur-custom { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+        input:focus { outline: none; border-color: #00236f !important; ring: 0 !important; }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen">
+<!-- Top AppBar (JSON Component Map) -->
+<header class="bg-background dark:bg-on-background border-b border-outline-variant dark:border-outline flex justify-between items-center w-full px-margin-desktop h-20 sticky top-0 z-50">
+<div class="flex items-center gap-unit-md">
+<span class="font-display-xl text-headline-md font-bold text-primary dark:text-primary-fixed">SME Manager</span>
+</div>
+<nav class="hidden md:flex gap-unit-lg items-center">
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary font-label-md text-label-md" href="#">Products</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary font-label-md text-label-md" href="#">Services</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary font-label-md text-label-md" href="#">About</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary font-label-md text-label-md" href="#">FAQ</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary font-label-md text-label-md" href="#">Contact</a>
+</nav>
+<div class="flex items-center gap-unit-md">
+<button class="p-unit-sm hover:bg-surface-container-low rounded-full transition-colors duration-200">
+<span class="material-symbols-outlined text-primary dark:text-primary-fixed">shopping_cart</span>
+</button>
+<button class="p-unit-sm hover:bg-surface-container-low rounded-full transition-colors duration-200">
+<span class="material-symbols-outlined text-primary dark:text-primary-fixed">account_circle</span>
+</button>
+</div>
+</header>
+<main class="max-w-container-max mx-auto px-margin-desktop py-unit-xl grid grid-cols-1 lg:grid-cols-12 gap-gutter">
+<!-- Main Checkout Flow (Canvas) -->
+<div class="lg:col-span-7 flex flex-col gap-unit-xl">
+<!-- 4-Step Progress (Design System Component) -->
+<div class="flex items-center justify-between w-full max-w-2xl mx-auto mb-unit-lg">
+<div class="flex flex-col items-center gap-unit-xs group">
+<div class="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-white font-bold">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'wght' 700;">check</span>
+</div>
+<span class="text-label-md font-label-md text-secondary">Cart</span>
+</div>
+<div class="flex-grow h-[2px] bg-secondary mx-unit-xs mb-unit-lg"></div>
+<div class="flex flex-col items-center gap-unit-xs">
+<div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white font-bold ring-4 ring-primary-fixed">
+                        2
+                    </div>
+<span class="text-label-md font-label-md text-primary">Information</span>
+</div>
+<div class="flex-grow h-[2px] bg-outline-variant mx-unit-xs mb-unit-lg"></div>
+<div class="flex flex-col items-center gap-unit-xs">
+<div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface-variant font-bold">
+                        3
+                    </div>
+<span class="text-label-md font-label-md text-outline">Payment</span>
+</div>
+<div class="flex-grow h-[2px] bg-outline-variant mx-unit-xs mb-unit-lg"></div>
+<div class="flex flex-col items-center gap-unit-xs">
+<div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface-variant font-bold">
+                        4
+                    </div>
+<span class="text-label-md font-label-md text-outline">Confirm</span>
+</div>
+</div>
+<!-- Step 2: User Information Form -->
+<section class="bg-surface-container-lowest border border-outline-variant p-unit-xl rounded-lg shadow-sm" id="step-2">
+<h1 class="font-headline-lg text-headline-lg text-on-surface mb-unit-lg">Shipping Information</h1>
+<form class="grid grid-cols-1 md:grid-cols-2 gap-gutter">
+<div class="md:col-span-1 flex flex-col gap-unit-xs">
+<label class="text-label-md font-label-md text-on-surface-variant">First Name</label>
+<input class="bg-background border border-outline-variant px-unit-md py-unit-sm rounded-lg focus:ring-0 transition-all font-body-md" placeholder="e.g. John" type="text"/>
+</div>
+<div class="md:col-span-1 flex flex-col gap-unit-xs">
+<label class="text-label-md font-label-md text-on-surface-variant">Last Name</label>
+<input class="bg-background border border-outline-variant px-unit-md py-unit-sm rounded-lg focus:ring-0 transition-all font-body-md" placeholder="e.g. Doe" type="text"/>
+</div>
+<div class="md:col-span-2 flex flex-col gap-unit-xs">
+<label class="text-label-md font-label-md text-on-surface-variant">Email Address</label>
+<input class="bg-background border border-outline-variant px-unit-md py-unit-sm rounded-lg focus:ring-0 transition-all font-body-md" placeholder="john.doe@example.com" type="email"/>
+</div>
+<div class="md:col-span-2 flex flex-col gap-unit-xs">
+<label class="text-label-md font-label-md text-on-surface-variant">Street Address</label>
+<input class="bg-background border border-outline-variant px-unit-md py-unit-sm rounded-lg focus:ring-0 transition-all font-body-md" placeholder="123 Corporate Blvd, Suite 400" type="text"/>
+</div>
+<div class="md:col-span-1 flex flex-col gap-unit-xs">
+<label class="text-label-md font-label-md text-on-surface-variant">City</label>
+<input class="bg-background border border-outline-variant px-unit-md py-unit-sm rounded-lg focus:ring-0 transition-all font-body-md" placeholder="Metropolis" type="text"/>
+</div>
+<div class="md:col-span-1 flex flex-col gap-unit-xs">
+<label class="text-label-md font-label-md text-on-surface-variant">Postal Code</label>
+<input class="bg-background border border-outline-variant px-unit-md py-unit-sm rounded-lg focus:ring-0 transition-all font-body-md" placeholder="10101" type="text"/>
+</div>
+</form>
+<div class="mt-unit-xl pt-unit-lg border-t border-outline-variant flex justify-end">
+<button class="bg-primary text-on-primary px-unit-xl py-unit-md rounded-lg font-label-md hover:opacity-90 transition-all flex items-center gap-unit-sm" onclick="document.getElementById('side-drawer').classList.remove('translate-x-full')">
+                        Continue to Payment
+                        <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</div>
+</section>
+</div>
+<!-- Sidebar: Order Summary (Canvas Context) -->
+<div class="lg:col-span-5">
+<div class="sticky top-24 bg-surface-container-low border border-outline-variant rounded-lg p-unit-lg">
+<h2 class="font-headline-md text-headline-md text-on-surface mb-unit-lg">Your Order</h2>
+<div class="space-y-unit-md mb-unit-xl">
+<!-- Item 1 -->
+<div class="flex gap-unit-md group">
+<div class="w-20 h-24 bg-white border border-outline-variant rounded relative flex-shrink-0 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A professional studio product shot of a high-quality ribbed modal T-shirt in a neutral beige tone, folded neatly against a clean white backdrop. Soft diffused lighting emphasizes the premium fabric texture. Minimalist e-commerce aesthetic, corporate modern style with high contrast and sharp focus." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCrd5sAqnTTgyrQDvo4DFyITaE52B5mHgdIUTJlrYOC7bp4Xswld93ep0iRTl-MD_3Z8S7ikx5yEy7bjZeXuGfQ45pq7DX-itBbYxgr3DWop60_8bnl8_PvDMllARD5pDRPeb9HUaP4kqOmacVWNeGKtjIh6AQ1njFn9TssZpQoiQXXtZOlPq4pr5xsLXBEsJ0QyKbtMzB-k1r9pi7KUpOLytFXVa64YzMGucWc3hyZR3Teql9eNPQsq679OlNYKnR0VJoo1s54rwXR"/>
+<span class="absolute -top-1 -right-1 bg-primary text-on-primary w-6 h-6 flex items-center justify-center rounded-full text-caption font-bold">1</span>
+</div>
+<div class="flex-grow flex flex-col justify-between py-1">
+<div>
+<h3 class="font-label-md text-on-surface">Short Sleeve Office Shirt</h3>
+<p class="text-caption text-on-surface-variant">Size: XS • Sage Green</p>
+</div>
+<span class="text-body-md font-bold text-on-surface">$22.99</span>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="flex gap-unit-md group">
+<div class="w-20 h-24 bg-white border border-outline-variant rounded relative flex-shrink-0 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="Professional product photography of a premium Nike Sportswear Tee Shirt displayed on a ghost mannequin. Bright, even studio lighting with clean sharp shadows. The fabric looks crisp and high-end, presented in a minimalist light-mode environment with subtle professional blue accents." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCEeFVIAeXCXh9yPc350N-31BjpNefjmLe5pJQdW8iPgb4AHmwRiQK3EUCbR9KIXDzSZVJBfcfdQ5eNOUeEl-VWg1n6_tN_z78uMCYbf6SZE2Z1h6-batVrT7wIvr6HVCIZMTKF0OYvmNlyicCY-fVwhztjcFFhLqHyNHfrH8vax3Z1LFLYZrDDTb95qa9uRirg99dwvBYbH0P6RDMSAWS69NEcw9-azf-xMBAs6_R5LlJ0oUdebl9mJzGJssrbnDJsGzLqn5toxuwj"/>
+<span class="absolute -top-1 -right-1 bg-primary text-on-primary w-6 h-6 flex items-center justify-center rounded-full text-caption font-bold">1</span>
+</div>
+<div class="flex-grow flex flex-col justify-between py-1">
+<div>
+<h3 class="font-label-md text-on-surface">Nike Sportswear Tee</h3>
+<p class="text-caption text-on-surface-variant">Size: L • Arctic White</p>
+</div>
+<span class="text-body-md font-bold text-on-surface">$59.99</span>
+</div>
+</div>
+</div>
+<div class="space-y-unit-sm pt-unit-lg border-t border-outline-variant">
+<div class="flex justify-between text-body-md">
+<span class="text-on-surface-variant">Subtotal</span>
+<span class="text-on-surface">$82.98</span>
+</div>
+<div class="flex justify-between text-body-md">
+<span class="text-on-surface-variant">Shipping</span>
+<span class="text-secondary font-bold">Free</span>
+</div>
+<div class="flex justify-between text-headline-md font-bold pt-unit-sm text-primary">
+<span>Total</span>
+<span>$82.98</span>
+</div>
+</div>
+<div class="mt-unit-lg flex gap-unit-sm">
+<input class="flex-grow bg-white border border-outline-variant px-unit-md py-unit-sm rounded-lg focus:ring-0 transition-all font-body-md" placeholder="Discount code" type="text"/>
+<button class="bg-on-background text-background px-unit-lg py-unit-sm rounded-lg font-label-md hover:bg-opacity-90 transition-all">Apply</button>
+</div>
+</div>
+</div>
+</main>
+<!-- SideNavBar: Expanded Checkout Drawer (JSON Component Map - Step 3) -->
+<div class="fixed inset-0 z-[100] translate-x-full transition-transform duration-500" id="side-drawer">
+<div class="absolute inset-0 bg-on-background/40 backdrop-blur-custom" onclick="this.parentElement.classList.add('translate-x-full')"></div>
+<aside class="fixed right-0 top-0 h-full w-full max-w-[500px] bg-surface-container-lowest dark:bg-inverse-surface shadow-xl flex flex-col p-unit-lg overflow-y-auto">
+<header class="flex justify-between items-center mb-unit-xl">
+<div>
+<h2 class="font-headline-md text-on-surface">Step 3: Payment</h2>
+<p class="text-body-md text-on-surface-variant">Secure your transaction</p>
+</div>
+<button class="p-unit-sm hover:bg-surface-container rounded-full" onclick="document.getElementById('side-drawer').classList.add('translate-x-full')">
+<span class="material-symbols-outlined">close</span>
+</button>
+</header>
+<div class="flex-grow flex flex-col gap-unit-lg">
+<p class="text-label-md font-label-md uppercase tracking-wider text-outline">Select Payment Method</p>
+<!-- Payment Options -->
+<div class="space-y-unit-md">
+<!-- Bank Transfer (Active State Logic) -->
+<label class="flex items-center gap-unit-md p-unit-lg border border-secondary rounded-xl bg-secondary-container/20 cursor-pointer group transition-all">
+<input checked="" class="text-secondary focus:ring-secondary" name="payment" type="radio"/>
+<div class="flex-grow">
+<p class="font-label-md text-on-surface">Direct bank transfer</p>
+<p class="text-caption text-on-surface-variant">Transfer directly from your account using SEPA or SWIFT.</p>
+</div>
+<span class="material-symbols-outlined text-secondary">account_balance</span>
+</label>
+<!-- Credit Card -->
+<label class="flex items-center gap-unit-md p-unit-lg border border-outline-variant rounded-xl hover:bg-surface-container-high cursor-pointer transition-all">
+<input class="text-primary focus:ring-primary" name="payment" type="radio"/>
+<div class="flex-grow">
+<p class="font-label-md text-on-surface">Credit / Debit Card</p>
+<p class="text-caption text-on-surface-variant">Safe &amp; encrypted payments via Stripe.</p>
+</div>
+<span class="material-symbols-outlined">payments</span>
+</label>
+<!-- PayPal -->
+<label class="flex items-center gap-unit-md p-unit-lg border border-outline-variant rounded-xl hover:bg-surface-container-high cursor-pointer transition-all">
+<input class="text-primary focus:ring-primary" name="payment" type="radio"/>
+<div class="flex-grow">
+<p class="font-label-md text-on-surface">PayPal</p>
+<p class="text-caption text-on-surface-variant">Express checkout with your PayPal account.</p>
+</div>
+<div class="w-12 h-6 flex items-center justify-center bg-[#003087] rounded p-1">
+<span class="text-white text-[10px] font-bold italic">PayPal</span>
+</div>
+</label>
+</div>
+<div class="mt-unit-xl space-y-unit-md">
+<p class="text-caption text-on-surface-variant leading-relaxed">
+                        Your personal data will be used to process your order, support your experience throughout this website, and for other purposes described in our <a class="text-primary underline" href="#">privacy policy</a>.
+                    </p>
+<div class="flex items-start gap-unit-sm">
+<input class="mt-1 rounded border-outline-variant text-primary focus:ring-primary" type="checkbox"/>
+<label class="text-caption text-on-surface leading-snug">
+                            I have read and agree to the website <a class="text-primary underline font-bold" href="#">terms and conditions</a>.
+                        </label>
+</div>
+</div>
+</div>
+<footer class="mt-unit-xl border-t border-outline-variant pt-unit-lg">
+<div class="flex justify-between items-center mb-unit-lg">
+<span class="text-on-surface-variant">Total Due</span>
+<span class="font-headline-md text-primary">$82.98</span>
+</div>
+<button class="w-full bg-on-background text-background py-unit-lg rounded-lg font-display-xl text-headline-md hover:bg-opacity-90 active:scale-[0.98] transition-all">
+                    Place order
+                </button>
+</footer>
+</aside>
+</div>
+<!-- Footer (JSON Component Map) -->
+<footer class="bg-on-background dark:bg-surface-container-lowest grid grid-cols-1 md:grid-cols-4 gap-gutter px-margin-desktop py-unit-xl w-full text-background dark:text-on-background">
+<div class="flex flex-col gap-unit-md">
+<span class="font-display-xl text-headline-md text-background dark:text-on-background">SME Manager</span>
+<p class="text-body-md opacity-80">Premium retail solutions for growing enterprises. Streamlined booking and order management.</p>
+</div>
+<div class="flex flex-col gap-unit-sm">
+<h4 class="font-label-md uppercase tracking-widest mb-unit-sm text-secondary-fixed">Resources</h4>
+<a class="text-outline-variant hover:text-background transition-colors" href="#">Privacy Policy</a>
+<a class="text-outline-variant hover:text-background transition-colors" href="#">Terms of Service</a>
+<a class="text-outline-variant hover:text-background transition-colors" href="#">Shipping Info</a>
+<a class="text-outline-variant hover:text-background transition-colors" href="#">Refunds</a>
+</div>
+<div class="flex flex-col gap-unit-sm">
+<h4 class="font-label-md uppercase tracking-widest mb-unit-sm text-secondary-fixed">Shop</h4>
+<a class="text-outline-variant hover:text-background transition-colors" href="#">New Arrivals</a>
+<a class="text-outline-variant hover:text-background transition-colors" href="#">Best Sellers</a>
+<a class="text-outline-variant hover:text-background transition-colors" href="#">Office Essentials</a>
+<a class="text-outline-variant hover:text-background transition-colors" href="#">Bulk Orders</a>
+</div>
+<div class="flex flex-col gap-unit-md">
+<h4 class="font-label-md uppercase tracking-widest text-secondary-fixed">Newsletter</h4>
+<p class="text-caption">Join for exclusive SME insights and offers.</p>
+<div class="flex overflow-hidden rounded-lg">
+<input class="flex-grow bg-white/10 border-none px-unit-md py-unit-sm text-white focus:ring-0" placeholder="Your email" type="text"/>
+<button class="bg-secondary px-unit-md hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-white">send</span>
+</button>
+</div>
+</div>
+<div class="md:col-span-4 border-t border-outline-variant/30 mt-unit-lg pt-unit-lg flex flex-col md:flex-row justify-between items-center opacity-60">
+<p class="text-label-md">© 2024 SME Store Manager. All rights reserved.</p>
+<div class="flex gap-unit-lg mt-unit-md md:mt-0">
+<span class="material-symbols-outlined hover:text-secondary cursor-pointer transition-colors">face_nod</span>
+<span class="material-symbols-outlined hover:text-secondary cursor-pointer transition-colors">public</span>
+<span class="material-symbols-outlined hover:text-secondary cursor-pointer transition-colors">alternate_email</span>
+</div>
+</div>
+</footer>
+<script>
+        // Simple micro-interaction for form focus
+        const inputs = document.querySelectorAll('input[type="text"], input[type="email"]');
+        inputs.forEach(input => {
+            input.addEventListener('focus', () => {
+                input.parentElement.querySelector('label')?.classList.add('text-primary');
+            });
+            input.addEventListener('blur', () => {
+                input.parentElement.querySelector('label')?.classList.remove('text-primary');
+            });
+        });
+
+        // Toggle Drawer logic for the demo
+        function toggleDrawer() {
+            const drawer = document.getElementById('side-drawer');
+            drawer.classList.toggle('translate-x-full');
+        }
+    </script>
+</body></html>

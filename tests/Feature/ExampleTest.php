@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
+use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 use Tests\TestCase;
 
@@ -39,7 +41,7 @@ class ExampleTest extends TestCase
         $ownedTenant = Tenant::query()->create([
             'name' => 'Owned Shop',
             'slug' => 'owned-shop',
-            'status' => 'active',
+            'status' => TenantStatus::Active,
             'business_type' => 'retail',
             'country_code' => 'NG',
             'timezone' => 'Africa/Lagos',
@@ -49,7 +51,7 @@ class ExampleTest extends TestCase
         $otherTenant = Tenant::query()->create([
             'name' => 'Other Shop',
             'slug' => 'other-shop',
-            'status' => 'active',
+            'status' => TenantStatus::Active,
             'business_type' => 'supermarket',
             'country_code' => 'NG',
             'timezone' => 'Africa/Lagos',
@@ -63,7 +65,7 @@ class ExampleTest extends TestCase
         TenantMembership::query()->create([
             'tenant_id' => $ownedTenant->id,
             'user_id' => $tenantUser->id,
-            'status' => 'active',
+            'status' => MembershipStatus::Active,
             'joined_at' => now(),
         ]);
 

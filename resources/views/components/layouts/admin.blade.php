@@ -81,6 +81,8 @@
             .btn.primary:hover { background: var(--brand-dark); }
             .btn.accent { background: var(--accent); color: #fff; box-shadow: 0 8px 18px rgba(37, 99, 235, .18); }
             .btn.accent:hover { background: var(--accent-dark); }
+            .btn.danger { background: #fef3f2; color: var(--danger); border: 1px solid #fecdca; }
+            .btn.danger:hover { background: #fee4e2; }
             .btn.secondary { background: var(--panel-soft); color: #344054; }
             .list { display: grid; gap: 10px; }
             .item { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; justify-content: space-between; gap: 12px; }
@@ -141,9 +143,18 @@
                     <span>Storeboot</span>
                 </div>
                 <nav class="nav" aria-label="Admin navigation">
-                    <a class="active" href="{{ route('admin.business.index') }}">Business setup</a>
+                    <a class="{{ request()->routeIs('admin.business.*') && ! request()->routeIs('admin.business.organizations.*') ? 'active' : '' }}" href="{{ route('admin.business.index') }}">Business setup</a>
+                    <a class="{{ request()->routeIs('admin.catalog.*') ? 'active' : '' }}" href="{{ route('admin.catalog.index') }}">Product & Services</a>
+                    <a class="{{ request()->routeIs('admin.inventory.*') ? 'active' : '' }}" href="{{ route('admin.inventory.index') }}">Inventory & Stock</a>
+                    <a class="{{ request()->routeIs('admin.procurement.*') ? 'active' : '' }}" href="{{ route('admin.procurement.index') }}">Purchasing & Suppliers</a>
+                    <a class="{{ request()->routeIs('admin.customers.*') ? 'active' : '' }}" href="{{ route('admin.customers.index') }}">Customers & Support</a>
+                    <a class="{{ request()->routeIs('admin.sales.*') ? 'active' : '' }}" href="{{ route('admin.sales.index') }}">Sales & POS</a>
+                    <a class="{{ request()->routeIs('admin.hr-payroll.*') ? 'active' : '' }}" href="{{ route('admin.hr-payroll.index') }}">HR & Payroll</a>
+                    <a class="{{ request()->routeIs('admin.finance.expenses') || request()->routeIs('admin.finance.expense-categories.*') || request()->routeIs('admin.finance.expenses.*') || request()->routeIs('admin.finance.petty-cash.*') || request()->routeIs('admin.finance.journals.*') ? 'active' : '' }}" href="{{ route('admin.finance.expenses') }}">Expenses</a>
+                    <a class="{{ request()->routeIs('admin.finance.chart-of-accounts') ? 'active' : '' }}" href="{{ route('admin.finance.chart-of-accounts') }}">Chart of Accounts</a>
+                    <a class="{{ request()->routeIs('admin.finance.index') ? 'active' : '' }}" href="{{ route('admin.finance.index') }}">Report</a>
                     @if (auth()->user()?->is_platform_admin)
-                        <a href="{{ route('admin.business.organizations.index') }}">Organizations</a>
+                        <a class="{{ request()->routeIs('admin.business.organizations.*') ? 'active' : '' }}" href="{{ route('admin.business.organizations.index') }}">Organizations</a>
                     @endif
                 </nav>
                 @auth
@@ -196,7 +207,16 @@
 
                 document.querySelectorAll('[data-dialog-open]').forEach((button) => {
                     button.addEventListener('click', () => {
-                        document.getElementById(button.dataset.dialogOpen)?.showModal();
+                        const currentDialog = button.closest('dialog');
+                        const nextDialog = document.getElementById(button.dataset.dialogOpen);
+
+                        if (currentDialog && currentDialog !== nextDialog) {
+                            currentDialog.close();
+                            window.setTimeout(() => nextDialog?.showModal(), 80);
+                            return;
+                        }
+
+                        nextDialog?.showModal();
                     });
                 });
 
@@ -204,6 +224,133 @@
                     button.addEventListener('click', () => {
                         button.closest('dialog')?.close();
                     });
+                });
+
+                document.addEventListener('input', (event) => {
+                    const search = event.target.closest('[data-variant-search]');
+
+                    if (!search) return;
+
+                    const picker = search.closest('[data-variant-picker]');
+                    const value = picker?.querySelector('[data-variant-value]');
+                    const option = Array.from(search.list?.options || []).find((item) => item.value === search.value);
+
+                    if (value) {
+                        value.value = option?.dataset.variantId || '';
+                    }
+
+                    search.setCustomValidity(value?.value || !search.required ? '' : 'Choose an item from the search results.');
+                });
+
+                document.addEventListener('input', (event) => {
+                    const search = event.target.closest('[data-customer-search]');
+
+                    if (!search) return;
+
+                    const picker = search.closest('[data-customer-picker]');
+                    const value = picker?.querySelector('[data-customer-value]');
+                    const option = Array.from(search.list?.options || []).find((item) => item.value === search.value);
+
+                    if (value) {
+                        value.value = option?.dataset.customerId || '';
+                    }
+                });
+
+                document.addEventListener('submit', (event) => {
+                    const form = event.target;
+
+                    if (!(form instanceof HTMLFormElement)) return;
+
+                    const invalid = Array.from(form.querySelectorAll('[data-variant-picker]')).find((picker) => {
+                        const search = picker.querySelector('[data-variant-search]');
+                        const value = picker.querySelector('[data-variant-value]');
+
+                        return search?.required && !value?.value;
+                    });
+
+                    if (invalid) {
+                        event.preventDefault();
+                        const search = invalid.querySelector('[data-variant-search]');
+                        search?.setCustomValidity('Choose an item from the search results.');
+                        search?.reportValidity();
+                    }
+
+                    form.querySelectorAll('[data-money-input]').forEach((input) => {
+                        input.value = input.value.replace(/,/g, '');
+                    });
+                });
+
+                function formatMoney(value) {
+                    const clean = value.replace(/,/g, '').replace(/[^\d.]/g, '');
+                    if (!clean || clean === '.') return '';
+                    const [whole, decimal = ''] = clean.split('.');
+                    return `${Number(whole || 0).toLocaleString('en-US')}${decimal !== '' ? `.${decimal.slice(0, 2)}` : ''}`;
+                }
+
+                document.addEventListener('input', (event) => {
+                    const input = event.target.closest('[data-money-input]');
+                    if (!input) return;
+                    input.value = input.value.replace(/[^\d.,]/g, '');
+                });
+
+                document.addEventListener('blur', (event) => {
+                    const input = event.target.closest('[data-money-input]');
+                    if (!input) return;
+                    input.value = formatMoney(input.value);
+                }, true);
+
+                function syncPaymentSummary(select) {
+                    const form = select.closest('form');
+                    const option = select.selectedOptions[0];
+
+                    if (!form || !option) return;
+
+                    const total = form.querySelector('[data-payment-total]');
+                    const paid = form.querySelector('[data-payment-paid]');
+                    const balance = form.querySelector('[data-payment-balance]');
+                    const amount = form.querySelector('input[name="amount"]');
+                    const vendor = form.querySelector('select[name="vendor_id"]');
+
+                    if (total) total.value = option.dataset.total || '';
+                    if (paid) paid.value = option.dataset.paid || '';
+                    if (balance) balance.value = option.dataset.balance || '';
+                    if (amount && option.dataset.balance) amount.value = option.dataset.balance;
+                    if (vendor && option.dataset.vendorId) vendor.value = option.dataset.vendorId;
+                }
+
+                document.querySelectorAll('[data-payment-po-select]').forEach(syncPaymentSummary);
+
+                document.addEventListener('change', (event) => {
+                    const select = event.target.closest('[data-payment-po-select]');
+                    if (!select) return;
+                    syncPaymentSummary(select);
+                });
+
+                document.addEventListener('click', (event) => {
+                    const tab = event.target.closest('[data-local-tab-target]');
+
+                    if (!tab) return;
+
+                    event.preventDefault();
+
+                    const dialog = tab.closest('dialog') || document;
+                    const panel = dialog.querySelector(`#${tab.dataset.localTabTarget}`);
+
+                    if (!panel) return;
+
+                    dialog.querySelectorAll('[data-local-tab-panel]').forEach((item) => {
+                        item.hidden = item !== panel;
+                    });
+
+                    dialog.querySelectorAll('[data-local-tab-target]').forEach((item) => {
+                        item.classList.toggle('active', item === tab);
+                    });
+                });
+
+                document.addEventListener('click', (event) => {
+                    const button = event.target.closest('[data-print-dialog]');
+                    if (!button) return;
+                    window.print();
                 });
 
                 activateTab(window.location.hash.replace('#', ''));

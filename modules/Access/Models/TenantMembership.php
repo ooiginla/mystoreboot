@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Shared\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Access\Enums\MembershipStatus;
 use Modules\Business\Models\Branch;
 
 final class TenantMembership extends Model
@@ -20,6 +21,7 @@ final class TenantMembership extends Model
     {
         return [
             'joined_at' => 'datetime',
+            'status' => MembershipStatus::class,
         ];
     }
 

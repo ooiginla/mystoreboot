@@ -12,6 +12,7 @@ use Modules\Access\Models\Role;
 use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
 use Modules\Business\Models\Department;
+use Modules\Tenancy\Enums\TenantStatus;
 
 final class Tenant extends Model
 {
@@ -27,6 +28,7 @@ final class Tenant extends Model
             'opening_hours' => 'array',
             'trial_ends_at' => 'datetime',
             'default_tax_rate' => 'decimal:2',
+            'status' => TenantStatus::class,
         ];
     }
 

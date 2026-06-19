@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Modules\Subscriptions\Enums\SubscriptionStatus;
 
 return new class extends Migration
 {
@@ -48,7 +49,7 @@ return new class extends Migration
             $table->id();
             $table->foreignUuid('tenant_id')->constrained()->cascadeOnDelete();
             $table->foreignId('plan_id')->constrained()->restrictOnDelete();
-            $table->string('status', 32)->default('trialing')->index();
+            $table->string('status', 32)->default(SubscriptionStatus::Trialing->value)->index();
             $table->string('billing_interval', 16)->default('monthly');
             $table->timestamp('trial_ends_at')->nullable();
             $table->timestamp('current_period_starts_at')->nullable();

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SME Manager - Order Confirmed</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700;800&amp;family=Plus+Jakarta+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#006a61",
+                        "on-background": "#1a1b21",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "inverse-on-surface": "#f1f0f7",
+                        "outline-variant": "#c5c5d3",
+                        "on-tertiary-container": "#ef9900",
+                        "surface-container-highest": "#e3e1e9",
+                        "secondary-fixed-dim": "#6bd8cb",
+                        "surface-container": "#eeedf4",
+                        "primary-fixed-dim": "#b6c4ff",
+                        "on-primary": "#ffffff",
+                        "tertiary-fixed-dim": "#ffb95f",
+                        "surface-container-lowest": "#ffffff",
+                        "on-surface": "#1a1b21",
+                        "on-secondary-container": "#006f66",
+                        "on-secondary": "#ffffff",
+                        "secondary-container": "#86f2e4",
+                        "on-surface-variant": "#444651",
+                        "surface-variant": "#e3e1e9",
+                        "on-primary-fixed-variant": "#264191",
+                        "error-container": "#ffdad6",
+                        "outline": "#757682",
+                        "tertiary-fixed": "#ffddb8",
+                        "tertiary": "#3e2400",
+                        "primary-container": "#1e3a8a",
+                        "on-error": "#ffffff",
+                        "inverse-primary": "#b6c4ff",
+                        "on-primary-fixed": "#00164e",
+                        "background": "#faf8ff",
+                        "surface-container-low": "#f4f3fa",
+                        "surface-container-high": "#e9e7ef",
+                        "error": "#ba1a1a",
+                        "on-primary-container": "#90a8ff",
+                        "surface-tint": "#4059aa",
+                        "on-error-container": "#93000a",
+                        "primary-fixed": "#dce1ff",
+                        "primary": "#00236f",
+                        "secondary-fixed": "#89f5e7",
+                        "surface-dim": "#dad9e1",
+                        "surface-bright": "#faf8ff",
+                        "inverse-surface": "#2f3036",
+                        "on-tertiary": "#ffffff",
+                        "on-secondary-fixed-variant": "#005049",
+                        "on-tertiary-fixed": "#2a1700",
+                        "surface": "#faf8ff",
+                        "on-secondary-fixed": "#00201d",
+                        "tertiary-container": "#5c3800"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "unit-xl": "40px",
+                        "unit-sm": "8px",
+                        "margin-mobile": "16px",
+                        "margin-desktop": "48px",
+                        "unit-md": "16px",
+                        "unit-lg": "24px",
+                        "gutter": "24px",
+                        "container-max": "1280px",
+                        "unit-xs": "4px"
+                    },
+                    "fontFamily": {
+                        "display-xl": ["Hanken Grotesk"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "body-md": ["Plus Jakarta Sans"],
+                        "label-md": ["Hanken Grotesk"],
+                        "body-lg": ["Plus Jakarta Sans"],
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "caption": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "display-xl": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "caption": ["12px", {"lineHeight": "16px", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .backdrop-blur-overlay {
+            backdrop-filter: blur(12px);
+            background-color: rgba(26, 27, 33, 0.4);
+        }
+        @keyframes slide-in-right {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+        .animate-slide-in {
+            animation: slide-in-right 0.3s ease-out forwards;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md antialiased overflow-hidden h-screen">
+<!-- Blurred Background Content (Simulated Storefront) -->
+<div class="fixed inset-0 z-0 opacity-50 grayscale select-none pointer-events-none">
+<!-- Hero Section Placeholder -->
+<div class="h-screen w-full bg-surface-container flex flex-col items-center justify-center">
+<h1 class="font-display-xl text-display-xl text-primary mb-unit-lg">New Spring Collection</h1>
+<div class="grid grid-cols-4 gap-gutter px-margin-desktop w-full max-w-container-max">
+<div class="bg-white h-80 rounded-xl shadow-sm border border-outline-variant"></div>
+<div class="bg-white h-80 rounded-xl shadow-sm border border-outline-variant"></div>
+<div class="bg-white h-80 rounded-xl shadow-sm border border-outline-variant"></div>
+<div class="bg-white h-80 rounded-xl shadow-sm border border-outline-variant"></div>
+</div>
+</div>
+</div>
+<!-- Backdrop Overlay -->
+<div class="fixed inset-0 z-[90] backdrop-blur-overlay"></div>
+<!-- SideNavBar (Checkout Shell) -->
+<!-- Content: Confirmation Step -->
+<aside class="fixed right-0 top-0 h-full z-[100] flex flex-col w-full md:w-[400px] bg-surface-container-lowest dark:bg-inverse-surface shadow-xl animate-slide-in overflow-hidden">
+<!-- Header -->
+<div class="flex flex-col p-unit-lg border-b border-outline-variant">
+<div class="flex items-center justify-between mb-unit-sm">
+<div class="flex items-center gap-unit-sm">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-headline-md text-headline-md text-on-surface">Order Confirmed!</span>
+</div>
+<button class="p-unit-xs hover:bg-surface-container rounded-full transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant">close</span>
+</button>
+</div>
+<!-- Checkout Progress Bar -->
+<div class="flex items-center justify-between w-full mt-unit-md px-unit-xs">
+<div class="flex flex-col items-center gap-unit-xs flex-1">
+<div class="w-6 h-6 rounded-full bg-secondary text-white flex items-center justify-center text-[10px]">
+<span class="material-symbols-outlined !text-[14px]">check</span>
+</div>
+</div>
+<div class="h-[2px] flex-1 bg-secondary mx-2"></div>
+<div class="flex flex-col items-center gap-unit-xs flex-1">
+<div class="w-6 h-6 rounded-full bg-secondary text-white flex items-center justify-center text-[10px]">
+<span class="material-symbols-outlined !text-[14px]">check</span>
+</div>
+</div>
+<div class="h-[2px] flex-1 bg-secondary mx-2"></div>
+<div class="flex flex-col items-center gap-unit-xs flex-1">
+<div class="w-6 h-6 rounded-full bg-secondary text-white flex items-center justify-center text-[10px]">
+<span class="material-symbols-outlined !text-[14px]">check</span>
+</div>
+</div>
+<div class="h-[2px] flex-1 bg-secondary mx-2"></div>
+<div class="flex flex-col items-center gap-unit-xs flex-1">
+<div class="w-6 h-6 rounded-full bg-secondary text-white flex items-center justify-center text-[10px]">
+<span class="material-symbols-outlined !text-[14px]">check</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Scrollable Summary -->
+<div class="flex-1 overflow-y-auto no-scrollbar p-unit-lg">
+<!-- Confirmation Animation / Illustration Placeholder -->
+<div class="flex flex-col items-center text-center mb-unit-xl">
+<div class="w-24 h-24 bg-secondary-container rounded-full flex items-center justify-center mb-unit-md">
+<span class="material-symbols-outlined text-on-secondary-container !text-5xl" style="font-variation-settings: 'FILL' 1;">local_shipping</span>
+</div>
+<p class="font-body-md text-on-surface-variant">Order #SME-8829471</p>
+<p class="font-body-lg text-body-lg text-on-surface mt-unit-sm">We've sent a confirmation email to your inbox.</p>
+</div>
+<!-- Order Items -->
+<div class="space-y-unit-lg">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-unit-md">Your Order</h3>
+<!-- Item 1 -->
+<div class="flex gap-unit-md items-start">
+<div class="w-20 h-24 bg-surface-container-high rounded-lg overflow-hidden flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="A professional studio product shot of a pale green short sleeve linen office shirt being worn by a female model against a warm beige minimalist studio background. The lighting is soft and high-key, emphasizing the clean fabric texture and modern corporate aesthetic. The mood is calm, professional, and sophisticated, fitting a high-end SME store collection." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCJMUoj0-CwdGAxVtKnMLQlEsMBiyV6R1odZkFuXaPqzele25lVsI6bzjGJctv0oW9lv4SavOB7dURsoNkxGiSddx17K-lhXlvpKpx90hd8yZBU076-calMKMg-01i4acCH1xE_5N8dz5pXGT8RW_phXIBT1kWGknzjsUhsVDJ_g-r30uS2e-LUjb13BXeUjqXNXjBgEW0a9wpJopR8Yul9Cm8ERyax3q8kZXnZRp_zrY9E-7bMdSABRntV9EDRe5moCqDZMZjBhP6N"/>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<span class="font-body-md font-semibold text-on-surface">Short Sleeve Office Shirt</span>
+<span class="font-body-md text-on-surface">$22.99</span>
+</div>
+<p class="font-caption text-on-surface-variant mt-unit-xs">Size: XS</p>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="flex gap-unit-md items-start">
+<div class="w-20 h-24 bg-surface-container-high rounded-lg overflow-hidden flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="A high-quality lifestyle photograph of a classic white Nike sportswear tee shirt with subtle branding on a model in a bright, modern studio. The lighting is crisp and natural, highlighting the premium cotton texture. The color palette is composed of soft whites and neutral tones, creating a clean, high-performance aesthetic for a contemporary retail platform." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA1xKOsovWUKMFO_5tzqNm8q6mEL6uY1eDEeAF0WEcxDMQdsdRngppRvmsVbA32ziHssdZ9y_a_eapj-DhP12aXxgMcdr9tOy51S5cFXkk-nC8UHfmkRgzzj2BvIYnVuEdSGyyc8rpW0EH_S6HuG6DMD53WUuNgxD_4icXLqpci1-skdPT7Gqk9gPUeQlr8pRpZAIjXJ0cZcLFFY3_WaPlU4ZsW49iIXyptkrY1k7yRn10LmPA1fHxv2wipMWbdlGlpG2cdgMDWiRCD"/>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<span class="font-body-md font-semibold text-on-surface">Nike Sportswear Tee Shirts</span>
+<span class="font-body-md text-on-surface">$59.99</span>
+</div>
+<p class="font-caption text-on-surface-variant mt-unit-xs">Size: L</p>
+</div>
+</div>
+<!-- Item 3 -->
+<div class="flex gap-unit-md items-start">
+<div class="w-20 h-24 bg-surface-container-high rounded-lg overflow-hidden flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="A detailed fashion photograph of a white textured crop top with half sleeves, styled for a minimalist summer collection. The setting is a clean, sun-drenched space with soft shadows, focusing on the intricate fabric detail and modern cut. The visual style is premium and conversion-focused, using high-contrast lighting to accentuate the form against a neutral background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB8AqBD9csDgN898CZ9dBiHYomwddUJDJHu8eaq1MKMYk_obnFJ9TsIVVxxyynPIo_cx0Pj51sAXtBMjhNW2xg7e9qCVS0XoeOIMLKg-4JAv5_yRA10aBBIBTbkcAdlYVJMIFwrBzuHgaebcXiVAIwr7ODjAW_QBrW5ckeL13kJwXJpr1RElQrjK3gH-vbI-A_vZDiQbqcbUxrd2jZA2EgthIx7IVHHI4cdgaAqO6dvwkkGhJnXPiG6THt6VGBWHk6lmsBA9CMWcttD"/>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<span class="font-body-md font-semibold text-on-surface">Half Sleeve Crop Top</span>
+<span class="font-body-md text-on-surface">$99.99</span>
+</div>
+<p class="font-caption text-on-surface-variant mt-unit-xs">Size: M</p>
+</div>
+</div>
+</div>
+<!-- Totals -->
+<div class="mt-unit-xl pt-unit-lg border-t border-outline-variant space-y-unit-sm">
+<div class="flex justify-between font-body-md text-on-surface-variant">
+<span>Discounts</span>
+<span class="text-secondary">-$20.00</span>
+</div>
+<div class="flex justify-between font-body-md text-on-surface-variant">
+<span>Shipping</span>
+<span class="text-secondary">Free</span>
+</div>
+<div class="flex justify-between font-headline-md text-headline-md text-on-surface pt-unit-sm">
+<span>Total</span>
+<span>$160.00</span>
+</div>
+</div>
+</div>
+<!-- Sticky Footer CTA -->
+<div class="p-unit-lg bg-surface-container-lowest border-t border-outline-variant">
+<button class="w-full h-14 bg-primary text-on-primary rounded-xl font-label-md flex items-center justify-center gap-unit-sm hover:bg-primary-container hover:text-on-primary-container transition-all active:scale-[0.98]">
+<span>Continue Shopping</span>
+<span class="material-symbols-outlined">arrow_forward</span>
+</button>
+<p class="text-center font-caption text-on-surface-variant mt-unit-md">
+                Need help? <a class="text-primary underline" href="#">Contact Support</a>
+</p>
+</div>
+</aside>
+<!-- Floating Top Bar Anchor (from Shared Components) -->
+<nav class="fixed top-0 left-0 right-0 z-[80] flex justify-between items-center w-full px-margin-desktop h-20 bg-background/80 backdrop-blur-md border-b border-outline-variant dark:border-outline">
+<div class="font-display-xl text-headline-md font-bold text-primary dark:text-primary-fixed">SME Manager</div>
+<div class="hidden md:flex gap-unit-lg">
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 font-label-md" href="#">Products</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 font-label-md" href="#">Services</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 font-label-md" href="#">About</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 font-label-md" href="#">FAQ</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 font-label-md" href="#">Contact</a>
+</div>
+<div class="flex gap-unit-md">
+<span class="material-symbols-outlined text-primary cursor-pointer">shopping_cart</span>
+<span class="material-symbols-outlined text-primary cursor-pointer">account_circle</span>
+</div>
+</nav>
+<!-- Scroll to Top (as seen in user image) -->
+<div class="fixed bottom-unit-lg right-[420px] z-[80] hidden lg:block">
+<button class="w-12 h-12 rounded-full border border-outline-variant flex items-center justify-center bg-white hover:bg-surface-container transition-colors shadow-sm">
+<span class="material-symbols-outlined text-on-surface">arrow_upward</span>
+</button>
+</div>
+</body></html>

@@ -8,7 +8,10 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Access\Models\Role;
+use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Plan;
+use Modules\Subscriptions\Models\TenantSubscription;
+use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 
 final class SaveBusinessProfileAction
@@ -21,13 +24,17 @@ final class SaveBusinessProfileAction
         return DB::transaction(function () use ($data, $tenant): Tenant {
             $tenant ??= new Tenant([
                 'slug' => $this->uniqueSlug((string) ($data['slug'] ?? $data['name'])),
-                'status' => 'trialing',
+                'status' => TenantStatus::Trialing,
             ]);
 
             $logoPath = $tenant->logo_path;
 
+            if (! $tenant->exists && ! $tenant->getKey()) {
+                $tenant->id = (string) Str::uuid();
+            }
+
             if (($data['logo'] ?? null) instanceof UploadedFile) {
-                $logoPath = $data['logo']->store('business-logos', 'public');
+                $logoPath = $data['logo']->store("tenants/{$tenant->id}/business/logos", 'public');
             }
 
             $tenant->fill([
@@ -48,6 +55,10 @@ final class SaveBusinessProfileAction
                 'opening_hours' => $this->normalizeOpeningHours($data['opening_hours'] ?? []),
                 'settings' => array_merge($tenant->settings ?? [], [
                     'brand_color' => $data['brand_color'] ?? null,
+                    'payment_methods' => $this->normalizePaymentMethods($data['payment_methods'] ?? null),
+                    'bank_details' => $this->normalizeBankDetails($data['bank_details'] ?? []),
+                    'seo' => $this->normalizeSeo($data['seo'] ?? []),
+                    'maintenance_mode' => (bool) ($data['maintenance_mode'] ?? false),
                 ]),
             ]);
 
@@ -63,6 +74,59 @@ final class SaveBusinessProfileAction
 
             return $tenant->refresh();
         });
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $bankDetails
+     * @return list<array{bank_name: string, account_name: string, account_number: string, status: string}>
+     */
+    private function normalizeBankDetails(array $bankDetails): array
+    {
+        return collect($bankDetails)
+            ->filter(fn (array $account): bool => trim((string) ($account['bank_name'] ?? '')) !== '' && trim((string) ($account['account_number'] ?? '')) !== '')
+            ->map(fn (array $account): array => [
+                'bank_name' => trim((string) $account['bank_name']),
+                'account_name' => trim((string) ($account['account_name'] ?? '')),
+                'account_number' => trim((string) $account['account_number']),
+                'status' => in_array(($account['status'] ?? 'active'), ['active', 'inactive'], true) ? (string) ($account['status'] ?? 'active') : 'active',
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $seo
+     * @return array<string, string|null>
+     */
+    private function normalizeSeo(array $seo): array
+    {
+        return [
+            'meta_title' => $seo['meta_title'] ?? null,
+            'meta_description' => $seo['meta_description'] ?? null,
+            'privacy_policy_url' => $seo['privacy_policy_url'] ?? null,
+            'terms_url' => $seo['terms_url'] ?? null,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function normalizePaymentMethods(?string $methods): array
+    {
+        $fallback = ['Cash', 'Bank transfer', 'POS/Card', 'Cheque'];
+
+        if (! $methods) {
+            return $fallback;
+        }
+
+        $values = collect(explode(',', $methods))
+            ->map(fn (string $method): string => trim($method))
+            ->filter()
+            ->unique(fn (string $method): string => strtolower($method))
+            ->values()
+            ->all();
+
+        return $values !== [] ? $values : $fallback;
     }
 
     private function uniqueSlug(string $value): string
@@ -131,11 +195,11 @@ final class SaveBusinessProfileAction
             return;
         }
 
-        DB::table('tenant_subscriptions')->updateOrInsert(
+        TenantSubscription::query()->updateOrCreate(
             ['tenant_id' => $tenant->id],
             [
                 'plan_id' => $planId,
-                'status' => $tenant->status,
+                'status' => $this->subscriptionStatusForTenant($tenant),
                 'billing_interval' => 'monthly',
                 'trial_ends_at' => $tenant->trial_ends_at,
                 'current_period_starts_at' => now(),
@@ -145,5 +209,16 @@ final class SaveBusinessProfileAction
                 'updated_at' => now(),
             ],
         );
+    }
+
+    private function subscriptionStatusForTenant(Tenant $tenant): SubscriptionStatus
+    {
+        return match ($tenant->status) {
+            TenantStatus::Active => SubscriptionStatus::Active,
+            TenantStatus::Inactive => SubscriptionStatus::Paused,
+            TenantStatus::Suspended => SubscriptionStatus::Suspended,
+            TenantStatus::Cancelled => SubscriptionStatus::Cancelled,
+            default => SubscriptionStatus::Trialing,
+        };
     }
 }
