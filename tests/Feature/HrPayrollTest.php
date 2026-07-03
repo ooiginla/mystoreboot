@@ -43,7 +43,10 @@ class HrPayrollTest extends TestCase
             ->assertOk()
             ->assertSee('HR &amp; Payroll', false)
             ->assertSee('Staff records')
-            ->assertSee('Monthly salary schedule');
+            ->assertSee('Monthly salary schedule')
+            ->assertSee('Pay wages from')
+            ->assertSee('Overall total net')
+            ->assertSee('Post Payroll');
 
         $this->actingAs($user)
             ->post(route('admin.hr-payroll.staff.store'), [
@@ -79,6 +82,7 @@ class HrPayrollTest extends TestCase
             ->post(route('admin.hr-payroll.payroll-runs.store'), [
                 'tenant_id' => $tenant->id,
                 'payroll_month' => '2026-06',
+                'funding_account_code' => '1000',
                 'notes' => 'June payroll',
             ])
             ->assertRedirect();
@@ -91,7 +95,8 @@ class HrPayrollTest extends TestCase
         $this->assertSame(12500000, $item->net_salary_minor);
         $this->assertSame('applied', HrStaffDeduction::query()->firstOrFail()->status);
 
-        $this->assertNotNull(FinanceJournalEntry::query()->where('tenant_id', $tenant->id)->where('source_type', 'hr_staff_deduction')->where('source_event', 'posted')->first());
+        $deductionJournal = FinanceJournalEntry::query()->with('lines')->where('tenant_id', $tenant->id)->where('source_type', 'hr_staff_deduction')->where('source_event', 'posted')->firstOrFail();
+        $this->assertTrue($deductionJournal->lines->every(fn ($line): bool => $line->branch_id === $branch->id));
         $payrollJournal = FinanceJournalEntry::query()
             ->with('lines.account')
             ->where('tenant_id', $tenant->id)
@@ -101,6 +106,8 @@ class HrPayrollTest extends TestCase
 
         $this->assertSame(15000000, (int) $payrollJournal->lines->sum('debit_minor'));
         $this->assertSame(15000000, (int) $payrollJournal->lines->sum('credit_minor'));
-        $this->assertTrue($payrollJournal->lines->contains(fn ($line): bool => $line->account->code === '2200' && $line->credit_minor === 12500000));
+        $this->assertTrue($payrollJournal->lines->contains(fn ($line): bool => $line->account->code === 'EXP-6030' && $line->debit_minor === 15000000));
+        $this->assertTrue($payrollJournal->lines->contains(fn ($line): bool => $line->account->code === '1000' && $line->credit_minor === 12500000));
+        $this->assertTrue($payrollJournal->lines->every(fn ($line): bool => $line->branch_id === $branch->id));
     }
 }

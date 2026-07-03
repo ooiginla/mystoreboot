@@ -15,9 +15,10 @@
     ][strtoupper($currency)] ?? strtoupper($currency);
     $money = fn (int|float|null $minor): string => number_format(((int) $minor) / 100, 2);
     $variant = $product->variants->first();
-    $priceMinor = (int) ($variant?->discount_price_minor ?? $variant?->selling_price_minor ?? $product->discount_price_minor ?? $product->base_price_minor);
-    $compareMinor = $variant?->discount_price_minor ? (int) $variant->selling_price_minor : ((int) ($product->discount_price_minor ?? 0) > 0 ? (int) $product->base_price_minor : null);
+    $priceMinor = (int) ($variant?->selling_price_minor ?? $product->base_price_minor);
+    $compareMinor = (int) ($variant?->compare_at_price_minor ?? $product->compare_at_price_minor ?? 0);
     $gallery = collect([$product->image_path])
+        ->merge($product->images->pluck('image_path'))
         ->merge($product->variants->pluck('image_path'))
         ->filter()
         ->unique()
@@ -30,6 +31,7 @@
     $attributeGroups = $product->attributeValues->groupBy(fn ($value) => $value->definition?->name ?? 'Attributes');
     $payload = [
         'id' => 'product-'.$product->id.($variant ? '-variant-'.$variant->id : ''),
+        'productVariantId' => $variant?->id,
         'name' => $product->name.($variant && $product->has_variants ? ' - '.$variant->variant_name : ''),
         'priceMinor' => $priceMinor,
         'image' => $primaryImage,
@@ -47,12 +49,12 @@
                     @if ($primaryImage)
                         <img src="{{ $primaryImage }}" alt="{{ $product->name }}" class="h-full w-full object-contain mix-blend-multiply" data-product-main-image>
                     @else
-                        <div class="flex h-full w-full items-center justify-center text-5xl font-black text-[var(--store-primary)]">{{ Str::of($product->name)->substr(0, 2)->upper() }}</div>
+                        <div class="sf-display-xl flex h-full w-full items-center justify-center text-[var(--store-primary)]">{{ Str::of($product->name)->substr(0, 2)->upper() }}</div>
                     @endif
                     @if ($gallery->count() > 1)
                         <div class="absolute inset-x-4 top-1/2 flex -translate-y-1/2 justify-between">
-                            <button type="button" class="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-xl" data-gallery-prev aria-label="Previous image"><span class="material-symbols-outlined">chevron_left</span></button>
-                            <button type="button" class="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-xl" data-gallery-next aria-label="Next image"><span class="material-symbols-outlined">chevron_right</span></button>
+                            <button type="button" class="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-xl" data-gallery-prev aria-label="Previous image">@include('storefront::partials.icon', ['name' => 'chevron_left', 'class' => 'h-5 w-5'])</button>
+                            <button type="button" class="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-xl" data-gallery-next aria-label="Next image">@include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])</button>
                         </div>
                     @endif
                 </div>
@@ -70,28 +72,28 @@
             </div>
 
             <div class="lg:col-span-5">
-                <p class="text-sm font-black uppercase tracking-[.18em] text-[var(--store-secondary)]">{{ $product->category?->name ?? 'Product' }}</p>
-                <h1 class="store-display mt-2 text-4xl font-black leading-tight text-[var(--store-ink)]">{{ $product->name }}</h1>
+                <p class="sf-label-md uppercase text-[var(--store-secondary)]">{{ $product->category?->name ?? 'Product' }}</p>
+                <h1 class="sf-headline-lg mt-2 text-[var(--store-ink)]">{{ $product->name }}</h1>
                 <div class="mt-4 flex items-center gap-3">
-                    <strong class="store-display text-3xl font-black text-[var(--store-primary)]">{{ $currencySymbol }}{{ $money($priceMinor) }}</strong>
+                    <strong class="sf-headline-lg text-[var(--store-primary)]">{{ $currencySymbol }}{{ $money($priceMinor) }}</strong>
                     @if ($compareMinor && $compareMinor > $priceMinor)
-                        <span class="text-lg text-[var(--store-muted)] line-through">{{ $currencySymbol }}{{ $money($compareMinor) }}</span>
+                        <span class="sf-body-lg text-[var(--store-muted)] line-through">{{ $currencySymbol }}{{ $money($compareMinor) }}</span>
                     @endif
                 </div>
 
                 <div class="mt-6">
-                    <span class="font-bold">Quantity</span>
+                    <span class="sf-body-md font-bold">Quantity</span>
                     <div class="mt-2 flex w-fit items-center overflow-hidden rounded-full border border-[var(--store-line)] bg-white">
-                        <button type="button" class="px-4 py-2 hover:bg-[var(--store-soft)]" data-detail-qty="-1"><span class="material-symbols-outlined text-[18px]">remove</span></button>
-                        <span class="min-w-12 text-center font-black" data-detail-quantity>1</span>
-                        <button type="button" class="px-4 py-2 hover:bg-[var(--store-soft)]" data-detail-qty="1"><span class="material-symbols-outlined text-[18px]">add</span></button>
+                        <button type="button" class="px-4 py-2 hover:bg-[var(--store-soft)]" data-detail-qty="-1">@include('storefront::partials.icon', ['name' => 'remove', 'class' => 'h-5 w-5'])</button>
+                        <span class="sf-body-md min-w-12 text-center font-bold" data-detail-quantity>1</span>
+                        <button type="button" class="px-4 py-2 hover:bg-[var(--store-soft)]" data-detail-qty="1">@include('storefront::partials.icon', ['name' => 'add', 'class' => 'h-5 w-5'])</button>
                     </div>
                 </div>
 
                 <div class="mt-5 grid gap-4">
                     @foreach ($optionGroups as $name => $values)
                         <label class="grid gap-2">
-                            <span class="text-sm font-bold">{{ $name }}</span>
+                            <span class="sf-body-md font-bold">{{ $name }}</span>
                             <select class="store-input">
                                 @foreach ($values->unique('value') as $value)
                                     <option>{{ $value->value }}</option>
@@ -101,7 +103,7 @@
                     @endforeach
                     @foreach ($attributeGroups as $name => $values)
                         <label class="grid gap-2">
-                            <span class="text-sm font-bold">{{ $name }}</span>
+                            <span class="sf-body-md font-bold">{{ $name }}</span>
                             <select class="store-input">
                                 @foreach ($values->unique('value') as $value)
                                     <option>{{ $value->value }}</option>
@@ -112,28 +114,28 @@
                 </div>
 
                 <div class="mt-6">
-                    <p class="font-bold">Share this product</p>
+                    <p class="sf-body-md font-bold">Share this product</p>
                     <div class="mt-3 flex gap-3">
                         <a class="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--store-line)] text-[var(--store-primary)] hover:bg-[var(--store-soft)]" href="https://facebook.com/sharer/sharer.php?u={{ urlencode($shareUrl) }}" aria-label="Share on Facebook">@include('storefront::partials.social-icon', ['network' => 'facebook'])</a>
                         <a class="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--store-line)] text-[var(--store-primary)] hover:bg-[var(--store-soft)]" href="https://wa.me/?text={{ urlencode($product->name.' '.$shareUrl) }}" aria-label="Share on WhatsApp">@include('storefront::partials.social-icon', ['network' => 'whatsapp'])</a>
-                        <a class="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--store-line)] text-[var(--store-primary)] hover:bg-[var(--store-soft)]" href="https://twitter.com/intent/tweet?text={{ urlencode($product->name) }}&url={{ urlencode($shareUrl) }}" aria-label="Share on X"><span class="font-black">X</span></a>
+                        <a class="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--store-line)] text-[var(--store-primary)] hover:bg-[var(--store-soft)]" href="https://twitter.com/intent/tweet?text={{ urlencode($product->name) }}&url={{ urlencode($shareUrl) }}" aria-label="Share on X"><span class="sf-label-md">X</span></a>
                     </div>
                 </div>
 
                 <div class="mt-7 border-t border-[var(--store-line)] pt-5">
                     <div class="flex gap-2 border-b border-[var(--store-line)]" role="tablist">
-                        <button type="button" class="border-b-2 border-[var(--store-primary)] px-4 py-3 text-sm font-black text-[var(--store-primary)]" data-tab-button="description">Product Description</button>
-                        <button type="button" class="border-b-2 border-transparent px-4 py-3 text-sm font-black text-[var(--store-muted)]" data-tab-button="reviews">Reviews</button>
+                        <button type="button" class="sf-label-md border-b-2 border-[var(--store-primary)] px-4 py-3 text-[var(--store-primary)]" data-tab-button="description">Product Description</button>
+                        <button type="button" class="sf-label-md border-b-2 border-transparent px-4 py-3 text-[var(--store-muted)]" data-tab-button="reviews">Reviews</button>
                     </div>
-                    <div class="py-5 leading-7 text-[var(--store-muted)]" data-tab-panel="description">{{ $product->description ?: 'No product description has been added yet.' }}</div>
-                    <div class="hidden py-5 leading-7 text-[var(--store-muted)]" data-tab-panel="reviews">No customer reviews yet.</div>
+                    <div class="sf-body-md py-5 text-[var(--store-muted)]" data-tab-panel="description">{{ $product->description ?: 'No product description has been added yet.' }}</div>
+                    <div class="sf-body-md hidden py-5 text-[var(--store-muted)]" data-tab-panel="reviews">No customer reviews yet.</div>
                 </div>
 
                 <div class="mt-3 flex flex-wrap gap-2">
                     @forelse ($product->tags as $tag)
-                        <span class="rounded-full bg-[var(--store-soft)] px-3 py-1 text-xs font-black uppercase text-[var(--store-muted)]">{{ $tag->name }}</span>
+                        <span class="sf-caption rounded-full bg-[var(--store-soft)] px-3 py-1 font-bold uppercase text-[var(--store-muted)]">{{ $tag->name }}</span>
                     @empty
-                        <span class="rounded-full bg-[var(--store-soft)] px-3 py-1 text-xs font-black uppercase text-[var(--store-muted)]">No tags</span>
+                        <span class="sf-caption rounded-full bg-[var(--store-soft)] px-3 py-1 font-bold uppercase text-[var(--store-muted)]">No tags</span>
                     @endforelse
                 </div>
 
@@ -146,12 +148,12 @@
     </section>
 
     <section class="store-shell border-t border-[var(--store-line)] py-12">
-        <h2 class="store-display text-3xl font-black text-[var(--store-primary)]">YOU MIGHT ALSO LIKE</h2>
+        <h2 class="sf-headline-lg text-[var(--store-primary)]">YOU MIGHT ALSO LIKE</h2>
         <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             @forelse ($relatedProducts as $product)
                 @include('storefront::partials.related-product-card', ['product' => $product, 'detailRouteName' => $detailRouteName])
             @empty
-                <div class="store-card col-span-full p-8 text-center text-[var(--store-muted)]">No related products yet.</div>
+                <div class="sf-body-md store-card col-span-full p-8 text-center text-[var(--store-muted)]">No related products yet.</div>
             @endforelse
         </div>
     </section>

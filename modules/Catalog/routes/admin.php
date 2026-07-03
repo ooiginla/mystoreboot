@@ -11,5 +11,8 @@ Route::put('/products/{product}', [CatalogController::class, 'updateProduct'])->
 Route::post('/categories', [CatalogController::class, 'storeCategory'])->name('categories.store');
 Route::post('/tags', [CatalogController::class, 'storeTag'])->name('tags.store');
 Route::put('/tags/{tag}', [CatalogController::class, 'updateTag'])->name('tags.update');
+Route::post('/taxes', [CatalogController::class, 'storeTax'])->name('taxes.store');
+Route::put('/taxes/{tax}', [CatalogController::class, 'updateTax'])->name('taxes.update');
+Route::delete('/taxes/{tax}', [CatalogController::class, 'destroyTax'])->name('taxes.destroy');
 Route::post('/attributes', [CatalogController::class, 'storeAttribute'])->name('attributes.store');
 Route::put('/attributes/{attribute}', [CatalogController::class, 'updateAttribute'])->name('attributes.update');

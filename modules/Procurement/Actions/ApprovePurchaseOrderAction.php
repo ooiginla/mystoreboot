@@ -29,8 +29,8 @@ final class ApprovePurchaseOrderAction
                 'Purchase order '.$purchaseOrder->po_number,
                 [
                     ['account_code' => '1200', 'debit_minor' => $purchaseOrder->subtotal_minor],
-                    ['account_code' => '5200', 'debit_minor' => $purchaseOrder->tax_minor],
-                    ['account_code' => '5100', 'debit_minor' => $purchaseOrder->shipping_minor],
+                    ['account_code' => 'EXP-5200', 'debit_minor' => $purchaseOrder->tax_minor],
+                    ['account_code' => 'EXP-5100', 'debit_minor' => $purchaseOrder->shipping_minor],
                     ['account_code' => '2000', 'credit_minor' => $purchaseOrder->total_minor, 'party_type' => 'vendor', 'party_id' => $purchaseOrder->vendor_id],
                 ],
                 'purchase_order',

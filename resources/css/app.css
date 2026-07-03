@@ -3,8 +3,184 @@
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 @source '../../modules/**/*.blade.php';
+@source '../views';
+
+/* Manual (class based) dark mode — toggled on <html class="dark"> */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-sans: 'Plus Jakarta Sans', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-display: 'Space Grotesk', 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-serif: 'Instrument Serif', ui-serif, Georgia, 'Times New Roman', serif;
+
+    /* Brand — "growth green" */
+    --color-brand-50: #eafff4;
+    --color-brand-100: #ccffe2;
+    --color-brand-200: #99f9c6;
+    --color-brand-300: #5cefa6;
+    --color-brand-400: #22dd85;
+    --color-brand-500: #06c168;
+    --color-brand-600: #009a53;
+    --color-brand-700: #027a45;
+    --color-brand-800: #085f39;
+    --color-brand-900: #0a4e31;
+    --color-brand-950: #032d1d;
+
+    /* Accent — lime glow */
+    --color-accent-300: #d8ff8a;
+    --color-accent-400: #c2f75a;
+    --color-accent-500: #a6e926;
+    --color-accent-600: #86c40f;
+
+    /* Ink — green tinted charcoals for dark surfaces */
+    --color-ink-500: #33463d;
+    --color-ink-600: #24352c;
+    --color-ink-700: #182a20;
+    --color-ink-800: #10201a;
+    --color-ink-900: #0a1712;
+    --color-ink-950: #050f0b;
+}
+
+@layer base {
+    html {
+        scroll-behavior: smooth;
+    }
+
+    body {
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+    }
+
+    ::selection {
+        background: color-mix(in oklab, var(--color-brand-500) 30%, transparent);
+        color: inherit;
+    }
+}
+
+@layer components {
+    .sb-container {
+        @apply mx-auto w-full max-w-7xl px-5 sm:px-8;
+    }
+
+    .sb-eyebrow {
+        @apply inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-brand-700 dark:border-brand-500/25 dark:bg-brand-500/10 dark:text-brand-300;
+    }
+
+    .sb-btn {
+        @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-ink-950;
+    }
+
+    .sb-btn-primary {
+        @apply bg-brand-600 text-white shadow-lg shadow-brand-600/25 hover:-translate-y-0.5 hover:bg-brand-700 hover:shadow-xl hover:shadow-brand-600/30;
+    }
+
+    .sb-btn-dark {
+        @apply bg-ink-950 text-white hover:-translate-y-0.5 hover:bg-ink-800 dark:bg-white dark:text-ink-950 dark:hover:bg-zinc-200;
+    }
+
+    .sb-btn-ghost {
+        @apply border border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-100 dark:hover:bg-white/10;
+    }
+
+    .sb-card {
+        @apply rounded-3xl border border-zinc-200/80 bg-white shadow-sm dark:border-white/10 dark:bg-white/[0.03];
+    }
+
+    .sb-chip {
+        @apply inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white/70 px-3 py-1 text-xs font-semibold text-zinc-600 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300;
+    }
+
+    .sb-section {
+        @apply py-20 sm:py-28;
+    }
+
+    .sb-h2 {
+        @apply font-display text-3xl font-bold leading-[1.1] tracking-tight text-zinc-900 sm:text-4xl md:text-5xl dark:text-white;
+    }
+
+    .sb-lead {
+        @apply text-lg leading-relaxed text-zinc-600 dark:text-zinc-400;
+    }
+
+    /* Scroll reveal */
+    .sb-reveal {
+        opacity: 0;
+        transform: translateY(18px);
+        transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .sb-reveal.is-in {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* Decorative helpers + animations */
+.sb-grid-bg {
+    background-image:
+        linear-gradient(to right, color-mix(in oklab, currentColor 8%, transparent) 1px, transparent 1px),
+        linear-gradient(to bottom, color-mix(in oklab, currentColor 8%, transparent) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+}
+
+.sb-text-gradient {
+    background: linear-gradient(120deg, var(--color-brand-600), var(--color-brand-400) 55%, var(--color-accent-500));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+@keyframes sb-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+.sb-float { animation: sb-float 6s ease-in-out infinite; }
+
+@keyframes sb-float-slow {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-16px); }
+}
+.sb-float-slow { animation: sb-float-slow 9s ease-in-out infinite; }
+
+@keyframes sb-bar {
+    0% { transform: scaleY(0.25); }
+    100% { transform: scaleY(1); }
+}
+
+@keyframes sb-marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+}
+.sb-marquee { animation: sb-marquee 32s linear infinite; }
+
+@keyframes sb-pulse-ring {
+    0% { transform: scale(0.9); opacity: 0.7; }
+    70% { transform: scale(1.6); opacity: 0; }
+    100% { opacity: 0; }
+}
+.sb-pulse-ring { animation: sb-pulse-ring 2.4s ease-out infinite; }
+
+/* Floating WhatsApp — expanding ring waves + a ringing-phone wobble */
+@keyframes sb-wa-wave {
+    0% { transform: scale(1); opacity: 0.7; }
+    100% { transform: scale(2); opacity: 0; }
+}
+.sb-wa-wave { animation: sb-wa-wave 2s ease-out infinite; }
+
+@keyframes sb-wa-ring {
+    0%, 55%, 100% { transform: rotate(0); }
+    60% { transform: rotate(12deg); }
+    65% { transform: rotate(-10deg); }
+    70% { transform: rotate(9deg); }
+    75% { transform: rotate(-7deg); }
+    80% { transform: rotate(4deg); }
+    85% { transform: rotate(0); }
+}
+.sb-wa-ring { animation: sb-wa-ring 2.6s ease-in-out infinite; transform-origin: 50% 50%; }
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-float, .sb-float-slow, .sb-marquee, .sb-pulse-ring, .sb-wa-wave, .sb-wa-ring { animation: none; }
+    .sb-reveal { opacity: 1; transform: none; transition: none; }
 }

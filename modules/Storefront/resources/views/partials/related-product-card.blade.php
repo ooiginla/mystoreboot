@@ -11,8 +11,8 @@
         @if ($image)
             <img src="{{ $image }}" alt="{{ $product->name }}" class="h-4/5 w-4/5 object-contain transition-transform duration-500 group-hover:scale-110">
         @else
-            <div class="flex h-full w-full items-center justify-center text-3xl font-black text-[var(--store-primary)]">{{ Str::of($product->name)->substr(0, 2)->upper() }}</div>
+            <div class="sf-headline-lg flex h-full w-full items-center justify-center text-[var(--store-primary)]">{{ Str::of($product->name)->substr(0, 2)->upper() }}</div>
         @endif
     </div>
-    <h3 class="store-display mt-4 line-clamp-2 px-2 pb-3 text-lg font-black text-[var(--store-ink)] group-hover:text-[var(--store-primary)]">{{ $product->name }}</h3>
+    <h3 class="sf-headline-md mt-4 line-clamp-2 px-2 pb-3 text-[var(--store-ink)] group-hover:text-[var(--store-primary)]">{{ $product->name }}</h3>
 </a>

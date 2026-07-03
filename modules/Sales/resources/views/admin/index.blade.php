@@ -13,7 +13,7 @@
     $variantLabel = fn ($variant): string => $variant->product?->name.' / '.$variant->variant_name.' ('.$variant->sku.')';
     $statusClass = fn (string $status): string => match ($status) {
         'completed', 'paid', 'delivered' => 'success',
-        'partially_paid', 'partially_returned', 'partially_refunded', 'pending', 'processing', 'out_for_delivery' => 'warning',
+        'partially_paid', 'partially_returned', 'partially_refunded', 'pending', 'processing', 'out_for_delivery', 'customer_credit' => 'warning',
         'cancelled', 'returned', 'refunded', 'unpaid', 'failed' => 'danger',
         default => 'neutral',
     };
@@ -44,8 +44,9 @@
     <datalist id="sales-product-options">
         @foreach ($variants as $variant)
             @php
-                $taxRate = $variant->tax_behavior->value === 'taxable' ? (float) ($variant->tax_rate ?? $variant->product?->tax_rate ?? 0) : 0;
-                $priceMinor = $variant->discount_price_minor ?? $variant->selling_price_minor;
+                $selectedTaxRate = $variant->product?->taxes?->sum(fn ($tax) => (float) $tax->rate) ?? 0;
+                $taxRate = $variant->tax_behavior->value === 'taxable' ? (float) ($selectedTaxRate > 0 ? $selectedTaxRate : ($variant->tax_rate ?? $variant->product?->tax_rate ?? 0)) : 0;
+                $priceMinor = $variant->selling_price_minor;
             @endphp
             <option value="{{ $variantLabel($variant) }}" data-variant-id="{{ $variant->id }}" data-price="{{ $priceMinor / 100 }}" data-tax-rate="{{ $taxRate }}" data-sku="{{ $variant->sku }}"></option>
         @endforeach
@@ -62,10 +63,8 @@
         .sales-metric-icon.soft { color: #334155; background: #dbe7fb; }
         .sales-metric-icon.danger { color: #b42318; background: #ffe2df; }
         .sales-meta-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-        .sales-context-row { display: flex; gap: 10px; flex-wrap: wrap; }
-        .sales-context-tag { border: 1px solid #cfd8d3; border-radius: 8px; background: #f8fafc; padding: 10px 12px; min-width: 180px; display: grid; gap: 4px; }
-        .sales-context-tag span { color: #526177; font-size: 12px; font-weight: 850; text-transform: uppercase; }
-        .sales-context-tag strong { color: #111827; font-size: 14px; font-weight: 900; }
+        .sales-header-context { margin-top: 6px; color: #475467; font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; }
+        .sales-header-context strong { color: #111827; font-weight: 900; }
         .sales-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); gap: 18px; align-items: start; }
         .sales-customer-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
         .sales-card { border: 1px solid #cfd8d3; border-radius: 8px; background: #fff; padding: 22px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
@@ -289,7 +288,19 @@
             </section>
 
             <section class="panel tab-panel" id="pos" role="tabpanel" data-tab-panel hidden>
-                <div class="panel-header"><div><h2 class="panel-title">Point of Sale</h2><p class="subtle">Search customer and products, build a cart, calculate totals, collect payment, and post stock-out.</p></div></div>
+                <div class="panel-header">
+                    <div>
+                        <h2 class="panel-title">Point of Sale</h2>
+                        <p class="subtle">Search customer and products, build a cart, calculate totals, collect payment, and post stock-out.</p>
+                        @if ($activeTill)
+                            <div class="sales-header-context">
+                                <span>Signed-in branch: <strong>{{ $activeTill->branch?->name ?? 'Not set' }}</strong></span>
+                                <span>Inventory location: <strong>{{ $posLocations->first()?->name ?? 'No location' }}</strong></span>
+                                <span>Order date: <strong>{{ now()->toDateString() }}</strong></span>
+                            </div>
+                        @endif
+                    </div>
+                </div>
                 <div class="panel-body">
                     @if (! $activeTill)
                         <div class="till-locked-pos">
@@ -305,13 +316,6 @@
                         <input type="hidden" name="branch_id" value="{{ $activeTill->branch_id }}">
                         <input type="hidden" name="inventory_location_id" value="{{ $posLocations->first()?->id }}">
                         <input type="hidden" name="order_date" value="{{ now()->toDateString() }}">
-                        <div class="sales-card">
-                            <div class="sales-context-row">
-                                <div class="sales-context-tag"><span>Signed-in branch</span><strong>{{ $activeTill->branch?->name ?? 'Not set' }}</strong></div>
-                                <div class="sales-context-tag"><span>Inventory location</span><strong>{{ $posLocations->first()?->name ?? 'No location' }}</strong></div>
-                                <div class="sales-context-tag"><span>Order date</span><strong>{{ now()->toDateString() }}</strong></div>
-                            </div>
-                        </div>
                         <div class="sales-metrics">
                             <div class="sales-metric-card"><div><span class="sales-metric-label">Orders</span><strong class="sales-metric-value">{{ $stats['orders'] }}</strong></div><span class="sales-metric-icon">SO</span></div>
                             <div class="sales-metric-card"><div><span class="sales-metric-label">Revenue</span><strong class="sales-metric-value">{{ $tenant->currency_code }} {{ $money($stats['revenue_minor']) }}</strong></div><span class="sales-metric-icon">₦</span></div>

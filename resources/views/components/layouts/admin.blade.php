@@ -81,8 +81,8 @@
             .btn.primary:hover { background: var(--brand-dark); }
             .btn.accent { background: var(--accent); color: #fff; box-shadow: 0 8px 18px rgba(37, 99, 235, .18); }
             .btn.accent:hover { background: var(--accent-dark); }
-            .btn.danger { background: #fef3f2; color: var(--danger); border: 1px solid #fecdca; }
-            .btn.danger:hover { background: #fee4e2; }
+            .btn.danger, .btn.destructive { background: #fef3f2; color: var(--danger); border: 1px solid #fecdca; }
+            .btn.danger:hover, .btn.destructive:hover { background: #fee4e2; }
             .btn.secondary { background: var(--panel-soft); color: #344054; }
             .list { display: grid; gap: 10px; }
             .item { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; justify-content: space-between; gap: 12px; }
@@ -115,7 +115,7 @@
             .table { width: 100%; border-collapse: collapse; }
             .table th, .table td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
             .table th { color: #475467; font-size: 12px; text-transform: uppercase; }
-            .dialog { width: min(760px, calc(100vw - 32px)); border: 0; border-radius: 8px; padding: 0; box-shadow: 0 24px 60px rgba(16,24,40,.22); }
+            .dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 32px); margin: auto; border: 0; border-radius: 8px; padding: 0; box-shadow: 0 24px 60px rgba(16,24,40,.22); }
             .dialog::backdrop { background: rgba(16,24,40,.48); }
             .dialog-header { padding: 18px 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 14px; align-items: start; }
             .dialog-body { padding: 20px; max-height: min(72vh, 760px); overflow: auto; }
@@ -148,7 +148,11 @@
                     <a class="{{ request()->routeIs('admin.inventory.*') ? 'active' : '' }}" href="{{ route('admin.inventory.index') }}">Inventory & Stock</a>
                     <a class="{{ request()->routeIs('admin.procurement.*') ? 'active' : '' }}" href="{{ route('admin.procurement.index') }}">Purchasing & Suppliers</a>
                     <a class="{{ request()->routeIs('admin.customers.*') ? 'active' : '' }}" href="{{ route('admin.customers.index') }}">Customers & Support</a>
-                    <a class="{{ request()->routeIs('admin.sales.*') ? 'active' : '' }}" href="{{ route('admin.sales.index') }}">Sales & POS</a>
+                    <a class="{{ request()->routeIs('admin.sales.*') && ! request()->routeIs('admin.sales.settlements.*') && ! request()->routeIs('admin.sales.admin-settlements.*') ? 'active' : '' }}" href="{{ route('admin.sales.index') }}">Sales & POS</a>
+                    <a class="{{ request()->routeIs('admin.sales.settlements.*') ? 'active' : '' }}" href="{{ route('admin.sales.settlements.index') }}">Business Settlements</a>
+                    @if (auth()->user()?->is_platform_admin)
+                        <a class="{{ request()->routeIs('admin.sales.admin-settlements.*') ? 'active' : '' }}" href="{{ route('admin.sales.admin-settlements.index') }}">Admin Settlements</a>
+                    @endif
                     <a class="{{ request()->routeIs('admin.hr-payroll.*') ? 'active' : '' }}" href="{{ route('admin.hr-payroll.index') }}">HR & Payroll</a>
                     <a class="{{ request()->routeIs('admin.finance.expenses') || request()->routeIs('admin.finance.expense-categories.*') || request()->routeIs('admin.finance.expenses.*') || request()->routeIs('admin.finance.petty-cash.*') || request()->routeIs('admin.finance.journals.*') ? 'active' : '' }}" href="{{ route('admin.finance.expenses') }}">Expenses</a>
                     <a class="{{ request()->routeIs('admin.finance.chart-of-accounts') ? 'active' : '' }}" href="{{ route('admin.finance.chart-of-accounts') }}">Chart of Accounts</a>
@@ -298,6 +302,10 @@
                     if (!input) return;
                     input.value = formatMoney(input.value);
                 }, true);
+
+                document.querySelectorAll('[data-money-input]').forEach((input) => {
+                    input.value = formatMoney(input.value);
+                });
 
                 function syncPaymentSummary(select) {
                     const form = select.closest('form');

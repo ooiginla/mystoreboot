@@ -7,6 +7,7 @@ namespace Modules\Procurement\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
+use Modules\Finance\Models\FinanceAccount;
 use Modules\Procurement\Models\PurchaseOrder;
 
 final class VendorPaymentRequest extends FormRequest
@@ -34,6 +35,7 @@ final class VendorPaymentRequest extends FormRequest
             'payment_date' => ['required', 'date'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'payment_method' => ['nullable', 'string', 'max:80'],
+            'payment_account_code' => ['required', 'string', Rule::exists('finance_accounts', 'code')->where('tenant_id', $tenantId)],
             'reference_number' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];
@@ -43,6 +45,8 @@ final class VendorPaymentRequest extends FormRequest
     {
         $validator->after(function (Validator $validator): void {
             if (! $this->filled('purchase_order_id')) {
+                $this->validatePaymentAccount($validator);
+
                 return;
             }
 
@@ -63,6 +67,20 @@ final class VendorPaymentRequest extends FormRequest
             if ($amountMinor > $purchaseOrder->balance_minor) {
                 $validator->errors()->add('amount', 'Payment amount cannot be more than the outstanding balance.');
             }
+
+            $this->validatePaymentAccount($validator);
         });
+    }
+
+    private function validatePaymentAccount(Validator $validator): void
+    {
+        $account = FinanceAccount::query()
+            ->where('tenant_id', $this->string('tenant_id')->toString())
+            ->where('code', $this->string('payment_account_code')->toString())
+            ->first();
+
+        if (! $account || ! $account->is_active || $account->type !== 'asset' || $account->category !== 'Current Assets') {
+            $validator->errors()->add('payment_account_code', 'Select an active current asset account for the vendor payment.');
+        }
     }
 }

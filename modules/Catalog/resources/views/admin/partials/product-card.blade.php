@@ -11,8 +11,8 @@
         $item->tags->pluck('name')->implode(' '),
         $item->attributeValues->pluck('value')->implode(' '),
     ])->filter()->implode(' '));
-    $primaryPrice = $variant?->discount_price_minor ?? $variant?->selling_price_minor ?? $item->discount_price_minor ?? $item->base_price_minor;
-    $comparePrice = $variant?->discount_price_minor ? $variant?->selling_price_minor : null;
+    $primaryPrice = $variant?->selling_price_minor ?? $item->base_price_minor;
+    $comparePrice = $variant?->compare_at_price_minor ?? $item->compare_at_price_minor;
 @endphp
 
 <article
@@ -55,7 +55,7 @@
     <div class="product-price-block">
         <span class="badge neutral">{{ $item->status->label() }}</span>
         <div class="product-price">
-            @if ($comparePrice)
+            @if ($comparePrice && $comparePrice > $primaryPrice)
                 <span class="old-price">{{ $tenant->currency_code }} {{ $money($comparePrice) }}</span>
             @endif
             {{ $tenant->currency_code }} {{ $money($primaryPrice) }}

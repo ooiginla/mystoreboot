@@ -79,6 +79,7 @@ final class PostJournalEntryAction
                 $entry->lines()->create([
                     'tenant_id' => $tenantId,
                     'finance_account_id' => $account->id,
+                    'branch_id' => $line['branch_id'] ?? null,
                     'party_type' => $line['party_type'] ?? null,
                     'party_id' => $line['party_id'] ?? null,
                     'debit_minor' => $line['debit_minor'],

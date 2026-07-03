@@ -8,6 +8,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Access\Models\Role;
+use Modules\Finance\Models\FinanceAccount;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Plan;
 use Modules\Subscriptions\Models\TenantSubscription;
@@ -37,6 +38,20 @@ final class SaveBusinessProfileAction
                 $logoPath = $data['logo']->store("tenants/{$tenant->id}/business/logos", 'public');
             }
 
+            $bankDetails = $this->normalizeBankDetails($data['bank_details'] ?? []);
+
+            $settings = array_merge($tenant->settings ?? [], [
+                'brand_color' => $data['brand_color'] ?? null,
+                'payment_methods' => $this->normalizePaymentMethods($data['payment_methods'] ?? null),
+                'bank_details' => $bankDetails,
+                'maintenance_mode' => (bool) ($data['maintenance_mode'] ?? false),
+            ]);
+            unset($settings['seo']);
+
+            if (array_key_exists('use_estimated_cost_for_cogs', $data)) {
+                $settings['use_estimated_cost_for_cogs'] = (bool) $data['use_estimated_cost_for_cogs'];
+            }
+
             $tenant->fill([
                 'name' => $data['name'],
                 'slug' => $tenant->exists ? $tenant->slug : $this->uniqueSlug((string) ($data['slug'] ?: $data['name'])),
@@ -53,15 +68,15 @@ final class SaveBusinessProfileAction
                 'tax_identifier' => $data['tax_identifier'] ?? null,
                 'default_tax_rate' => $data['default_tax_rate'],
                 'opening_hours' => $this->normalizeOpeningHours($data['opening_hours'] ?? []),
-                'settings' => array_merge($tenant->settings ?? [], [
-                    'brand_color' => $data['brand_color'] ?? null,
-                    'payment_methods' => $this->normalizePaymentMethods($data['payment_methods'] ?? null),
-                    'bank_details' => $this->normalizeBankDetails($data['bank_details'] ?? []),
-                    'seo' => $this->normalizeSeo($data['seo'] ?? []),
-                    'maintenance_mode' => (bool) ($data['maintenance_mode'] ?? false),
-                ]),
+                'settings' => $settings,
             ]);
 
+            $tenant->save();
+
+            $bankDetails = $this->ensureBankDetailAssetAccounts($tenant, $bankDetails);
+            $tenant->settings = array_merge($tenant->settings ?? [], [
+                'bank_details' => $bankDetails,
+            ]);
             $tenant->save();
 
             if (! $tenant->roles()->exists()) {
@@ -78,7 +93,7 @@ final class SaveBusinessProfileAction
 
     /**
      * @param  array<int, array<string, mixed>>  $bankDetails
-     * @return list<array{bank_name: string, account_name: string, account_number: string, status: string}>
+     * @return list<array{bank_name: string, account_name: string, account_number: string, status: string, asset_account_code: string|null}>
      */
     private function normalizeBankDetails(array $bankDetails): array
     {
@@ -89,23 +104,93 @@ final class SaveBusinessProfileAction
                 'account_name' => trim((string) ($account['account_name'] ?? '')),
                 'account_number' => trim((string) $account['account_number']),
                 'status' => in_array(($account['status'] ?? 'active'), ['active', 'inactive'], true) ? (string) ($account['status'] ?? 'active') : 'active',
+                'asset_account_code' => trim((string) ($account['asset_account_code'] ?? '')) ?: null,
             ])
             ->values()
             ->all();
     }
 
     /**
-     * @param  array<string, mixed>  $seo
-     * @return array<string, string|null>
+     * @param  list<array{bank_name: string, account_name: string, account_number: string, status: string, asset_account_code: string|null}>  $bankDetails
+     * @return list<array{bank_name: string, account_name: string, account_number: string, status: string, asset_account_code: string}>
      */
-    private function normalizeSeo(array $seo): array
+    private function ensureBankDetailAssetAccounts(Tenant $tenant, array $bankDetails): array
     {
-        return [
-            'meta_title' => $seo['meta_title'] ?? null,
-            'meta_description' => $seo['meta_description'] ?? null,
-            'privacy_policy_url' => $seo['privacy_policy_url'] ?? null,
-            'terms_url' => $seo['terms_url'] ?? null,
-        ];
+        return collect($bankDetails)
+            ->map(function (array $account) use ($tenant): array {
+                $financeAccount = $this->existingBankFinanceAccount($tenant->id, $account['asset_account_code']);
+
+                if (! $financeAccount) {
+                    $financeAccount = FinanceAccount::query()->create([
+                        'tenant_id' => $tenant->id,
+                        'code' => $this->nextBankAssetAccountCode($tenant->id),
+                        'name' => $this->bankAssetAccountName($account),
+                        'type' => 'asset',
+                        'category' => 'Current Assets',
+                        'description' => 'Business bank account used to hold cash and receive payments.',
+                        'normal_balance' => 'debit',
+                        'is_system' => false,
+                        'is_active' => $account['status'] === 'active',
+                    ]);
+                } else {
+                    $financeAccount->fill([
+                        'name' => $this->bankAssetAccountName($account),
+                        'type' => 'asset',
+                        'category' => 'Current Assets',
+                        'description' => 'Business bank account used to hold cash and receive payments.',
+                        'normal_balance' => 'debit',
+                        'is_active' => $account['status'] === 'active',
+                    ])->save();
+                }
+
+                $account['asset_account_code'] = $financeAccount->code;
+
+                return $account;
+            })
+            ->values()
+            ->all();
+    }
+
+    private function existingBankFinanceAccount(string $tenantId, ?string $code): ?FinanceAccount
+    {
+        if (! $code) {
+            return null;
+        }
+
+        return FinanceAccount::query()
+            ->where('tenant_id', $tenantId)
+            ->where('code', $code)
+            ->where('type', 'asset')
+            ->first();
+    }
+
+    private function nextBankAssetAccountCode(string $tenantId): string
+    {
+        $numbers = FinanceAccount::query()
+            ->where('tenant_id', $tenantId)
+            ->where('code', 'like', 'BANK-%')
+            ->pluck('code')
+            ->map(fn (string $code): int => (int) preg_replace('/\D+/', '', $code))
+            ->filter(fn (int $number): bool => $number > 0);
+
+        $next = max(1000, (int) ($numbers->max() ?? 1000)) + 1;
+
+        do {
+            $code = 'BANK-'.$next;
+            $next++;
+        } while (FinanceAccount::query()->where('tenant_id', $tenantId)->where('code', $code)->exists());
+
+        return $code;
+    }
+
+    /**
+     * @param  array{bank_name: string, account_name: string, account_number: string}  $account
+     */
+    private function bankAssetAccountName(array $account): string
+    {
+        $accountName = $account['account_name'] !== '' ? $account['account_name'].' - ' : '';
+
+        return trim($accountName.$account['bank_name'].' ('.$account['account_number'].')');
     }
 
     /**

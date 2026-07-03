@@ -6,8 +6,6 @@
 
     $money = fn (?int $minor): string => number_format(($minor ?? 0) / 100, 2);
     $imageUrl = fn (?string $path): ?string => $path ? '/storage/'.ltrim($path, '/') : null;
-    $productItems = $products->where('product_type', ProductType::Product);
-    $serviceItems = $products->where('product_type', ProductType::Service);
 @endphp
 
 <x-layouts.admin title="Product & Services">
@@ -30,6 +28,26 @@
         .product-price-block { display: flex; align-items: center; gap: 12px; }
         .product-price { min-width: 104px; text-align: right; font-size: 18px; font-weight: 850; color: #101828; }
         .old-price { display: block; color: #667085; font-size: 13px; font-weight: 650; text-decoration: line-through; }
+        .dialog-local-tabs { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+        .dialog-local-tabs a { border: 1px solid var(--line); border-radius: 999px; background: #fff; padding: 8px 12px; color: #344054; font-size: 13px; font-weight: 850; }
+        .dialog-local-tabs a.active { border-color: var(--accent); background: #eff6ff; color: var(--accent-dark); }
+        [data-local-tab-panel] { margin-top: 14px; }
+        .catalog-profit-summary { grid-column: 1 / -1; display: flex; gap: 18px; flex-wrap: wrap; border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; color: #344054; padding: 10px 12px; font-size: 14px; font-weight: 750; }
+        .catalog-profit-summary strong { color: #1d4ed8; }
+        .catalog-image-uploader { border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgba(16,24,40,.04); overflow: hidden; }
+        .catalog-image-uploader-header { padding: 18px 20px; border-bottom: 1px dashed var(--line); }
+        .catalog-image-uploader-header h3 { margin: 0; color: #344054; font-size: 18px; }
+        .catalog-image-uploader-header p { margin: 8px 0 0; color: #98a2b3; font-size: 15px; }
+        .catalog-drop-zone { margin: 20px; min-height: 260px; border: 2px dashed #d9dee7; border-radius: 8px; background: #fff; display: grid; place-items: center; align-content: center; gap: 14px; text-align: center; cursor: pointer; color: #475467; padding: 28px; }
+        .catalog-drop-zone.dragging { border-color: var(--accent); background: #eff6ff; }
+        .catalog-drop-zone input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; pointer-events: none; }
+        .catalog-upload-icon { width: 54px; height: 54px; border-radius: 999px; display: grid; place-items: center; background: #e0f2fe; color: #38bdf8; font-size: 30px; font-weight: 900; }
+        .catalog-drop-zone strong { color: #344054; font-size: 20px; }
+        .catalog-drop-zone span:not(.catalog-upload-icon):not(.catalog-browse-button) { color: #98a2b3; font-size: 15px; }
+        .catalog-browse-button { border: 1px solid #d0d5dd; border-radius: 6px; background: #fff; color: #344054; padding: 8px 14px; font-weight: 750; box-shadow: 0 1px 2px rgba(16,24,40,.08); }
+        .catalog-current-images, .catalog-selected-images { margin: 0 20px 20px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .catalog-current-images img { width: 86px; height: 70px; object-fit: cover; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
+        .catalog-selected-images span { border: 1px solid #d0d5dd; border-radius: 999px; background: #f8fafc; padding: 6px 10px; color: #344054; font-size: 13px; font-weight: 750; }
         .drawer { width: min(720px, calc(100vw - 24px)); max-width: none; height: 100vh; max-height: 100vh; margin: 0 0 0 auto; border: 0; padding: 0; border-radius: 8px 0 0 8px; box-shadow: -24px 0 60px rgba(16,24,40,.22); }
         .drawer::backdrop { background: rgba(16,24,40,.42); backdrop-filter: blur(2px); }
         .drawer-header { padding: 22px 24px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; align-items: start; }
@@ -47,6 +65,23 @@
         .check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
         .inline-check { display: inline-flex; gap: 8px; align-items: center; color: #344054; font-weight: 750; }
         .inline-check input { width: auto; min-width: 16px; height: 16px; }
+        .catalog-inline-box { border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; padding: 12px; display: grid; gap: 12px; }
+        .catalog-inline-create { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 10px; }
+        .catalog-inline-heading { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+        .catalog-inline-add-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+        .catalog-radio-row { display: flex; gap: 16px; flex-wrap: wrap; }
+        .catalog-variant-editor { margin-top: 16px; }
+        .catalog-attribute-panel { padding: 0; overflow: hidden; }
+        .catalog-attribute-toggle { width: 100%; border: 0; background: #eef4ff; color: #101828; padding: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; text-align: left; font-weight: 800; }
+        .catalog-attribute-toggle:hover { background: #e0ebff; }
+        .catalog-attribute-chevron { display: inline-grid; place-items: center; width: 18px; height: 18px; color: #2563eb; font-size: 22px; line-height: 1; transition: transform .16s ease; }
+        .catalog-attribute-toggle[aria-expanded="true"] .catalog-attribute-chevron { transform: rotate(90deg); }
+        .catalog-attribute-toggle-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; background: #eef4ff; }
+        .catalog-attribute-toggle-row .catalog-attribute-toggle { background: transparent; }
+        .catalog-attribute-toggle-row .btn.danger { align-self: center; margin-right: 8px; }
+        .catalog-attribute-body { padding: 12px; display: grid; gap: 10px; }
+        .btn.inline-add { background: #2563eb; color: #fff; border: 1px solid #1d4ed8; padding-inline: 16px; }
+        .btn.inline-add:hover { background: #1d4ed8; }
         .category-type-pill { text-transform: capitalize; }
         .catalog-row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
         @media (max-width: 900px) {
@@ -56,6 +91,7 @@
             .product-price { text-align: left; }
             .variant-grid { grid-template-columns: 1fr; }
             .check-grid { grid-template-columns: 1fr; }
+            .catalog-inline-add-row { grid-template-columns: 1fr; }
             .detail-grid { grid-template-columns: 1fr; }
         }
     </style>
@@ -107,6 +143,7 @@
             <a href="#categories" role="tab" data-tab-target="categories">Categories <span class="badge neutral">{{ $categories->count() }}</span></a>
             <a href="#tags" role="tab" data-tab-target="tags">Tags <span class="badge neutral">{{ $tags->count() }}</span></a>
             <a href="#attributes" role="tab" data-tab-target="attributes">Attributes <span class="badge neutral">{{ $attributes->count() }}</span></a>
+            <a href="#taxes" role="tab" data-tab-target="taxes">Taxes <span class="badge neutral">{{ $taxes->count() }}</span></a>
         </nav>
 
         <div class="content-stack">
@@ -138,6 +175,11 @@
                         @endforelse
                         <div class="empty" data-catalog-empty="products" hidden>No products match this filter.</div>
                     </div>
+                    @if ($productItems->hasPages())
+                        <div style="margin-top: 14px;">
+                            {{ $productItems->links() }}
+                        </div>
+                    @endif
                 </div>
             </section>
 
@@ -169,6 +211,11 @@
                         @endforelse
                         <div class="empty" data-catalog-empty="services" hidden>No services match this filter.</div>
                     </div>
+                    @if ($serviceItems->hasPages())
+                        <div style="margin-top: 14px;">
+                            {{ $serviceItems->links() }}
+                        </div>
+                    @endif
                 </div>
             </section>
 
@@ -249,6 +296,39 @@
                             </div>
                         @empty
                             <div class="empty">No attributes yet. Add attributes before assigning product details.</div>
+                        @endforelse
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel tab-panel" id="taxes" role="tabpanel" data-tab-panel hidden>
+                <div class="panel-header">
+                    <div>
+                        <h2 class="panel-title">Taxes</h2>
+                        <p class="subtle">Reusable tax rates that can be applied to products and services.</p>
+                    </div>
+                    <button class="btn accent" type="button" data-dialog-open="tax-dialog">Add tax</button>
+                </div>
+                <div class="panel-body">
+                    <div class="list">
+                        @forelse ($taxes as $tax)
+                            <div class="item">
+                                <div>
+                                    <div class="item-title">{{ $tax->name }} - {{ $tax->rate }}%</div>
+                                    <div class="subtle">{{ $tax->description ?: $tax->slug }}</div>
+                                </div>
+                                <div class="catalog-row-actions">
+                                    <span class="badge {{ $tax->is_active ? 'success' : 'neutral' }}">{{ $tax->is_active ? 'Active' : 'Inactive' }}</span>
+                                    <button class="btn secondary" type="button" data-dialog-open="tax-edit-{{ $tax->id }}">Edit</button>
+                                    <form method="POST" action="{{ route('admin.catalog.taxes.destroy', $tax) }}" onsubmit="return confirm('Delete this tax? Products using it will no longer have this tax applied.');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button class="btn danger" type="submit">Delete</button>
+                                    </form>
+                                </div>
+                            </div>
+                        @empty
+                            <div class="empty">No taxes yet. Add taxes before applying them to products.</div>
                         @endforelse
                     </div>
                 </div>
@@ -435,6 +515,65 @@
         </dialog>
     @endforeach
 
+    <dialog class="dialog" id="tax-dialog">
+        <div class="dialog-header">
+            <div>
+                <h2 class="panel-title">Add tax</h2>
+                <p class="subtle">Create a reusable tax rate.</p>
+            </div>
+            <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
+        </div>
+        <div class="dialog-body">
+            <form class="mini-form" method="POST" action="{{ route('admin.catalog.taxes.store') }}">
+                @csrf
+                <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                <input type="hidden" name="is_active" value="0">
+                <div class="form-grid">
+                    <div class="field"><label>Name</label><input name="name" placeholder="VAT" required></div>
+                    <div class="field"><label>Slug</label><input name="slug" placeholder="auto-generated"></div>
+                    <div class="field"><label>Rate (%)</label><input name="rate" type="number" step="0.01" min="0" max="100" required></div>
+                    <label class="inline-check" style="align-self: end;"><input type="checkbox" name="is_active" value="1" checked> Active</label>
+                    <div class="field full"><label>Description</label><textarea name="description" placeholder="Applies to taxable retail products."></textarea></div>
+                </div>
+                <div class="button-row">
+                    <button class="btn secondary" type="button" data-dialog-close>Cancel</button>
+                    <button class="btn primary" type="submit">Save tax</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    @foreach ($taxes as $tax)
+        <dialog class="dialog" id="tax-edit-{{ $tax->id }}">
+            <div class="dialog-header">
+                <div>
+                    <h2 class="panel-title">Edit tax</h2>
+                    <p class="subtle">Update this reusable tax rate.</p>
+                </div>
+                <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
+            </div>
+            <div class="dialog-body">
+                <form class="mini-form" method="POST" action="{{ route('admin.catalog.taxes.update', $tax) }}">
+                    @csrf
+                    @method('PUT')
+                    <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                    <input type="hidden" name="is_active" value="0">
+                    <div class="form-grid">
+                        <div class="field"><label>Name</label><input name="name" value="{{ $tax->name }}" required></div>
+                        <div class="field"><label>Slug</label><input name="slug" value="{{ $tax->slug }}"></div>
+                        <div class="field"><label>Rate (%)</label><input name="rate" type="number" step="0.01" min="0" max="100" value="{{ $tax->rate }}" required></div>
+                        <label class="inline-check" style="align-self: end;"><input type="checkbox" name="is_active" value="1" @checked($tax->is_active)> Active</label>
+                        <div class="field full"><label>Description</label><textarea name="description">{{ $tax->description }}</textarea></div>
+                    </div>
+                    <div class="button-row">
+                        <button class="btn secondary" type="button" data-dialog-close>Cancel</button>
+                        <button class="btn primary" type="submit">Save tax</button>
+                    </div>
+                </form>
+            </div>
+        </dialog>
+    @endforeach
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             function applyCatalogFilter(scope) {
@@ -493,19 +632,145 @@
                 filterParents();
             });
 
-            document.querySelectorAll('[data-variant-toggle]').forEach((toggle) => {
-                const form = toggle.closest('form');
+            const moneyValue = (value) => {
+                const parsed = parseFloat((value || '').toString().replace(/,/g, ''));
+
+                return Number.isFinite(parsed) ? parsed : null;
+            };
+
+            const formatCatalogMoney = (value) => {
+                return '{{ $tenant->currency_code }} ' + value.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                });
+            };
+
+            const syncProfitSummary = (form) => {
+                const sellingInput = form?.querySelector('input[name="base_price"]');
+                const costInput = form?.querySelector('input[name="base_cost_price"]');
+                const summary = form?.querySelector('[data-profit-summary]');
+                const profitValue = form?.querySelector('[data-profit-value]');
+                const marginValue = form?.querySelector('[data-margin-value]');
+                const selling = moneyValue(sellingInput?.value);
+                const cost = moneyValue(costInput?.value);
+
+                if (!summary || !profitValue || !marginValue) return;
+
+                if (selling === null || cost === null || selling <= 0) {
+                    summary.hidden = true;
+                    return;
+                }
+
+                const profit = selling - cost;
+                const margin = (profit / selling) * 100;
+
+                profitValue.textContent = formatCatalogMoney(profit);
+                marginValue.textContent = `${margin.toFixed(2)}%`;
+                summary.hidden = false;
+            };
+
+            document.querySelectorAll('form').forEach((form) => {
+                const sellingInput = form.querySelector('input[name="base_price"]');
+                const costInput = form.querySelector('input[name="base_cost_price"]');
+
+                if (!sellingInput || !costInput) return;
+
+                sellingInput.addEventListener('input', () => syncProfitSummary(form));
+                costInput.addEventListener('input', () => syncProfitSummary(form));
+                sellingInput.addEventListener('blur', () => syncProfitSummary(form));
+                costInput.addEventListener('blur', () => syncProfitSummary(form));
+                syncProfitSummary(form);
+            });
+
+            document.querySelectorAll('form').forEach((form) => {
+                const taxBehavior = form.querySelector('[data-tax-behavior-select]');
+                const taxList = form.querySelector('[data-tax-list-field]');
+
+                if (!taxBehavior || !taxList) return;
+
+                const syncTaxes = () => {
+                    const taxable = taxBehavior.value === 'taxable';
+                    taxList.hidden = !taxable;
+
+                    taxList.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+                        checkbox.disabled = !taxable || checkbox.dataset.inactive === '1';
+                        if (!taxable) checkbox.checked = false;
+                    });
+                };
+
+                taxBehavior.addEventListener('change', syncTaxes);
+                syncTaxes();
+            });
+
+            const syncProductImageList = (input) => {
+                const uploader = input.closest('[data-product-image-uploader]');
+                const list = uploader?.querySelector('[data-product-image-list]');
+                const files = Array.from(input.files || []);
+
+                if (!list) return;
+
+                list.innerHTML = '';
+                list.hidden = files.length === 0;
+                files.forEach((file) => {
+                    const item = document.createElement('span');
+                    item.textContent = file.name;
+                    list.appendChild(item);
+                });
+            };
+
+            document.querySelectorAll('[data-product-image-uploader]').forEach((uploader) => {
+                const input = uploader.querySelector('[data-product-image-input]');
+                const dropZone = uploader.querySelector('[data-product-image-drop-zone]');
+
+                if (!input || !dropZone) return;
+
+                input.addEventListener('change', () => syncProductImageList(input));
+
+                ['dragenter', 'dragover'].forEach((eventName) => {
+                    dropZone.addEventListener(eventName, (event) => {
+                        event.preventDefault();
+                        dropZone.classList.add('dragging');
+                    });
+                });
+
+                ['dragleave', 'drop'].forEach((eventName) => {
+                    dropZone.addEventListener(eventName, (event) => {
+                        event.preventDefault();
+                        dropZone.classList.remove('dragging');
+                    });
+                });
+
+                dropZone.addEventListener('drop', (event) => {
+                    const images = Array.from(event.dataTransfer?.files || [])
+                        .filter((file) => file.type.startsWith('image/'));
+
+                    if (!images.length) return;
+
+                    const transfer = new DataTransfer();
+                    Array.from(input.files || []).forEach((file) => transfer.items.add(file));
+                    images.forEach((file) => transfer.items.add(file));
+                    input.files = transfer.files;
+                    syncProductImageList(input);
+                });
+            });
+
+            document.querySelectorAll('form').forEach((form) => {
+                const toggles = Array.from(form.querySelectorAll('[data-variant-toggle]'));
                 const editor = form?.querySelector('[data-variant-editor]');
                 const simpleFields = form ? Array.from(form.querySelectorAll('[data-simple-variant-field]')) : [];
 
+                if (!toggles.length) return;
+
                 function syncVariantMode() {
-                    if (editor) editor.hidden = !toggle.checked;
+                    const hasVariants = form.querySelector('[data-variant-toggle]:checked')?.value === '1';
+
+                    if (editor) editor.hidden = !hasVariants;
                     simpleFields.forEach((field) => {
-                        field.hidden = toggle.checked;
+                        field.hidden = hasVariants;
                     });
                 }
 
-                toggle.addEventListener('change', syncVariantMode);
+                toggles.forEach((toggle) => toggle.addEventListener('change', syncVariantMode));
                 syncVariantMode();
             });
 
@@ -553,6 +818,243 @@
 
                     list.appendChild(row);
                 });
+            });
+
+            const showLocalPanelForField = (field) => {
+                const panel = field.closest('[data-local-tab-panel]');
+                const dialog = field.closest('dialog');
+
+                if (!panel || !dialog) return;
+
+                dialog.querySelectorAll('[data-local-tab-panel]').forEach((item) => {
+                    item.hidden = item !== panel;
+                });
+
+                dialog.querySelectorAll('[data-local-tab-target]').forEach((item) => {
+                    item.classList.toggle('active', item.dataset.localTabTarget === panel.id);
+                });
+            };
+
+            document.addEventListener('invalid', (event) => {
+                const field = event.target.closest('input, select, textarea');
+
+                if (!field) return;
+
+                showLocalPanelForField(field);
+            }, true);
+
+            const splitInlineValues = (value) => {
+                return (value || '')
+                    .split(',')
+                    .map((item) => item.trim())
+                    .filter(Boolean)
+                    .filter((item, index, items) => items.findIndex((value) => value.toLowerCase() === item.toLowerCase()) === index);
+            };
+
+            const hiddenInputForPendingList = (list) => {
+                const form = list?.closest('form');
+
+                if (!list || !form) return null;
+
+                if (list.hasAttribute('data-inline-tag-list')) {
+                    return form.querySelector('[data-inline-tags-value]');
+                }
+
+                if (list.hasAttribute('data-inline-attribute-value-list')) {
+                    const attributeId = list.getAttribute('data-inline-attribute-value-list');
+
+                    return form.querySelector(`[data-inline-attribute-values="${attributeId}"]`);
+                }
+
+                return list.closest('[data-new-attribute-row]')?.querySelector('input[name$="[values]"]') || null;
+            };
+
+            const syncPendingHiddenInput = (list) => {
+                const hiddenInput = hiddenInputForPendingList(list);
+
+                if (!hiddenInput) return;
+
+                hiddenInput.value = Array.from(list.querySelectorAll('[data-inline-pending-value]:checked'))
+                    .map((field) => field.dataset.inlinePendingValue)
+                    .filter(Boolean)
+                    .join(', ');
+            };
+
+            const appendInlineCheck = (list, value) => {
+                if (!list || !value) return;
+
+                const exists = Array.from(list.querySelectorAll('.inline-check'))
+                    .some((item) => item.textContent.trim().toLowerCase() === value.toLowerCase());
+
+                if (exists) return;
+
+                list.querySelectorAll('.subtle').forEach((item) => item.remove());
+
+                const label = document.createElement('label');
+                label.className = 'inline-check';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = true;
+                checkbox.dataset.inlinePendingValue = value;
+
+                label.appendChild(checkbox);
+                label.append(` ${value}`);
+                list.appendChild(label);
+            };
+
+            const addInlineTags = (button) => {
+                const form = button.closest('form');
+                const input = form?.querySelector('[data-inline-tag-input]');
+                const list = form?.querySelector('[data-inline-tag-list]');
+                const values = splitInlineValues(input?.value);
+
+                if (!values.length) return;
+
+                values.forEach((value) => appendInlineCheck(list, value));
+                syncPendingHiddenInput(list);
+                input.value = '';
+                input.focus();
+            };
+
+            const addInlineAttributeValues = (button) => {
+                const attributeId = button.dataset.addInlineAttributeValue;
+                const form = button.closest('form');
+                const input = form?.querySelector(`[data-inline-attribute-value-input="${attributeId}"]`);
+                const list = form?.querySelector(`[data-inline-attribute-value-list="${attributeId}"]`);
+                const values = splitInlineValues(input?.value);
+
+                if (!values.length) return;
+
+                values.forEach((value) => appendInlineCheck(list, value));
+                syncPendingHiddenInput(list);
+                input.value = '';
+                input.focus();
+            };
+
+            const addInlineAttribute = (button) => {
+                const wrapper = button.closest('[data-new-attribute-list]');
+                const nameInput = wrapper?.querySelector('[data-new-attribute-name]');
+                const valuesInput = wrapper?.querySelector('[data-new-attribute-values]');
+                const list = wrapper?.closest('[data-inline-attributes]')?.querySelector('[data-added-inline-attribute-list]');
+                const name = nameInput?.value.trim() || '';
+                const values = splitInlineValues(valuesInput?.value);
+
+                if (!wrapper || !list || !name || !values.length) return;
+
+                const existing = Array.from(list.querySelectorAll('[data-new-attribute-row] strong'))
+                    .some((item) => item.textContent.trim().toLowerCase() === name.toLowerCase());
+
+                if (existing) return;
+
+                const index = `${Date.now()}${list.querySelectorAll('[data-new-attribute-row]').length}`;
+                const row = document.createElement('div');
+                row.className = 'variant-row-editor catalog-attribute-panel';
+                row.dataset.attributePanel = '';
+                row.dataset.newAttributeRow = '';
+
+                const hiddenName = document.createElement('input');
+                hiddenName.type = 'hidden';
+                hiddenName.name = `new_attributes[${index}][name]`;
+                hiddenName.value = name;
+
+                const hiddenValues = document.createElement('input');
+                hiddenValues.type = 'hidden';
+                hiddenValues.name = `new_attributes[${index}][values]`;
+                hiddenValues.value = values.join(', ');
+
+                const header = document.createElement('div');
+                header.className = 'catalog-attribute-toggle-row';
+
+                const toggle = document.createElement('button');
+                toggle.className = 'catalog-attribute-toggle';
+                toggle.type = 'button';
+                toggle.dataset.attributeToggle = '';
+                toggle.setAttribute('aria-expanded', 'true');
+
+                const chevron = document.createElement('span');
+                chevron.className = 'catalog-attribute-chevron';
+                chevron.textContent = '›';
+
+                const title = document.createElement('strong');
+                title.textContent = name;
+
+                toggle.append(chevron, title);
+
+                const remove = document.createElement('button');
+                remove.className = 'btn danger';
+                remove.type = 'button';
+                remove.dataset.removeInlineAttribute = '';
+                remove.textContent = 'Remove';
+                header.append(toggle, remove);
+
+                const body = document.createElement('div');
+                body.className = 'catalog-attribute-body';
+                body.dataset.attributeBody = '';
+                const valueList = document.createElement('div');
+                valueList.className = 'check-grid';
+                values.forEach((value) => appendInlineCheck(valueList, value));
+                hiddenValues.value = values.join(', ');
+                body.appendChild(valueList);
+
+                row.append(hiddenName, hiddenValues, header, body);
+                list.appendChild(row);
+                nameInput.value = '';
+                valuesInput.value = '';
+                nameInput.focus();
+            };
+
+            document.querySelectorAll('[data-inline-add-input]').forEach((input) => {
+                input.addEventListener('keydown', (event) => {
+                    if (event.key !== 'Enter') return;
+
+                    event.preventDefault();
+                    const field = event.target;
+                    const form = field.closest('form');
+
+                    if (field.matches('[data-inline-tag-input]')) {
+                        addInlineTags(form?.querySelector('[data-add-inline-tag]'));
+                    } else if (field.matches('[data-inline-attribute-value-input]')) {
+                        const attributeId = field.getAttribute('data-inline-attribute-value-input');
+                        addInlineAttributeValues(form?.querySelector(`[data-add-inline-attribute-value="${attributeId}"]`));
+                    } else if (field.matches('[data-new-attribute-name], [data-new-attribute-values]')) {
+                        addInlineAttribute(field.closest('[data-new-attribute-list]')?.querySelector('[data-add-inline-attribute]'));
+                    }
+                });
+            });
+
+            document.querySelectorAll('[data-add-inline-tag]').forEach((button) => {
+                button.addEventListener('click', () => addInlineTags(button));
+            });
+
+            document.querySelectorAll('[data-add-inline-attribute-value]').forEach((button) => {
+                button.addEventListener('click', () => addInlineAttributeValues(button));
+            });
+
+            document.querySelectorAll('[data-add-inline-attribute]').forEach((button) => {
+                button.addEventListener('click', () => addInlineAttribute(button));
+            });
+
+            document.addEventListener('click', (event) => {
+                const toggle = event.target.closest('[data-attribute-toggle]');
+
+                if (!toggle) return;
+
+                const panel = toggle.closest('[data-attribute-panel]');
+                const body = panel?.querySelector('[data-attribute-body]');
+                const expanded = toggle.getAttribute('aria-expanded') === 'true';
+
+                toggle.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+
+                if (body) {
+                    body.hidden = expanded;
+                }
+            });
+
+            document.addEventListener('change', (event) => {
+                if (!event.target.matches('[data-inline-pending-value]')) return;
+
+                syncPendingHiddenInput(event.target.closest('.check-grid'));
             });
 
             document.querySelectorAll('[data-generate-variants]').forEach((button) => {
@@ -609,13 +1111,13 @@
                         const nameInput = row.querySelector('input[name$="[variant_name]"]');
                         const sellingPriceInput = row.querySelector('input[name$="[selling_price]"]');
                         const costPriceInput = row.querySelector('input[name$="[cost_price]"]');
-                        const discountPriceInput = row.querySelector('input[name$="[discount_price]"]');
+                        const compareAtPriceInput = row.querySelector('input[name$="[compare_at_price]"]');
 
                         if (signatureInput) signatureInput.value = signature;
                         if (nameInput) nameInput.value = variantName;
                         if (sellingPriceInput) sellingPriceInput.value = form.querySelector('input[name="base_price"]')?.value || '';
                         if (costPriceInput) costPriceInput.value = form.querySelector('input[name="base_cost_price"]')?.value || '';
-                        if (discountPriceInput) discountPriceInput.value = form.querySelector('input[name="discount_price"]')?.value || '';
+                        if (compareAtPriceInput) compareAtPriceInput.value = form.querySelector('input[name="compare_at_price"]')?.value || '';
 
                         variantList.appendChild(row);
                         existingSignatures.add(signature);
@@ -645,6 +1147,15 @@
                         row.remove();
                     } else if (row) {
                         row.querySelectorAll('input').forEach((field) => field.value = '');
+                    }
+                }
+
+                const removeInlineAttributeButton = event.target.closest('[data-remove-inline-attribute]');
+                if (removeInlineAttributeButton) {
+                    const row = removeInlineAttributeButton.closest('[data-new-attribute-row]');
+
+                    if (row) {
+                        row.remove();
                     }
                 }
 

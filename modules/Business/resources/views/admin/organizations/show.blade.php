@@ -2,7 +2,6 @@
     $settings = $tenant->settings ?? [];
     $paymentMethods = collect($settings['payment_methods'] ?? []);
     $bankDetails = collect($settings['bank_details'] ?? []);
-    $seo = $settings['seo'] ?? [];
     $openingHours = collect($tenant->opening_hours ?? []);
     $days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 @endphp
@@ -90,25 +89,15 @@
                 <div class="profile-section">
                     <h3 class="profile-section-title">Bank details</h3>
                     <table class="table">
-                        <thead><tr><th>Bank</th><th>Account name</th><th>Account number</th><th>Status</th></tr></thead>
+                        <thead><tr><th>Bank</th><th>Account name</th><th>Account number</th><th>Asset code</th><th>Status</th></tr></thead>
                         <tbody>
                             @forelse ($bankDetails as $account)
-                                <tr><td>{{ $account['bank_name'] ?? 'Not set' }}</td><td>{{ $account['account_name'] ?? 'Not set' }}</td><td>{{ $account['account_number'] ?? 'Not set' }}</td><td>{{ ucfirst($account['status'] ?? 'active') }}</td></tr>
+                                <tr><td>{{ $account['bank_name'] ?? 'Not set' }}</td><td>{{ $account['account_name'] ?? 'Not set' }}</td><td>{{ $account['account_number'] ?? 'Not set' }}</td><td>{{ $account['asset_account_code'] ?? 'Not set' }}</td><td>{{ ucfirst($account['status'] ?? 'active') }}</td></tr>
                             @empty
-                                <tr><td colspan="4"><div class="empty">No bank account has been added.</div></td></tr>
+                                <tr><td colspan="5"><div class="empty">No bank account has been added.</div></td></tr>
                             @endforelse
                         </tbody>
                     </table>
-                </div>
-
-                <div class="profile-section">
-                    <h3 class="profile-section-title">SEO and policy links</h3>
-                    <div class="form-grid">
-                        <div><span class="subtle">Meta title</span><br><strong>{{ $seo['meta_title'] ?? 'Not set' }}</strong></div>
-                        <div><span class="subtle">Privacy policy URL</span><br><strong>{{ $seo['privacy_policy_url'] ?? 'Not set' }}</strong></div>
-                        <div><span class="subtle">Terms & Conditions URL</span><br><strong>{{ $seo['terms_url'] ?? 'Not set' }}</strong></div>
-                        <div class="field full"><span class="subtle">Meta description</span><br><strong>{{ $seo['meta_description'] ?? 'Not set' }}</strong></div>
-                    </div>
                 </div>
 
                 <div class="profile-section">

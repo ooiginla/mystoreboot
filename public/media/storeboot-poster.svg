@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="720" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0a1712"/>
+      <stop offset="0.55" stop-color="#085f39"/>
+      <stop offset="1" stop-color="#050f0b"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="560" y1="300" x2="720" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22dd85"/>
+      <stop offset="1" stop-color="#009a53"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <g opacity="0.5" stroke="#ffffff" stroke-opacity="0.06">
+    <path d="M0 120H1280M0 240H1280M0 360H1280M0 480H1280M0 600H1280"/>
+    <path d="M160 0V720M320 0V720M480 0V720M640 0V720M800 0V720M960 0V720M1120 0V720"/>
+  </g>
+  <circle cx="640" cy="360" r="70" fill="url(#tile)" opacity="0.95"/>
+  <path d="M620 330 L676 360 L620 390 Z" fill="#ffffff"/>
+  <text x="640" y="470" font-family="'Space Grotesk', sans-serif" font-size="34" font-weight="700" fill="#ffffff" text-anchor="middle">Storeboot — Product Tour</text>
+  <text x="640" y="510" font-family="'Plus Jakarta Sans', sans-serif" font-size="20" fill="#c2f75a" text-anchor="middle" opacity="0.85">Run your whole business from one place</text>
+</svg>

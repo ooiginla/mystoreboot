@@ -9,6 +9,9 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
@@ -32,6 +35,8 @@ use Modules\Sales\Http\Requests\SalesReturnRequest;
 use Modules\Sales\Http\Requests\TillCloseRequest;
 use Modules\Sales\Http\Requests\TillMovementRequest;
 use Modules\Sales\Http\Requests\TillOpenRequest;
+use Modules\Sales\Models\OnlineCollectedPayment;
+use Modules\Sales\Models\OnlinePaymentSettlement;
 use Modules\Sales\Models\SalesCoupon;
 use Modules\Sales\Models\SalesCashLocation;
 use Modules\Sales\Models\SalesOrder;
@@ -70,7 +75,7 @@ final class SalesController extends Controller
             ->get();
         $customers = Customer::query()->where('tenant_id', $tenant->id)->orderBy('first_name')->get();
         $variants = ProductVariant::query()
-            ->with(['product', 'product.category'])
+            ->with(['product', 'product.category', 'product.taxes'])
             ->where('tenant_id', $tenant->id)
             ->whereHas('product', fn ($query) => $query->where('product_type', ProductType::Product->value))
             ->orderBy('sku')
@@ -149,6 +154,392 @@ final class SalesController extends Controller
         return redirect()->to(route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Payment recorded for {$order->order_number}.");
     }
 
+    public function cancelOrder(Request $request, SalesOrder $order, PostJournalEntryAction $postJournalEntry): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $order->tenant_id);
+
+        DB::transaction(function () use ($order, $postJournalEntry): void {
+            $lockedOrder = SalesOrder::query()->lockForUpdate()->findOrFail($order->id);
+
+            if ($lockedOrder->order_status !== SalesOrderStatus::Pending) {
+                throw ValidationException::withMessages([
+                    'order' => 'Only pending orders can be cancelled from here.',
+                ]);
+            }
+
+            $creditMinor = max(0, (int) $lockedOrder->paid_minor - (int) $lockedOrder->refunded_minor);
+            $lockedOrder->update([
+                'order_status' => SalesOrderStatus::Cancelled->value,
+                'payment_status' => $creditMinor > 0
+                    ? SalesPaymentStatus::CustomerCredit->value
+                    : SalesPaymentStatus::Unpaid->value,
+            ]);
+
+            if ($creditMinor > 0) {
+                $postJournalEntry->execute(
+                    $lockedOrder->tenant_id,
+                    now()->toDateString(),
+                    'Customer credit from cancelled order '.$lockedOrder->order_number,
+                    [
+                        ['account_code' => '1100', 'branch_id' => $lockedOrder->branch_id, 'debit_minor' => $creditMinor, 'party_type' => 'customer', 'party_id' => $lockedOrder->customer_id],
+                        ['account_code' => '2300', 'branch_id' => $lockedOrder->branch_id, 'credit_minor' => $creditMinor, 'party_type' => 'customer', 'party_id' => $lockedOrder->customer_id],
+                    ],
+                    'sales_order',
+                    $lockedOrder->id,
+                    'cancelled_to_customer_credit',
+                );
+            }
+        });
+
+        return redirect()->to(route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Order {$order->order_number} cancelled.");
+    }
+
+    public function markOrderRefunded(Request $request, SalesOrder $order, PostJournalEntryAction $postJournalEntry): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $order->tenant_id);
+
+        DB::transaction(function () use ($order, $postJournalEntry): void {
+            $lockedOrder = SalesOrder::query()
+                ->with(['payments.tillSession.cashLocation.financeAccount'])
+                ->lockForUpdate()
+                ->findOrFail($order->id);
+
+            if ($lockedOrder->order_status !== SalesOrderStatus::Cancelled) {
+                throw ValidationException::withMessages([
+                    'order' => 'Only cancelled orders can be marked as refunded.',
+                ]);
+            }
+
+            $refundMinor = max(0, (int) $lockedOrder->paid_minor - (int) $lockedOrder->refunded_minor);
+
+            if ($refundMinor <= 0) {
+                throw ValidationException::withMessages([
+                    'order' => 'There is no customer credit left to refund for this order.',
+                ]);
+            }
+
+            $refundAccountCode = $this->refundAccountCodeFor($lockedOrder);
+            $lockedOrder->update([
+                'refunded_minor' => (int) $lockedOrder->paid_minor,
+                'payment_status' => SalesPaymentStatus::Refunded->value,
+            ]);
+
+            $postJournalEntry->execute(
+                $lockedOrder->tenant_id,
+                now()->toDateString(),
+                'Refund for cancelled order '.$lockedOrder->order_number,
+                [
+                    ['account_code' => '2300', 'branch_id' => $lockedOrder->branch_id, 'debit_minor' => $refundMinor, 'party_type' => 'customer', 'party_id' => $lockedOrder->customer_id],
+                    ['account_code' => $refundAccountCode, 'branch_id' => $lockedOrder->branch_id, 'credit_minor' => $refundMinor, 'party_type' => 'customer', 'party_id' => $lockedOrder->customer_id],
+                ],
+                'sales_order',
+                $lockedOrder->id,
+                'refunded_cancelled_order',
+            );
+
+            $cashPayment = $lockedOrder->payments->first(fn ($payment): bool => $this->isCashMethod($payment->payment_method));
+
+            if ($cashPayment?->tillSession?->cashLocation) {
+                $cashPayment->tillSession->cashLocation->decrement('balance_minor', $refundMinor);
+            }
+        });
+
+        return redirect()->to(route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Order {$order->order_number} marked as refunded.");
+    }
+
+    public function settlements(Request $request): View
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenants = $this->visibleTenantsFor($user);
+        $tenant = $this->resolveTenant($request, $tenants);
+
+        abort_if(! $tenant, 403);
+
+        $settlements = OnlinePaymentSettlement::query()
+            ->where('tenant_id', $tenant->id)
+            ->latest('settlement_date')
+            ->latest()
+            ->get();
+        $unsettledPayments = OnlineCollectedPayment::query()
+            ->with('order.customer')
+            ->where('tenant_id', $tenant->id)
+            ->where('status', 'successful')
+            ->where('is_settled', false)
+            ->latest('collected_at')
+            ->get();
+
+        return view('sales::admin.settlements.index', [
+            'tenant' => $tenant,
+            'tenants' => $tenants,
+            'isPlatformAdmin' => $user->is_platform_admin,
+            'settlements' => $settlements,
+            'unsettledPayments' => $unsettledPayments,
+            'stats' => [
+                'unsettled_count' => $unsettledPayments->count(),
+                'unsettled_minor' => $unsettledPayments->sum('amount_minor'),
+                'settled_minor' => $settlements->sum('total_settled_minor'),
+                'total_gateway_charge_minor' => $settlements->sum('total_gateway_charge_minor'),
+                'storeboot_charges_minor' => $settlements->sum('storeboot_charges_minor'),
+            ],
+        ]);
+    }
+
+    public function adminSettlements(Request $request): View
+    {
+        /** @var User $user */
+        $user = $request->user();
+        abort_unless($user->is_platform_admin, 403);
+
+        $tenants = Tenant::query()->orderBy('name')->get();
+        $selectedTenant = $request->filled('tenant')
+            ? Tenant::query()->find($request->string('tenant')->toString())
+            : $tenants->first();
+        $selectedTenant ??= $tenants->first();
+        $filters = [
+            'tenant' => $selectedTenant?->id,
+            'reference' => trim($request->string('reference')->toString()),
+            'provider' => trim($request->string('provider')->toString()),
+            'status' => trim($request->string('status')->toString()),
+            'currency' => trim($request->string('currency')->toString()),
+            'settlement_date_from' => $request->string('settlement_date_from')->toString(),
+            'settlement_date_to' => $request->string('settlement_date_to')->toString(),
+            'created_from' => $request->string('created_from')->toString(),
+            'created_to' => $request->string('created_to')->toString(),
+            'settled_from' => $request->string('settled_from')->toString(),
+            'settled_to' => $request->string('settled_to')->toString(),
+            'notes' => trim($request->string('notes')->toString()),
+        ];
+        $paymentFilters = [
+            'tenant' => $selectedTenant?->id,
+            'order' => trim($request->string('payment_order')->toString()),
+            'provider_reference' => trim($request->string('payment_provider_reference')->toString()),
+            'provider' => trim($request->string('payment_provider')->toString()),
+            'payment_method' => trim($request->string('payment_method')->toString()),
+            'status' => trim($request->string('payment_status')->toString()),
+            'settlement_status' => trim($request->string('payment_settlement_status')->toString()),
+            'currency' => trim($request->string('payment_currency')->toString()),
+            'customer' => trim($request->string('payment_customer')->toString()),
+            'collected_from' => $request->string('payment_collected_from')->toString(),
+            'collected_to' => $request->string('payment_collected_to')->toString(),
+            'verified_from' => $request->string('payment_verified_from')->toString(),
+            'verified_to' => $request->string('payment_verified_to')->toString(),
+        ];
+
+        $settlements = OnlinePaymentSettlement::query()
+            ->with('tenant')
+            ->when($selectedTenant, fn ($query) => $query->where('tenant_id', $selectedTenant->id))
+            ->when($filters['reference'] !== '', fn ($query) => $query->where('reference', 'like', '%'.$filters['reference'].'%'))
+            ->when($filters['provider'] !== '', fn ($query) => $query->where('provider', $filters['provider']))
+            ->when($filters['status'] !== '', fn ($query) => $query->where('status', $filters['status']))
+            ->when($filters['currency'] !== '', fn ($query) => $query->where('currency', strtoupper($filters['currency'])))
+            ->when($filters['settlement_date_from'] !== '', fn ($query) => $query->whereDate('settlement_date', '>=', $filters['settlement_date_from']))
+            ->when($filters['settlement_date_to'] !== '', fn ($query) => $query->whereDate('settlement_date', '<=', $filters['settlement_date_to']))
+            ->when($filters['created_from'] !== '', fn ($query) => $query->whereDate('created_at', '>=', $filters['created_from']))
+            ->when($filters['created_to'] !== '', fn ($query) => $query->whereDate('created_at', '<=', $filters['created_to']))
+            ->when($filters['settled_from'] !== '', fn ($query) => $query->whereDate('settled_at', '>=', $filters['settled_from']))
+            ->when($filters['settled_to'] !== '', fn ($query) => $query->whereDate('settled_at', '<=', $filters['settled_to']))
+            ->when($filters['notes'] !== '', fn ($query) => $query->where('notes', 'like', '%'.$filters['notes'].'%'))
+            ->latest('settlement_date')
+            ->latest()
+            ->get();
+        $unsettledPayments = OnlineCollectedPayment::query()
+            ->with('order.customer')
+            ->when($selectedTenant, fn ($query) => $query->where('tenant_id', $selectedTenant->id))
+            ->where('status', 'successful')
+            ->where('is_settled', false)
+            ->latest('collected_at')
+            ->get();
+        $onlinePayments = OnlineCollectedPayment::query()
+            ->with(['order.customer', 'settlement'])
+            ->when($selectedTenant, fn ($query) => $query->where('tenant_id', $selectedTenant->id))
+            ->when($paymentFilters['order'] !== '', fn ($query) => $query->whereHas('order', fn ($orderQuery) => $orderQuery->where('order_number', 'like', '%'.$paymentFilters['order'].'%')))
+            ->when($paymentFilters['provider_reference'] !== '', fn ($query) => $query->where('provider_reference', 'like', '%'.$paymentFilters['provider_reference'].'%'))
+            ->when($paymentFilters['provider'] !== '', fn ($query) => $query->where('provider', $paymentFilters['provider']))
+            ->when($paymentFilters['payment_method'] !== '', fn ($query) => $query->where('payment_method', $paymentFilters['payment_method']))
+            ->when($paymentFilters['status'] !== '', fn ($query) => $query->where('status', $paymentFilters['status']))
+            ->when($paymentFilters['settlement_status'] === 'settled', fn ($query) => $query->where('is_settled', true))
+            ->when($paymentFilters['settlement_status'] === 'unsettled', fn ($query) => $query->where('is_settled', false))
+            ->when($paymentFilters['currency'] !== '', fn ($query) => $query->where('currency', strtoupper($paymentFilters['currency'])))
+            ->when($paymentFilters['customer'] !== '', fn ($query) => $query->where(function ($query) use ($paymentFilters): void {
+                $query->where('customer_email', 'like', '%'.$paymentFilters['customer'].'%')
+                    ->orWhereHas('order.customer', fn ($customerQuery) => $customerQuery->where('first_name', 'like', '%'.$paymentFilters['customer'].'%')->orWhere('last_name', 'like', '%'.$paymentFilters['customer'].'%')->orWhere('phone', 'like', '%'.$paymentFilters['customer'].'%'));
+            }))
+            ->when($paymentFilters['collected_from'] !== '', fn ($query) => $query->whereDate('collected_at', '>=', $paymentFilters['collected_from']))
+            ->when($paymentFilters['collected_to'] !== '', fn ($query) => $query->whereDate('collected_at', '<=', $paymentFilters['collected_to']))
+            ->when($paymentFilters['verified_from'] !== '', fn ($query) => $query->whereDate('verified_at', '>=', $paymentFilters['verified_from']))
+            ->when($paymentFilters['verified_to'] !== '', fn ($query) => $query->whereDate('verified_at', '<=', $paymentFilters['verified_to']))
+            ->latest('collected_at')
+            ->get();
+
+        return view('sales::admin.admin-settlements.index', [
+            'tenants' => $tenants,
+            'selectedTenant' => $selectedTenant,
+            'filters' => $filters,
+            'paymentFilters' => $paymentFilters,
+            'settlements' => $settlements,
+            'unsettledPayments' => $unsettledPayments,
+            'onlinePayments' => $onlinePayments,
+            'settlementPreview' => $request->session()->get('admin_settlement_preview'),
+            'stats' => [
+                'unsettled_count' => $unsettledPayments->count(),
+                'unsettled_minor' => $unsettledPayments->sum('amount_minor'),
+                'settled_minor' => $settlements->sum('total_settled_minor'),
+                'total_gateway_charge_minor' => $settlements->sum('total_gateway_charge_minor'),
+                'storeboot_charges_minor' => $settlements->sum('storeboot_charges_minor'),
+            ],
+        ]);
+    }
+
+    public function storeAdminSettlement(Request $request): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        abort_unless($user->is_platform_admin, 403);
+
+        $data = $request->validate([
+            'settlement_file' => ['required', 'file', 'max:5120'],
+        ]);
+
+        $file = $request->file('settlement_file');
+        $extension = strtolower((string) $file?->getClientOriginalExtension());
+
+        if (! in_array($extension, ['csv', 'xlsx'], true)) {
+            return back()->withErrors(['settlement_file' => 'Upload a CSV or XLSX file.'])->withInput();
+        }
+
+        try {
+            $rows = $this->settlementUploadRows($file->getRealPath(), $extension);
+            $preview = $this->validatedSettlementPreview($rows);
+        } catch (\Throwable $exception) {
+            return back()->withErrors(['settlement_file' => $exception->getMessage()])->withInput();
+        }
+
+        $request->session()->put('admin_settlement_preview', $preview);
+
+        return redirect()
+            ->to(route('admin.sales.admin-settlements.index', ['tenant' => array_key_first($preview['tenants'])]).'#create')
+            ->with('status', 'Settlement upload validated. Review the summary, then post settlements.');
+    }
+
+    public function postAdminSettlements(Request $request): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        abort_unless($user->is_platform_admin, 403);
+
+        $preview = $request->session()->get('admin_settlement_preview');
+
+        if (! is_array($preview) || empty($preview['payment_ids'])) {
+            return back()->withErrors(['settlement' => 'Upload and validate a settlement spreadsheet before posting.']);
+        }
+
+        try {
+            $freshPreview = $this->validatedSettlementPreview($preview['rows'] ?? []);
+        } catch (\Throwable $exception) {
+            return back()->withErrors(['settlement' => $exception->getMessage()]);
+        }
+
+        $settlements = DB::transaction(function () use ($freshPreview) {
+            return collect($freshPreview['tenants'])->map(function (array $tenantPreview, string $tenantId): OnlinePaymentSettlement {
+                $tenant = Tenant::query()->findOrFail($tenantId);
+                $payments = OnlineCollectedPayment::query()
+                    ->where('tenant_id', $tenantId)
+                    ->whereKey($tenantPreview['payment_ids'])
+                    ->lockForUpdate()
+                    ->get();
+
+                $settlement = $this->createOnlinePaymentSettlementFor($tenant, $payments, now()->toDateString(), 'Uploaded admin settlement batch.');
+
+                OnlineCollectedPayment::query()
+                    ->whereKey($payments->pluck('id'))
+                    ->update([
+                        'online_payment_settlement_id' => $settlement->id,
+                        'is_settled' => true,
+                        'updated_at' => now(),
+                    ]);
+
+                return $settlement;
+            })->values();
+        });
+
+        $request->session()->forget('admin_settlement_preview');
+
+        return redirect()
+            ->to(route('admin.sales.admin-settlements.index').'#create')
+            ->with('status', $settlements->count().' settlement batch(es) posted successfully.');
+    }
+
+    public function cancelAdminSettlementPreview(Request $request): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        abort_unless($user->is_platform_admin, 403);
+
+        $request->session()->forget('admin_settlement_preview');
+
+        return redirect()
+            ->to(route('admin.sales.admin-settlements.index').'#create')
+            ->with('status', 'Settlement upload preview cleared.');
+    }
+
+    public function showSettlement(Request $request, OnlinePaymentSettlement $settlement): View
+    {
+        $this->authorizeTenantIdAccess($request->user(), $settlement->tenant_id);
+        $settlement->load(['payments.order.customer', 'payments.orderPayment']);
+
+        return view('sales::admin.settlements.show', [
+            'settlement' => $settlement,
+            'tenant' => Tenant::query()->findOrFail($settlement->tenant_id),
+            'backRoute' => route('admin.sales.settlements.index', ['tenant' => $settlement->tenant_id]),
+        ]);
+    }
+
+    public function showAdminSettlement(Request $request, OnlinePaymentSettlement $settlement): View
+    {
+        abort_unless($request->user()?->is_platform_admin, 403);
+        $settlement->load(['payments.order.customer', 'payments.orderPayment']);
+
+        return view('sales::admin.settlements.show', [
+            'settlement' => $settlement,
+            'tenant' => Tenant::query()->findOrFail($settlement->tenant_id),
+            'backRoute' => route('admin.sales.admin-settlements.index', ['tenant' => $settlement->tenant_id]),
+        ]);
+    }
+
+    public function downloadSettlement(Request $request, OnlinePaymentSettlement $settlement)
+    {
+        $this->authorizeTenantIdAccess($request->user(), $settlement->tenant_id);
+        $settlement->load(['payments.order.customer', 'payments.orderPayment']);
+        $filename = 'settlement-'.$settlement->reference.'.csv';
+
+        return response()->streamDownload(function () use ($settlement): void {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, ['Settlement', 'Order', 'Payment Reference', 'Customer', 'Email', 'Collected At', 'Currency', 'Product Amount', 'Shipping Amount', 'Gateway Charge', 'Amount', 'Fees', 'Net', 'Status']);
+
+            foreach ($settlement->payments as $payment) {
+                fputcsv($handle, [
+                    $settlement->reference,
+                    $payment->order?->order_number,
+                    $payment->provider_reference,
+                    $payment->order?->customer?->name,
+                    $payment->customer_email,
+                    optional($payment->collected_at)->toDateTimeString(),
+                    $payment->currency,
+                    number_format($payment->product_amount_minor / 100, 2, '.', ''),
+                    number_format($payment->shipping_amount_minor / 100, 2, '.', ''),
+                    number_format($payment->gateway_charge_minor / 100, 2, '.', ''),
+                    number_format($payment->amount_minor / 100, 2, '.', ''),
+                    number_format($payment->fees_minor / 100, 2, '.', ''),
+                    number_format($payment->net_amount_minor / 100, 2, '.', ''),
+                    $payment->status,
+                ]);
+            }
+
+            fclose($handle);
+        }, $filename, ['Content-Type' => 'text/csv']);
+    }
+
     public function openTill(TillOpenRequest $request, PostJournalEntryAction $postJournalEntry): RedirectResponse
     {
         $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
@@ -181,8 +572,8 @@ final class SalesController extends Controller
                 now()->toDateString(),
                 'Opening float for '.$session->session_number,
                 [
-                    ['account_code' => $till->financeAccount->code, 'debit_minor' => $openingFloatMinor, 'memo' => 'Cash issued to cashier till.'],
-                    ['account_code' => $vault->financeAccount->code, 'credit_minor' => $openingFloatMinor, 'memo' => 'Cash issued from branch safe vault.'],
+                    ['account_code' => $till->financeAccount->code, 'branch_id' => $session->branch_id, 'debit_minor' => $openingFloatMinor, 'memo' => 'Cash issued to cashier till.'],
+                    ['account_code' => $vault->financeAccount->code, 'branch_id' => $session->branch_id, 'credit_minor' => $openingFloatMinor, 'memo' => 'Cash issued from branch safe vault.'],
                 ],
                 'sales_till_session',
                 $session->id,
@@ -223,8 +614,8 @@ final class SalesController extends Controller
                 now()->toDateString(),
                 'Cash issued to '.$tillSession->session_number,
                 [
-                    ['account_code' => $till->financeAccount->code, 'debit_minor' => $amountMinor, 'memo' => 'Cash received into cashier till.'],
-                    ['account_code' => $vault->financeAccount->code, 'credit_minor' => $amountMinor, 'memo' => 'Cash issued from branch safe vault.'],
+                    ['account_code' => $till->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'debit_minor' => $amountMinor, 'memo' => 'Cash received into cashier till.'],
+                    ['account_code' => $vault->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'credit_minor' => $amountMinor, 'memo' => 'Cash issued from branch safe vault.'],
                 ],
                 'sales_till_movement',
                 $movement->id,
@@ -238,8 +629,8 @@ final class SalesController extends Controller
                 now()->toDateString(),
                 ($movement->movement_type === 'cash_deposit' ? 'Cash remittance from ' : 'Cash out from ').$tillSession->session_number,
                 [
-                    ['account_code' => $vault->financeAccount->code, 'debit_minor' => $amountMinor, 'memo' => 'Cash received into branch safe vault.'],
-                    ['account_code' => $till->financeAccount->code, 'credit_minor' => $amountMinor, 'memo' => 'Cash remitted from cashier till.'],
+                    ['account_code' => $vault->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'debit_minor' => $amountMinor, 'memo' => 'Cash received into branch safe vault.'],
+                    ['account_code' => $till->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'credit_minor' => $amountMinor, 'memo' => 'Cash remitted from cashier till.'],
                 ],
                 'sales_till_movement',
                 $movement->id,
@@ -253,8 +644,8 @@ final class SalesController extends Controller
                 now()->toDateString(),
                 'Petty cash withdrawal from '.$tillSession->session_number,
                 [
-                    ['account_code' => '1010', 'debit_minor' => $amountMinor, 'memo' => 'Petty cash funded from cashier till.'],
-                    ['account_code' => $till->financeAccount->code, 'credit_minor' => $amountMinor, 'memo' => 'Cash withdrawn from cashier till.'],
+                    ['account_code' => '1010', 'branch_id' => $tillSession->branch_id, 'debit_minor' => $amountMinor, 'memo' => 'Petty cash funded from cashier till.'],
+                    ['account_code' => $till->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'credit_minor' => $amountMinor, 'memo' => 'Cash withdrawn from cashier till.'],
                 ],
                 'sales_till_movement',
                 $movement->id,
@@ -320,8 +711,8 @@ final class SalesController extends Controller
                 now()->toDateString(),
                 'Till close cash handover for '.$tillSession->session_number,
                 [
-                    ['account_code' => $vault->financeAccount->code, 'debit_minor' => $cashExpectedMinor, 'memo' => 'Balanced cash received into branch safe vault.'],
-                    ['account_code' => $till->financeAccount->code, 'credit_minor' => $cashExpectedMinor, 'memo' => 'Balanced cash handed over from cashier till.'],
+                    ['account_code' => $vault->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'debit_minor' => $cashExpectedMinor, 'memo' => 'Balanced cash received into branch safe vault.'],
+                    ['account_code' => $till->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'credit_minor' => $cashExpectedMinor, 'memo' => 'Balanced cash handed over from cashier till.'],
                 ],
                 'sales_till_session',
                 $tillSession->id,
@@ -375,6 +766,13 @@ final class SalesController extends Controller
     private function ensureBranchVault(SalesTillSession $tillSession): SalesCashLocation
     {
         if ($tillSession->vaultCashLocation?->financeAccount) {
+            $tillSession->vaultCashLocation->financeAccount->fill([
+                'type' => 'asset',
+                'category' => 'Current Assets',
+                'description' => 'Cash held in a branch safe vault.',
+                'normal_balance' => 'debit',
+            ])->save();
+
             return $tillSession->vaultCashLocation;
         }
 
@@ -385,6 +783,8 @@ final class SalesController extends Controller
         ], [
             'name' => 'Branch Safe Vault - '.($tillSession->branch?->name ?? 'Branch '.$tillSession->branch_id),
             'type' => 'asset',
+            'category' => 'Current Assets',
+            'description' => 'Cash held in a branch safe vault.',
             'normal_balance' => 'debit',
             'is_system' => true,
             'is_active' => true,
@@ -411,6 +811,13 @@ final class SalesController extends Controller
     private function ensureTillCashLocation(SalesTillSession $tillSession): SalesCashLocation
     {
         if ($tillSession->cashLocation?->financeAccount) {
+            $tillSession->cashLocation->financeAccount->fill([
+                'type' => 'asset',
+                'category' => 'Current Assets',
+                'description' => 'Cash held in a cashier till for point-of-sale transactions.',
+                'normal_balance' => 'debit',
+            ])->save();
+
             return $tillSession->cashLocation;
         }
 
@@ -421,6 +828,8 @@ final class SalesController extends Controller
         ], [
             'name' => 'Cashier Till '.$tillSession->session_number,
             'type' => 'asset',
+            'category' => 'Current Assets',
+            'description' => 'Cash held in a cashier till for point-of-sale transactions.',
             'normal_balance' => 'debit',
             'is_system' => true,
             'is_active' => true,
@@ -493,9 +902,432 @@ final class SalesController extends Controller
         });
     }
 
+    private function refundAccountCodeFor(SalesOrder $order): string
+    {
+        $cashPayment = $order->payments->first(fn ($payment): bool => $this->isCashMethod($payment->payment_method));
+
+        if ($cashPayment?->tillSession?->cashLocation?->financeAccount) {
+            return $cashPayment->tillSession->cashLocation->financeAccount->code;
+        }
+
+        return '1000';
+    }
+
+    private function isCashMethod(?string $paymentMethod): bool
+    {
+        return str_contains(strtolower((string) $paymentMethod), 'cash');
+    }
+
     private function moneyToMinor(mixed $value): int
     {
         return (int) round(((float) (is_string($value) ? str_replace(',', '', $value) : ($value ?: 0))) * 100);
+    }
+
+    private function settlementNumber(string $tenantId): string
+    {
+        return 'SETT-'.now()->format('Ymd').'-'.str_pad((string) (OnlinePaymentSettlement::query()->where('tenant_id', $tenantId)->count() + 1), 5, '0', STR_PAD_LEFT);
+    }
+
+    private function createOnlinePaymentSettlementFor(Tenant $tenant, $payments, string $settlementDate, ?string $notes = null): OnlinePaymentSettlement
+    {
+        $totalProductAmountMinor = (int) $payments->sum('product_amount_minor');
+        $totalShippingAmountMinor = (int) $payments->sum('shipping_amount_minor');
+        $totalGatewayChargeMinor = (int) $payments->sum('gateway_charge_minor');
+        $totalFeesMinor = (int) $payments->sum('fees_minor');
+        $totalNetAmountMinor = (int) $payments->sum('net_amount_minor');
+        $storebootChargesMinor = $this->storebootChargeMinor($tenant->id, $totalNetAmountMinor);
+        $totalSettledMinor = max(0, $totalNetAmountMinor - $storebootChargesMinor);
+
+        return OnlinePaymentSettlement::query()->create([
+            'tenant_id' => $tenant->id,
+            'provider' => 'paystack',
+            'reference' => $this->settlementNumber($tenant->id),
+            'status' => 'settled',
+            'currency' => $tenant->currency_code ?? 'NGN',
+            'total_product_amount_minor' => $totalProductAmountMinor,
+            'total_shipping_amount_minor' => $totalShippingAmountMinor,
+            'total_gateway_charge_minor' => $totalGatewayChargeMinor,
+            'total_fees_minor' => $totalFeesMinor,
+            'total_net_amount_minor' => $totalNetAmountMinor,
+            'storeboot_charges_minor' => $storebootChargesMinor,
+            'total_settled_minor' => $totalSettledMinor,
+            'payment_count' => $payments->count(),
+            'settlement_date' => $settlementDate,
+            'settled_at' => now(),
+            'notes' => $notes,
+        ]);
+    }
+
+    /**
+     * @return list<array{online_collected_payment_id: string, tenant_id: string, gateway_reference: string}>
+     */
+    private function settlementUploadRows(string $path, string $extension): array
+    {
+        $rows = $extension === 'csv'
+            ? $this->settlementCsvRows($path)
+            : $this->settlementXlsxRows($path);
+
+        if ($rows === []) {
+            throw new \RuntimeException('The spreadsheet does not contain any payment rows.');
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return list<array{online_collected_payment_id: string, tenant_id: string, gateway_reference: string}>
+     */
+    private function settlementCsvRows(string $path): array
+    {
+        $handle = fopen($path, 'r');
+
+        if (! $handle) {
+            throw new \RuntimeException('The uploaded CSV could not be opened.');
+        }
+
+        $headers = null;
+        $rows = [];
+
+        while (($row = fgetcsv($handle)) !== false) {
+            if ($this->spreadsheetRowIsBlank($row)) {
+                continue;
+            }
+
+            if ($headers === null) {
+                $headers = $this->normalizedSettlementHeaders($row);
+
+                continue;
+            }
+
+            $rows[] = $this->mappedSettlementRow($headers, $row);
+        }
+
+        fclose($handle);
+
+        return $rows;
+    }
+
+    /**
+     * @return list<array{online_collected_payment_id: string, tenant_id: string, gateway_reference: string}>
+     */
+    private function settlementXlsxRows(string $path): array
+    {
+        if (! class_exists(\ZipArchive::class)) {
+            throw new \RuntimeException('XLSX uploads require the PHP zip extension. Upload CSV instead.');
+        }
+
+        $zip = new \ZipArchive();
+
+        if ($zip->open($path) !== true) {
+            throw new \RuntimeException('The uploaded XLSX file could not be opened.');
+        }
+
+        $sharedStrings = $this->xlsxSharedStrings($zip);
+        $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+
+        if (! is_string($sheetXml) || $sheetXml === '') {
+            throw new \RuntimeException('The uploaded XLSX file does not contain a first worksheet.');
+        }
+
+        $sheet = simplexml_load_string($sheetXml);
+
+        if (! $sheet) {
+            throw new \RuntimeException('The uploaded XLSX worksheet could not be read.');
+        }
+
+        $headers = null;
+        $rows = [];
+
+        foreach ($sheet->sheetData->row as $xmlRow) {
+            $row = [];
+
+            foreach ($xmlRow->c as $cell) {
+                $reference = (string) $cell['r'];
+                $column = $this->xlsxColumnIndex($reference);
+                $type = (string) $cell['t'];
+                $value = '';
+
+                if ($type === 's') {
+                    $value = $sharedStrings[(int) $cell->v] ?? '';
+                } elseif ($type === 'inlineStr') {
+                    $value = trim((string) ($cell->is->t ?? ''));
+                } else {
+                    $value = trim((string) ($cell->v ?? ''));
+                }
+
+                $row[$column] = $value;
+            }
+
+            if ($row === []) {
+                continue;
+            }
+
+            ksort($row);
+            $lastColumn = max(array_keys($row));
+            $row = collect(range(0, $lastColumn))
+                ->map(fn (int $column): string => $row[$column] ?? '')
+                ->all();
+
+            if ($this->spreadsheetRowIsBlank($row)) {
+                continue;
+            }
+
+            if ($headers === null) {
+                $headers = $this->normalizedSettlementHeaders($row);
+
+                continue;
+            }
+
+            $rows[] = $this->mappedSettlementRow($headers, $row);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function xlsxSharedStrings(\ZipArchive $zip): array
+    {
+        $xml = $zip->getFromName('xl/sharedStrings.xml');
+
+        if (! is_string($xml) || $xml === '') {
+            return [];
+        }
+
+        $shared = simplexml_load_string($xml);
+
+        if (! $shared) {
+            return [];
+        }
+
+        $strings = [];
+
+        foreach ($shared->si as $item) {
+            if (isset($item->t)) {
+                $strings[] = trim((string) $item->t);
+
+                continue;
+            }
+
+            $text = '';
+
+            foreach ($item->r as $run) {
+                $text .= (string) ($run->t ?? '');
+            }
+
+            $strings[] = trim($text);
+        }
+
+        return $strings;
+    }
+
+    private function xlsxColumnIndex(string $reference): int
+    {
+        preg_match('/^[A-Z]+/i', $reference, $matches);
+        $letters = strtoupper($matches[0] ?? 'A');
+        $index = 0;
+
+        foreach (str_split($letters) as $letter) {
+            $index = ($index * 26) + (ord($letter) - 64);
+        }
+
+        return $index - 1;
+    }
+
+    /**
+     * @param  array<int, mixed>  $headers
+     * @return array<string, int>
+     */
+    private function normalizedSettlementHeaders(array $headers): array
+    {
+        $normalized = [];
+
+        foreach ($headers as $index => $header) {
+            $key = Str::of((string) $header)->trim()->lower()->replace([' ', '-'], '_')->toString();
+
+            if ($key !== '') {
+                $normalized[$key] = $index;
+            }
+        }
+
+        foreach (['online_collected_payment_id', 'tenant_id', 'gateway_reference'] as $required) {
+            if (! array_key_exists($required, $normalized)) {
+                throw new \RuntimeException("The spreadsheet must include the {$required} column.");
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param  array<string, int>  $headers
+     * @param  array<int, mixed>  $row
+     * @return array{online_collected_payment_id: string, tenant_id: string, gateway_reference: string}
+     */
+    private function mappedSettlementRow(array $headers, array $row): array
+    {
+        return [
+            'online_collected_payment_id' => trim((string) ($row[$headers['online_collected_payment_id']] ?? '')),
+            'tenant_id' => trim((string) ($row[$headers['tenant_id']] ?? '')),
+            'gateway_reference' => trim((string) ($row[$headers['gateway_reference']] ?? '')),
+        ];
+    }
+
+    /**
+     * @param  array<int, mixed>  $row
+     */
+    private function spreadsheetRowIsBlank(array $row): bool
+    {
+        return collect($row)->every(fn ($value): bool => trim((string) $value) === '');
+    }
+
+    /**
+     * @param  list<array{online_collected_payment_id: string, tenant_id: string, gateway_reference: string}>  $rows
+     * @return array{rows: array, payment_ids: array, tenants: array, overall: array}
+     */
+    private function validatedSettlementPreview(array $rows): array
+    {
+        $errors = [];
+        $normalizedRows = [];
+        $seenPaymentIds = [];
+
+        foreach ($rows as $index => $row) {
+            $line = $index + 2;
+            $paymentId = $row['online_collected_payment_id'];
+            $tenantId = $row['tenant_id'];
+            $gatewayReference = $row['gateway_reference'];
+
+            if ($paymentId === '' || ! ctype_digit($paymentId)) {
+                $errors[] = "Row {$line}: online_collected_payment_id is required and must be numeric.";
+            }
+
+            if ($tenantId === '') {
+                $errors[] = "Row {$line}: tenant_id is required.";
+            }
+
+            if ($gatewayReference === '') {
+                $errors[] = "Row {$line}: gateway_reference is required.";
+            }
+
+            if (isset($seenPaymentIds[$paymentId])) {
+                $errors[] = "Row {$line}: duplicate online_collected_payment_id {$paymentId}.";
+            }
+
+            $seenPaymentIds[$paymentId] = true;
+            $normalizedRows[] = [
+                'online_collected_payment_id' => $paymentId,
+                'tenant_id' => $tenantId,
+                'gateway_reference' => $gatewayReference,
+            ];
+        }
+
+        if ($errors !== []) {
+            throw new \RuntimeException(implode(' ', $errors));
+        }
+
+        $paymentIds = collect($normalizedRows)->pluck('online_collected_payment_id')->map(fn (string $id): int => (int) $id)->values();
+        $payments = OnlineCollectedPayment::query()
+            ->whereKey($paymentIds)
+            ->get()
+            ->keyBy('id');
+        $tenants = Tenant::query()
+            ->whereIn('id', collect($normalizedRows)->pluck('tenant_id')->unique()->values())
+            ->get()
+            ->keyBy('id');
+
+        foreach ($normalizedRows as $index => $row) {
+            $line = $index + 2;
+            $payment = $payments->get((int) $row['online_collected_payment_id']);
+
+            if (! $tenants->has($row['tenant_id'])) {
+                $errors[] = "Row {$line}: tenant {$row['tenant_id']} does not exist.";
+            }
+
+            if (! $payment) {
+                $errors[] = "Row {$line}: payment {$row['online_collected_payment_id']} does not exist.";
+
+                continue;
+            }
+
+            if ($payment->tenant_id !== $row['tenant_id']) {
+                $errors[] = "Row {$line}: payment {$payment->id} does not belong to tenant {$row['tenant_id']}.";
+            }
+
+            if ((string) $payment->gateway_reference !== $row['gateway_reference']) {
+                $errors[] = "Row {$line}: gateway_reference does not match payment {$payment->id}.";
+            }
+
+            if ($payment->is_settled || $payment->online_payment_settlement_id) {
+                $errors[] = "Row {$line}: payment {$payment->id} has already been settled.";
+            }
+
+            if ($payment->status !== 'successful') {
+                $errors[] = "Row {$line}: payment {$payment->id} is not successful.";
+            }
+        }
+
+        if ($errors !== []) {
+            throw new \RuntimeException(implode(' ', $errors));
+        }
+
+        $tenantSummaries = [];
+
+        foreach ($payments as $payment) {
+            $tenant = $tenants->get($payment->tenant_id);
+            $tenantSummaries[$payment->tenant_id] ??= [
+                'tenant_id' => $payment->tenant_id,
+                'tenant_name' => $tenant?->name ?? $payment->tenant_id,
+                'currency_code' => $tenant?->currency_code ?? 'NGN',
+                'payment_count' => 0,
+                'total_gateway_charge_minor' => 0,
+                'total_net_amount_minor' => 0,
+                'payment_ids' => [],
+            ];
+            $tenantSummaries[$payment->tenant_id]['payment_count']++;
+            $tenantSummaries[$payment->tenant_id]['total_gateway_charge_minor'] += (int) $payment->gateway_charge_minor;
+            $tenantSummaries[$payment->tenant_id]['total_net_amount_minor'] += (int) $payment->net_amount_minor;
+            $tenantSummaries[$payment->tenant_id]['payment_ids'][] = $payment->id;
+        }
+
+        return [
+            'rows' => $normalizedRows,
+            'payment_ids' => $paymentIds->all(),
+            'tenants' => $tenantSummaries,
+            'overall' => [
+                'tenant_count' => count($tenantSummaries),
+                'payment_count' => $payments->count(),
+                'total_gateway_charge_minor' => array_sum(array_column($tenantSummaries, 'total_gateway_charge_minor')),
+                'total_net_amount_minor' => array_sum(array_column($tenantSummaries, 'total_net_amount_minor')),
+            ],
+        ];
+    }
+
+    private function storebootChargeMinor(string $tenantId, int $totalNetAmountMinor): int
+    {
+        $config = DB::table('global_configs')
+            ->where('key', 'ONLINE_STOREBOOT_CHARGE')
+            ->where('tenant_id', $tenantId)
+            ->value('value');
+
+        $config ??= DB::table('global_configs')
+            ->where('key', 'ONLINE_STOREBOOT_CHARGE')
+            ->whereNull('tenant_id')
+            ->value('value');
+
+        $values = is_string($config) && $config !== ''
+            ? json_decode($config, true)
+            : [];
+
+        if (! is_array($values)) {
+            $values = [];
+        }
+
+        $percentageRate = (float) ($values['percentage_rate'] ?? 1.5);
+        $fixedAmountMinor = (int) ($values['fixed_amount_minor'] ?? 100000);
+
+        return max(0, (int) round($totalNetAmountMinor * ($percentageRate / 100)) + $fixedAmountMinor);
     }
 
     private function visibleTenantsFor(User $user): EloquentCollection

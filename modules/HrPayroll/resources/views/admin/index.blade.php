@@ -106,7 +106,7 @@
 
             <section class="panel tab-panel" id="salaries" role="tabpanel" data-tab-panel hidden>
                 <div class="panel-header">
-                    <div><h2 class="panel-title">Monthly salary schedule</h2><p class="subtle">Calculate gross salary, deductions, and net pay for all active staff before saving the month.</p></div>
+                    <div><h2 class="panel-title">Monthly salary schedule</h2><p class="subtle">Calculate gross salary, deductions, and net pay for all active staff before posting the month.</p></div>
                 </div>
                 <div class="panel-body">
                     <form class="payroll-filter" method="GET" action="{{ route('admin.hr-payroll.index') }}#salaries">
@@ -137,17 +137,28 @@
                         @csrf
                         <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
                         <input type="hidden" name="payroll_month" value="{{ $payrollMonth }}">
-                        <div class="field"><label>Posting note</label><textarea name="notes" placeholder="Optional note for this monthly payroll"></textarea></div>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label>Pay wages from</label>
+                                <select name="funding_account_code" required>
+                                    @foreach ($payrollFundingAccounts as $account)
+                                        <option value="{{ $account->code }}" @selected(old('funding_account_code') === $account->code)>{{ $account->code }} · {{ $account->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="field full"><label>Posting note</label><textarea name="notes" placeholder="Optional note for this monthly payroll">{{ old('notes') }}</textarea></div>
+                            <div class="summary-item"><span>Overall total net</span><strong>{{ $money((int) $scheduleRows->sum('net_minor')) }}</strong></div>
+                        </div>
                         <div class="button-row">
                             @if ($savedPayroll)
-                                <span class="badge">Saved for {{ $payrollMonth }}</span>
+                                <span class="badge">Posted for {{ $payrollMonth }}</span>
                             @else
-                                <button class="btn accent" type="submit" @disabled($scheduleRows->isEmpty())>Save payroll for {{ $payrollMonth }}</button>
+                                <button class="btn accent" type="submit" @disabled($scheduleRows->isEmpty())>Post Payroll for {{ $payrollMonth }}</button>
                             @endif
                         </div>
                     </form>
                     @if ($payrollRuns->isNotEmpty())
-                        <h3 class="panel-title" style="margin-top: 22px;">Saved payroll months</h3>
+                        <h3 class="panel-title" style="margin-top: 22px;">Posted payroll months</h3>
                         <table class="table"><thead><tr><th>Month</th><th>Staff</th><th>Gross</th><th>Deductions</th><th>Net</th><th>Posted</th></tr></thead><tbody>@foreach ($payrollRuns as $run)<tr><td>{{ $run->payroll_month }}</td><td>{{ $run->items_count }}</td><td>{{ $money($run->gross_salary_minor) }}</td><td>{{ $money($run->deduction_minor) }}</td><td>{{ $money($run->net_salary_minor) }}</td><td>{{ $run->posted_at->format('M j, Y') }}</td></tr>@endforeach</tbody></table>
                     @endif
                 </div>

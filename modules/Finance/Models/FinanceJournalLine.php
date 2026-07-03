@@ -7,6 +7,7 @@ namespace Modules\Finance\Models;
 use App\Shared\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Business\Models\Branch;
 
 final class FinanceJournalLine extends Model
 {
@@ -22,5 +23,10 @@ final class FinanceJournalLine extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(FinanceAccount::class, 'finance_account_id');
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
     }
 }

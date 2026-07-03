@@ -23,10 +23,13 @@ use Modules\Catalog\Http\Requests\ProductAttributeRequest;
 use Modules\Catalog\Http\Requests\ProductCategoryRequest;
 use Modules\Catalog\Http\Requests\ProductRequest;
 use Modules\Catalog\Http\Requests\ProductTagRequest;
+use Modules\Catalog\Http\Requests\ProductTaxRequest;
 use Modules\Catalog\Models\Product;
 use Modules\Catalog\Models\ProductAttributeDefinition;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Catalog\Models\ProductTag;
+use Modules\Catalog\Models\ProductTax;
+use Modules\Catalog\Models\ProductVariant;
 use Modules\Tenancy\Models\Tenant;
 
 final class CatalogController extends Controller
@@ -40,18 +43,29 @@ final class CatalogController extends Controller
 
         abort_if(! $tenant, 403);
 
-        $products = Product::query()
+        $productQuery = fn (ProductType $type) => Product::query()
             ->with([
                 'category',
+                'images',
                 'options.values',
                 'tags',
+                'taxes',
                 'attributeValues.definition',
                 'variants' => fn ($query) => $query->with('optionValues.option')->oldest('id'),
             ])
             ->where('tenant_id', $tenant->id)
-            ->when($request->filled('type'), fn ($query) => $query->where('product_type', $request->string('type')->toString()))
-            ->latest()
-            ->get();
+            ->where('product_type', $type->value)
+            ->orderByDesc('id');
+
+        $productItems = $productQuery(ProductType::Product)
+            ->paginate(20, ['*'], 'products_page')
+            ->withQueryString()
+            ->fragment('products');
+        $serviceItems = $productQuery(ProductType::Service)
+            ->paginate(20, ['*'], 'services_page')
+            ->withQueryString()
+            ->fragment('services');
+        $visibleProducts = $productItems->getCollection()->merge($serviceItems->getCollection());
 
         $categories = ProductCategory::query()
             ->where('tenant_id', $tenant->id)
@@ -62,9 +76,12 @@ final class CatalogController extends Controller
             'tenant' => $tenant,
             'tenants' => $tenants,
             'isPlatformAdmin' => $user->is_platform_admin,
-            'products' => $products,
+            'products' => $visibleProducts,
+            'productItems' => $productItems,
+            'serviceItems' => $serviceItems,
             'categories' => $categories,
             'tags' => ProductTag::query()->where('tenant_id', $tenant->id)->orderBy('name')->get(),
+            'taxes' => ProductTax::query()->where('tenant_id', $tenant->id)->orderBy('name')->get(),
             'attributes' => ProductAttributeDefinition::query()->with('values')->where('tenant_id', $tenant->id)->orderBy('name')->get(),
             'productCategories' => $categories->where('category_type', CategoryType::Product),
             'serviceCategories' => $categories->where('category_type', CategoryType::Service),
@@ -77,8 +94,9 @@ final class CatalogController extends Controller
                 'services' => Product::query()->where('tenant_id', $tenant->id)->where('product_type', ProductType::Service->value)->count(),
                 'categories' => $categories->count(),
                 'tags' => ProductTag::query()->where('tenant_id', $tenant->id)->count(),
+                'taxes' => ProductTax::query()->where('tenant_id', $tenant->id)->count(),
                 'attributes' => ProductAttributeDefinition::query()->where('tenant_id', $tenant->id)->count(),
-                'variants' => $products->sum(fn (Product $product): int => $product->variants->count()),
+                'variants' => ProductVariant::query()->where('tenant_id', $tenant->id)->count(),
             ],
         ]);
     }
@@ -140,6 +158,44 @@ final class CatalogController extends Controller
         return redirect()
             ->to(route('admin.catalog.index', ['tenant' => $tag->tenant_id]).'#tags')
             ->with('status', "Tag {$tag->name} updated.");
+    }
+
+    public function storeTax(ProductTaxRequest $request): RedirectResponse
+    {
+        $data = $request->validated();
+        $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+
+        $tax = ProductTax::query()->create($data);
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $tax->tenant_id]).'#taxes')
+            ->with('status', "Tax {$tax->name} created.");
+    }
+
+    public function updateTax(ProductTaxRequest $request, ProductTax $tax): RedirectResponse
+    {
+        $data = $request->validated();
+        $this->authorizeTenantIdAccess($request->user(), $tax->tenant_id);
+        abort_unless($data['tenant_id'] === $tax->tenant_id, 403);
+
+        $tax->update($data);
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $tax->tenant_id]).'#taxes')
+            ->with('status', "Tax {$tax->name} updated.");
+    }
+
+    public function destroyTax(Request $request, ProductTax $tax): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $tax->tenant_id);
+        $tenantId = $tax->tenant_id;
+        $name = $tax->name;
+
+        $tax->delete();
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $tenantId]).'#taxes')
+            ->with('status', "Tax {$name} deleted.");
     }
 
     public function storeAttribute(ProductAttributeRequest $request, SaveProductAttributeAction $action): RedirectResponse

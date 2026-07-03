@@ -40,6 +40,9 @@
             <div class="summary-item"><span>Discounts</span><strong>{{ $tenant->currency_code }} {{ $money($order->coupon_discount_minor + $order->admin_discount_minor) }}</strong></div>
             <div class="summary-item"><span>Total</span><strong>{{ $tenant->currency_code }} {{ $money($order->total_minor) }}</strong></div>
             <div class="summary-item"><span>Balance</span><strong>{{ $tenant->currency_code }} {{ $money($order->balance_minor) }}</strong></div>
+            @if ($order->order_status === \Modules\Sales\Enums\SalesOrderStatus::Cancelled && $order->paid_minor > $order->refunded_minor)
+                <div class="summary-item"><span>Customer credit held</span><strong>{{ $tenant->currency_code }} {{ $money($order->paid_minor - $order->refunded_minor) }}</strong></div>
+            @endif
         </div>
         <h3 class="panel-title" style="margin-top: 18px;">Payments received</h3>
         <table class="table" style="margin-top: 8px;">
@@ -52,6 +55,21 @@
         @if ($order->notes)
             <div style="margin-top: 16px;"><strong>Note</strong><p class="subtle">{{ $order->notes }}</p></div>
         @endif
-        <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Close</button><button class="btn primary" type="button" data-dialog-open="invoice-{{ $order->id }}">Generate invoice</button></div>
+        <div class="button-row">
+            @if ($order->order_status === \Modules\Sales\Enums\SalesOrderStatus::Pending)
+                <form method="POST" action="{{ route('admin.sales.orders.cancel', $order) }}" onsubmit="return confirm('{{ $order->paid_minor > $order->refunded_minor ? 'Cancel this order and hold the received payment as customer credit?' : 'Cancel this pending order?' }}');">
+                    @csrf
+                    <button class="btn danger" type="submit">Cancel Order</button>
+                </form>
+            @endif
+            @if ($order->order_status === \Modules\Sales\Enums\SalesOrderStatus::Cancelled && $order->paid_minor > $order->refunded_minor)
+                <form method="POST" action="{{ route('admin.sales.orders.mark-refunded', $order) }}" onsubmit="return confirm('Mark this cancelled order as refunded? This will clear the customer credit and post the refund.');">
+                    @csrf
+                    <button class="btn danger" type="submit">Mark as Refunded</button>
+                </form>
+            @endif
+            <button class="btn secondary" type="button" data-dialog-close>Close</button>
+            <button class="btn primary" type="button" data-dialog-open="invoice-{{ $order->id }}">Generate invoice</button>
+        </div>
     </div>
 </dialog>

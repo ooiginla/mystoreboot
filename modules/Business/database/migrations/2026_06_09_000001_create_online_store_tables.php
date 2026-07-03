@@ -22,6 +22,9 @@ return new class extends Migration
             $table->string('hero_image_description', 255)->nullable();
             $table->string('hero_image_tag', 80)->nullable();
             $table->text('address')->nullable();
+            $table->string('city', 120)->nullable();
+            $table->string('state', 120)->nullable();
+            $table->string('country', 120)->nullable();
             $table->string('site_email', 160)->nullable();
             $table->string('store_phone', 40)->nullable();
             $table->string('store_whatsapp', 40)->nullable();

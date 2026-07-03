@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Mail\ResetPasswordMail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Mail;
 use Modules\Access\Models\TenantMembership;
 use Modules\Tenancy\Models\Tenant;
 
@@ -33,6 +35,19 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_platform_admin' => 'boolean',
         ];
+    }
+
+    /**
+     * Send the password reset link using Storeboot's branded mailable.
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $resetUrl = route('password.reset', [
+            'token' => $token,
+            'email' => $this->getEmailForPasswordReset(),
+        ]);
+
+        Mail::to($this->email)->send(new ResetPasswordMail($this, $resetUrl));
     }
 
     public function tenantMemberships(): HasMany

@@ -50,7 +50,7 @@ final class RecordVendorPaymentAction
                 'Vendor payment',
                 [
                     ['account_code' => '2000', 'debit_minor' => $amountMinor, 'party_type' => 'vendor', 'party_id' => $payment->vendor_id],
-                    ['account_code' => $this->cashAccountFor($data['payment_method'] ?? 'Cash'), 'credit_minor' => $amountMinor, 'party_type' => 'vendor', 'party_id' => $payment->vendor_id],
+                    ['account_code' => $data['payment_account_code'], 'credit_minor' => $amountMinor, 'party_type' => 'vendor', 'party_id' => $payment->vendor_id],
                 ],
                 'vendor_payment',
                 $payment->id,
@@ -66,8 +66,4 @@ final class RecordVendorPaymentAction
         return (int) round(((float) (is_string($value) ? str_replace(',', '', $value) : ($value ?: 0))) * 100);
     }
 
-    private function cashAccountFor(?string $paymentMethod): string
-    {
-        return str_contains(strtolower((string) $paymentMethod), 'petty') ? '1010' : '1000';
-    }
 }

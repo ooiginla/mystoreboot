@@ -20,4 +20,9 @@ Route::prefix('store/{store:username}')
         Route::get('/shipping-info', [StorefrontController::class, 'page'])->defaults('page', 'shipping_information')->name('shipping');
         Route::get('/contact', [StorefrontController::class, 'contact'])->name('contact');
         Route::post('/contact', [StorefrontController::class, 'submitContact'])->name('contact.submit');
+        Route::post('/checkout', [StorefrontController::class, 'checkout'])->name('checkout');
+        Route::post('/checkout/{order}/paystack/initialize', [StorefrontController::class, 'initializePaystackPayment'])->name('checkout.paystack.initialize');
+        Route::get('/checkout/{order}/paystack/verify', [StorefrontController::class, 'verifyPaystackPayment'])->name('checkout.paystack.verify');
+        Route::get('/paystack/callback', [StorefrontController::class, 'verifyPaystackStoreCallback'])->name('paystack.callback');
+        Route::get('/checkout/{order}/paystack/callback', [StorefrontController::class, 'verifyPaystackPayment'])->name('checkout.paystack.callback');
     });

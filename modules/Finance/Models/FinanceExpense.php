@@ -25,4 +25,14 @@ final class FinanceExpense extends Model
     {
         return $this->belongsTo(FinanceExpenseCategory::class, 'finance_expense_category_id');
     }
+
+    public function expenseAccount(): BelongsTo
+    {
+        return $this->belongsTo(FinanceAccount::class, 'finance_account_id');
+    }
+
+    public function paymentAccount(): BelongsTo
+    {
+        return $this->belongsTo(FinanceAccount::class, 'payment_finance_account_id');
+    }
 }

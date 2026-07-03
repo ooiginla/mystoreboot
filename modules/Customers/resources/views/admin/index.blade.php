@@ -68,7 +68,7 @@
 
     <div class="tab-layout">
         <nav class="pill-nav" aria-label="CRM sections" role="tablist">
-            <a href="#customers" role="tab" data-tab-target="customers">Customers <span class="badge neutral">{{ $customers->count() }}</span></a>
+            <a href="#customers" role="tab" data-tab-target="customers">Customers <span class="badge neutral">{{ $customers->total() }}</span></a>
             <a href="#groups" role="tab" data-tab-target="groups">Groups <span class="badge neutral">{{ $groups->count() }}</span></a>
             <a href="#history" role="tab" data-tab-target="history">Purchase history</a>
             <a href="#follow-ups" role="tab" data-tab-target="follow-ups">Follow-ups <span class="badge neutral">{{ $followUps->count() }}</span></a>
@@ -107,6 +107,9 @@
                             <div class="empty">No customers match the current filters.</div>
                         @endforelse
                     </div>
+                    @if ($customers->hasPages())
+                        <div style="margin-top: 14px;">{{ $customers->links() }}</div>
+                    @endif
                 </div>
             </section>
 
@@ -117,7 +120,7 @@
                         <thead><tr><th>Name</th><th>Code</th><th>Customers</th><th>Description</th></tr></thead>
                         <tbody>
                             @forelse ($groups as $group)
-                                <tr><td>{{ $group->name }}</td><td>{{ $group->code ?: 'Not set' }}</td><td>{{ $allCustomers->where('customer_group_id', $group->id)->count() }}</td><td>{{ $group->description ?: 'No description' }}</td></tr>
+                                <tr><td><a class="link-button" href="{{ route('admin.customers.index', ['tenant' => $tenant->id, 'group_id' => $group->id]).'#customers' }}">{{ $group->name }}</a></td><td>{{ $group->code ?: 'Not set' }}</td><td>{{ $allCustomers->where('customer_group_id', $group->id)->count() }}</td><td>{{ $group->description ?: 'No description' }}</td></tr>
                             @empty
                                 <tr><td colspan="4"><div class="empty">No customer groups yet.</div></td></tr>
                             @endforelse

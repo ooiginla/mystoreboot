@@ -31,6 +31,18 @@ final class AuthenticatedSessionController extends Controller
             ]);
         }
 
+        if (! $request->user()?->email_verified_at) {
+            Auth::guard('web')->logout();
+
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return redirect()
+                ->route('login')
+                ->withErrors(['email' => 'Your email is yet to be verified. Please verify your email before signing in.'])
+                ->with('unverified_email', $credentials['email']);
+        }
+
         $request->session()->regenerate();
 
         return redirect()->intended(route('admin.business.index'));

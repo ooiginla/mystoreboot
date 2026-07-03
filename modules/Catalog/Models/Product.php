@@ -47,9 +47,19 @@ final class Product extends Model
         return $this->hasMany(ProductVariant::class);
     }
 
+    public function images(): HasMany
+    {
+        return $this->hasMany(ProductImage::class)->orderBy('sort_order')->orderBy('id');
+    }
+
     public function tags(): BelongsToMany
     {
         return $this->belongsToMany(ProductTag::class, 'product_product_tag')->withTimestamps();
+    }
+
+    public function taxes(): BelongsToMany
+    {
+        return $this->belongsToMany(ProductTax::class, 'product_product_tax')->withTimestamps();
     }
 
     public function attributeValues(): BelongsToMany

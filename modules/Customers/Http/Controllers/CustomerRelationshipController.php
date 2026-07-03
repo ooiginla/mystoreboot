@@ -57,8 +57,10 @@ final class CustomerRelationshipController extends Controller
             }))
             ->when($groupId !== '', fn ($query) => $query->where('customer_group_id', $groupId))
             ->when($status !== '', fn ($query) => $query->where('status', $status))
-            ->latest()
-            ->get();
+            ->orderByDesc('id')
+            ->paginate(20, ['*'], 'customers_page')
+            ->withQueryString()
+            ->fragment('customers');
 
         $allCustomers = Customer::query()
             ->with(['group', 'purchases', 'followUps', 'tickets'])

@@ -6,6 +6,7 @@ namespace Modules\Sales\Enums;
 
 enum SalesOrderStatus: string
 {
+    case Pending = 'pending';
     case Draft = 'draft';
     case Completed = 'completed';
     case Cancelled = 'cancelled';
@@ -15,6 +16,7 @@ enum SalesOrderStatus: string
     public function label(): string
     {
         return match ($this) {
+            self::Pending => 'Pending',
             self::Draft => 'Draft',
             self::Completed => 'Completed',
             self::Cancelled => 'Cancelled',

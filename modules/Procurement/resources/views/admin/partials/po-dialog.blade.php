@@ -29,7 +29,7 @@
                         <div class="po-line-card" data-po-line>
                             <div class="po-line-header">
                                 <strong>Line item</strong>
-                                <button class="btn secondary" type="button" data-remove-po-line>Remove line</button>
+                                <button class="btn danger" type="button" data-remove-po-line>Remove line</button>
                             </div>
                             <div class="form-grid">
                                 <x-variant-picker name="items[{{ $i }}][product_variant_id]" label="Variant" :selected-variant="$poItem?->variant" />

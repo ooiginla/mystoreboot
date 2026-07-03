@@ -1,7 +1,7 @@
 @php
     $variant = $item->variants->first();
-    $primaryPrice = $variant?->discount_price_minor ?? $variant?->selling_price_minor ?? $item->discount_price_minor ?? $item->base_price_minor;
-    $comparePrice = $variant?->discount_price_minor ? $variant?->selling_price_minor : null;
+    $primaryPrice = $variant?->selling_price_minor ?? $item->base_price_minor;
+    $comparePrice = $variant?->compare_at_price_minor ?? $item->compare_at_price_minor;
     $availability = $item->product_type === \Modules\Catalog\Enums\ProductType::Service
         ? 'Available'
         : 'Managed in Inventory';
@@ -49,7 +49,13 @@
                 @endforelse
             </dd>
             <dt>Tax</dt>
-            <dd>{{ $item->tax_behavior->label() }}{{ $item->tax_rate ? ' at '.$item->tax_rate.'%' : '' }}</dd>
+            <dd>
+                @if ($item->tax_behavior->value === 'taxable' && $item->taxes->isNotEmpty())
+                    {{ $item->taxes->map(fn ($tax) => $tax->name.' ('.$tax->rate.'%)')->join(', ') }}
+                @else
+                    {{ $item->tax_behavior->label() }}{{ $item->tax_rate ? ' at '.$item->tax_rate.'%' : '' }}
+                @endif
+            </dd>
             <dt>Status</dt>
             <dd>{{ $item->status->label() }}</dd>
         </dl>
@@ -70,7 +76,12 @@
                         <tr>
                             <td>{{ $row->variant_name }}</td>
                             <td>{{ $row->sku }}</td>
-                            <td>{{ $tenant->currency_code }} {{ $money($row->discount_price_minor ?? $row->selling_price_minor) }}</td>
+                            <td>
+                                @if ($row->compare_at_price_minor && $row->compare_at_price_minor > $row->selling_price_minor)
+                                    <span class="old-price">{{ $tenant->currency_code }} {{ $money($row->compare_at_price_minor) }}</span>
+                                @endif
+                                {{ $tenant->currency_code }} {{ $money($row->selling_price_minor) }}
+                            </td>
                             <td>{{ $row->status->label() }}</td>
                         </tr>
                     @endforeach
@@ -80,7 +91,7 @@
 
         <div class="button-row">
             <div class="product-price">
-                @if ($comparePrice)
+                @if ($comparePrice && $comparePrice > $primaryPrice)
                     <span class="old-price">{{ $tenant->currency_code }} {{ $money($comparePrice) }}</span>
                 @endif
                 {{ $tenant->currency_code }} {{ $money($primaryPrice) }}

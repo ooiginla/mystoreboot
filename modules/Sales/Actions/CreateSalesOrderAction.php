@@ -61,13 +61,14 @@ final class CreateSalesOrderAction
             }
 
             $items = collect((array) $data['items'])->map(function (array $item) use ($tenant, $data): array {
-                $variant = ProductVariant::query()->with('product')->where('tenant_id', $tenant->id)->findOrFail($item['product_variant_id']);
+                $variant = ProductVariant::query()->with('product.taxes')->where('tenant_id', $tenant->id)->findOrFail($item['product_variant_id']);
                 $quantity = (int) $item['quantity'];
                 $unitPriceMinor = $this->moneyToMinor($item['unit_price']);
-                $unitCostMinor = $this->unitCostForSale($tenant->id, (int) $data['inventory_location_id'], $variant);
+                $unitCostMinor = $this->unitCostForSale($tenant, (int) $data['inventory_location_id'], $variant);
                 $lineSubtotalMinor = $quantity * $unitPriceMinor;
+                $selectedTaxRate = $variant->product?->taxes?->sum(fn ($tax): float => (float) $tax->rate) ?? 0.0;
                 $taxRate = $variant->tax_behavior === TaxBehavior::Taxable
-                    ? (float) ($variant->tax_rate ?? $variant->product?->tax_rate ?? $tenant->default_tax_rate ?? 0)
+                    ? (float) ($selectedTaxRate > 0 ? $selectedTaxRate : ($variant->tax_rate ?? $variant->product?->tax_rate ?? $tenant->default_tax_rate ?? 0))
                     : 0.0;
 
                 return [
@@ -106,6 +107,7 @@ final class CreateSalesOrderAction
                 'customer_id' => $customer->id,
                 'user_id' => $userId,
                 'sales_till_session_id' => $tillSession->id,
+                'source' => $data['source'] ?? 'in_store',
                 'sales_coupon_id' => $coupon?->id,
                 'order_number' => $this->number('SO', $tenant->id),
                 'invoice_number' => $this->number('INV', $tenant->id),
@@ -177,14 +179,14 @@ final class CreateSalesOrderAction
                 (string) $data['order_date'],
                 'Sales order '.$order->order_number,
                 [
-                    ['account_code' => $this->cashAccountFor($data['payment_method'] ?? 'Cash', $tillSession), 'debit_minor' => $paidMinor, 'party_type' => 'customer', 'party_id' => $customer->id],
-                    ['account_code' => '1100', 'debit_minor' => $order->balance_minor, 'party_type' => 'customer', 'party_id' => $customer->id],
-                    ['account_code' => '4020', 'debit_minor' => $discountMinor],
-                    ['account_code' => '4000', 'credit_minor' => $subtotalMinor],
-                    ['account_code' => '2100', 'credit_minor' => $taxMinor],
-                    ['account_code' => '4010', 'credit_minor' => $shippingMinor],
-                    ['account_code' => '5000', 'debit_minor' => $cogsMinor],
-                    ['account_code' => '1200', 'credit_minor' => $cogsMinor],
+                    ['account_code' => $this->cashAccountFor($data['payment_method'] ?? 'Cash', $tillSession), 'branch_id' => $order->branch_id, 'debit_minor' => $paidMinor, 'party_type' => 'customer', 'party_id' => $customer->id],
+                    ['account_code' => '1100', 'branch_id' => $order->branch_id, 'debit_minor' => $order->balance_minor, 'party_type' => 'customer', 'party_id' => $customer->id],
+                    ['account_code' => '4020', 'branch_id' => $order->branch_id, 'debit_minor' => $discountMinor],
+                    ['account_code' => '4000', 'branch_id' => $order->branch_id, 'credit_minor' => $subtotalMinor],
+                    ['account_code' => '2100', 'branch_id' => $order->branch_id, 'credit_minor' => $taxMinor],
+                    ['account_code' => '4010', 'branch_id' => $order->branch_id, 'credit_minor' => $shippingMinor],
+                    ['account_code' => 'EXP-5000', 'branch_id' => $order->branch_id, 'debit_minor' => $cogsMinor],
+                    ['account_code' => '1200', 'branch_id' => $order->branch_id, 'credit_minor' => $cogsMinor],
                 ],
                 'sales_order',
                 $order->id,
@@ -245,18 +247,22 @@ final class CreateSalesOrderAction
         return (int) round(((float) (is_string($value) ? str_replace(',', '', $value) : ($value ?: 0))) * 100);
     }
 
-    private function unitCostForSale(string $tenantId, int $inventoryLocationId, ProductVariant $variant): int
+    private function unitCostForSale(Tenant $tenant, int $inventoryLocationId, ProductVariant $variant): int
     {
         $averageCostMinor = (int) InventoryStockLevel::query()
-            ->where('tenant_id', $tenantId)
+            ->where('tenant_id', $tenant->id)
             ->where('inventory_location_id', $inventoryLocationId)
             ->where('product_variant_id', $variant->id)
             ->lockForUpdate()
             ->value('average_cost_minor');
 
-        return $averageCostMinor > 0
-            ? $averageCostMinor
-            : (int) ($variant->cost_price_minor ?: $variant->product?->base_cost_price_minor ?: 0);
+        if ($averageCostMinor > 0) {
+            return $averageCostMinor;
+        }
+
+        return (bool) ($tenant->settings['use_estimated_cost_for_cogs'] ?? false)
+            ? (int) ($variant->cost_price_minor ?: $variant->product?->base_cost_price_minor ?: 0)
+            : 0;
     }
 
     private function cashAccountFor(?string $paymentMethod, SalesTillSession $tillSession): string
@@ -274,6 +280,13 @@ final class CreateSalesOrderAction
     private function ensureTillCashLocation(SalesTillSession $tillSession): SalesCashLocation
     {
         if ($tillSession->cashLocation?->financeAccount) {
+            $tillSession->cashLocation->financeAccount->fill([
+                'type' => 'asset',
+                'category' => 'Current Assets',
+                'description' => 'Cash held in a cashier till for point-of-sale transactions.',
+                'normal_balance' => 'debit',
+            ])->save();
+
             return $tillSession->cashLocation;
         }
 
@@ -283,6 +296,8 @@ final class CreateSalesOrderAction
         ], [
             'name' => 'Cashier Till '.$tillSession->session_number,
             'type' => 'asset',
+            'category' => 'Current Assets',
+            'description' => 'Cash held in a cashier till for point-of-sale transactions.',
             'normal_balance' => 'debit',
             'is_system' => true,
             'is_active' => true,

@@ -14,7 +14,9 @@ use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
+use Modules\Finance\Actions\EnsureDefaultChartOfAccountsAction;
 use Modules\Finance\Actions\PostJournalEntryAction;
+use Modules\Finance\Models\FinanceAccount;
 use Modules\HrPayroll\Http\Requests\PayrollRunRequest;
 use Modules\HrPayroll\Http\Requests\StaffDeductionRequest;
 use Modules\HrPayroll\Http\Requests\StaffRequest;
@@ -41,6 +43,13 @@ final class HrPayrollController extends Controller
         $staff = HrStaff::query()->with(['branch', 'deductions'])->where('tenant_id', $tenant->id)->orderBy('first_name')->get();
         $activeStaff = $staff->where('status', 'active')->values();
         $deductions = HrStaffDeduction::query()->with('staff.branch')->where('tenant_id', $tenant->id)->latest('deduction_date')->get();
+        app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
+        $payrollFundingAccounts = FinanceAccount::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('type', 'asset')
+            ->where('is_active', true)
+            ->orderBy('code')
+            ->get();
         $savedPayroll = HrPayrollRun::query()
             ->with(['items.staff.branch', 'items.branch'])
             ->where('tenant_id', $tenant->id)
@@ -63,6 +72,7 @@ final class HrPayrollController extends Controller
             'deductions' => $deductions,
             'payrollMonth' => $payrollMonth,
             'scheduleRows' => $this->salarySchedule($activeStaff, $payrollMonth),
+            'payrollFundingAccounts' => $payrollFundingAccounts,
             'savedPayroll' => $savedPayroll,
             'payrollRuns' => $payrollRuns,
             'payslipItems' => $payslipItems,
@@ -164,7 +174,7 @@ final class HrPayrollController extends Controller
                 ->where('payroll_month', $data['payroll_month'])
                 ->first();
 
-            abort_if($existing, 422, 'Payroll has already been saved for this month.');
+            abort_if($existing, 422, 'Payroll has already been posted for this month.');
 
             $staff = HrStaff::query()
                 ->with('deductions')
@@ -206,19 +216,28 @@ final class HrPayrollController extends Controller
                     ->update(['status' => 'applied']);
             }
 
-            $salaryAdvanceMinor = $rows->sum(fn (array $row): int => (int) $row['deductions']->where('deduction_type', 'salary_advance')->sum('amount_minor'));
-            $deductionReceivableMinor = $rows->sum(fn (array $row): int => (int) $row['deductions']->whereIn('deduction_type', ['fine', 'other'])->sum('amount_minor'));
+            $payrollLines = $rows
+                ->groupBy(fn (array $row): string => (string) ($row['staff']->branch_id ?? ''))
+                ->flatMap(function ($branchRows, string $branchId) use ($data) {
+                    $branchIdValue = $branchId !== '' ? (int) $branchId : null;
+                    $branchSalaryAdvanceMinor = $branchRows->sum(fn (array $row): int => (int) $row['deductions']->where('deduction_type', 'salary_advance')->sum('amount_minor'));
+                    $branchDeductionReceivableMinor = $branchRows->sum(fn (array $row): int => (int) $row['deductions']->whereIn('deduction_type', ['fine', 'other'])->sum('amount_minor'));
+
+                    return [
+                        ['account_code' => 'EXP-6030', 'branch_id' => $branchIdValue, 'debit_minor' => $branchRows->sum('gross_minor'), 'memo' => 'Gross salaries and wages'],
+                        ['account_code' => $data['funding_account_code'], 'branch_id' => $branchIdValue, 'credit_minor' => $branchRows->sum('net_minor'), 'memo' => 'Net wages paid from funding account'],
+                        ['account_code' => '1300', 'branch_id' => $branchIdValue, 'credit_minor' => $branchSalaryAdvanceMinor, 'memo' => 'Clear salary advances'],
+                        ['account_code' => '1310', 'branch_id' => $branchIdValue, 'credit_minor' => $branchDeductionReceivableMinor, 'memo' => 'Clear staff deduction receivables'],
+                    ];
+                })
+                ->values()
+                ->all();
 
             $postJournalEntry->execute(
                 $run->tenant_id,
                 $run->posted_at->toDateString(),
                 'Payroll posting '.$run->payroll_month,
-                [
-                    ['account_code' => '6030', 'debit_minor' => $run->gross_salary_minor, 'memo' => 'Gross salaries'],
-                    ['account_code' => '2200', 'credit_minor' => $run->net_salary_minor, 'memo' => 'Net salaries payable'],
-                    ['account_code' => '1300', 'credit_minor' => $salaryAdvanceMinor, 'memo' => 'Clear salary advances'],
-                    ['account_code' => '1310', 'credit_minor' => $deductionReceivableMinor, 'memo' => 'Clear staff deduction receivables'],
-                ],
+                $payrollLines,
                 'hr_payroll_run',
                 $run->id,
                 'posted',
@@ -227,7 +246,7 @@ final class HrPayrollController extends Controller
             return $run;
         });
 
-        return redirect()->to(route('admin.hr-payroll.index', ['tenant' => $payrollRun->tenant_id, 'payroll_month' => $payrollRun->payroll_month]).'#salaries')->with('status', 'Monthly payroll saved.');
+        return redirect()->to(route('admin.hr-payroll.index', ['tenant' => $payrollRun->tenant_id, 'payroll_month' => $payrollRun->payroll_month]).'#salaries')->with('status', 'Monthly payroll posted.');
     }
 
     /**
@@ -285,18 +304,20 @@ final class HrPayrollController extends Controller
      */
     private function deductionPostingLines(HrStaffDeduction $deduction): array
     {
+        $branchId = $deduction->loadMissing('staff')->staff?->branch_id;
+
         return match ($deduction->deduction_type) {
             'salary_advance' => [
-                ['account_code' => '1300', 'debit_minor' => $deduction->amount_minor, 'party_type' => 'staff', 'party_id' => $deduction->hr_staff_id, 'memo' => $deduction->reason],
-                ['account_code' => '1000', 'credit_minor' => $deduction->amount_minor, 'party_type' => 'staff', 'party_id' => $deduction->hr_staff_id, 'memo' => 'Salary advance paid'],
+                ['account_code' => '1300', 'branch_id' => $branchId, 'debit_minor' => $deduction->amount_minor, 'party_type' => 'staff', 'party_id' => $deduction->hr_staff_id, 'memo' => $deduction->reason],
+                ['account_code' => '1000', 'branch_id' => $branchId, 'credit_minor' => $deduction->amount_minor, 'party_type' => 'staff', 'party_id' => $deduction->hr_staff_id, 'memo' => 'Salary advance paid'],
             ],
             'fine' => [
-                ['account_code' => '1310', 'debit_minor' => $deduction->amount_minor, 'party_type' => 'staff', 'party_id' => $deduction->hr_staff_id, 'memo' => $deduction->reason],
-                ['account_code' => '4100', 'credit_minor' => $deduction->amount_minor, 'party_type' => 'staff', 'party_id' => $deduction->hr_staff_id, 'memo' => 'Staff fine'],
+                ['account_code' => '1310', 'branch_id' => $branchId, 'debit_minor' => $deduction->amount_minor, 'party_type' => 'staff', 'party_id' => $deduction->hr_staff_id, 'memo' => $deduction->reason],
+                ['account_code' => '4100', 'branch_id' => $branchId, 'credit_minor' => $deduction->amount_minor, 'party_type' => 'staff', 'party_id' => $deduction->hr_staff_id, 'memo' => 'Staff fine'],
             ],
             default => [
-                ['account_code' => '1310', 'debit_minor' => $deduction->amount_minor, 'party_type' => 'staff', 'party_id' => $deduction->hr_staff_id, 'memo' => $deduction->reason],
-                ['account_code' => '4110', 'credit_minor' => $deduction->amount_minor, 'party_type' => 'staff', 'party_id' => $deduction->hr_staff_id, 'memo' => 'Other payroll deduction'],
+                ['account_code' => '1310', 'branch_id' => $branchId, 'debit_minor' => $deduction->amount_minor, 'party_type' => 'staff', 'party_id' => $deduction->hr_staff_id, 'memo' => $deduction->reason],
+                ['account_code' => '4110', 'branch_id' => $branchId, 'credit_minor' => $deduction->amount_minor, 'party_type' => 'staff', 'party_id' => $deduction->hr_staff_id, 'memo' => 'Other payroll deduction'],
             ],
         };
     }

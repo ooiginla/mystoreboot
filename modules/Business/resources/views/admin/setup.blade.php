@@ -8,21 +8,52 @@
         : ($rawPaymentMethods ?? implode(', ', $tenant?->settings['payment_methods'] ?? ['Cash', 'Bank transfer', 'POS/Card', 'Cheque']));
     $bankDetails = collect(old('bank_details', $tenant?->settings['bank_details'] ?? []));
     $bankDetails = $bankDetails->isNotEmpty() ? $bankDetails : collect([null]);
-    $seo = old('seo', $tenant?->settings['seo'] ?? []);
     $maintenanceMode = (bool) old('maintenance_mode', $tenant?->settings['maintenance_mode'] ?? false);
+    $useEstimatedCostForCogs = (bool) old('use_estimated_cost_for_cogs', $tenant?->settings['use_estimated_cost_for_cogs'] ?? false);
+    $selectedPlan = $plans->firstWhere('id', (int) old('plan_id', $selectedPlanId));
+    $selectedPlanHasInventory = $selectedPlan?->modules?->contains(fn ($module) => $module->slug === 'inventory' && (bool) ($module->pivot->is_enabled ?? true)) ?? false;
     $rawOnlinePaymentMethods = old('payment_methods', $onlineStore?->payment_methods ?? []);
     $onlinePaymentMethods = is_array($rawOnlinePaymentMethods)
         ? $rawOnlinePaymentMethods
         : array_values(array_filter(array_map('trim', explode(',', (string) $rawOnlinePaymentMethods))));
-    $onlineBankAccounts = collect(old('bank_accounts', $onlineStore?->bank_accounts ?? []));
-    $onlineBankAccounts = $onlineBankAccounts->isNotEmpty() ? $onlineBankAccounts : collect([null]);
+    $bankAccountKey = fn (array $account): string => sha1(implode('|', [
+        trim((string) ($account['bank_name'] ?? '')),
+        trim((string) ($account['account_name'] ?? '')),
+        trim((string) ($account['account_number'] ?? '')),
+    ]));
+    $businessBankAccountOptions = collect($tenant?->settings['bank_details'] ?? [])
+        ->filter(fn ($account) => is_array($account) && ($account['status'] ?? 'active') === 'active')
+        ->map(fn (array $account) => [
+            'key' => $bankAccountKey($account),
+            'bank_name' => trim((string) ($account['bank_name'] ?? '')),
+            'account_name' => trim((string) ($account['account_name'] ?? '')),
+            'account_number' => trim((string) ($account['account_number'] ?? '')),
+        ])
+        ->filter(fn (array $account) => $account['bank_name'] !== '' && $account['account_number'] !== '')
+        ->values();
+    $storedOnlineBankAccount = collect($onlineStore?->bank_accounts ?? [])->first();
+    $storedOnlineBankAccountKey = is_array($storedOnlineBankAccount) ? $bankAccountKey($storedOnlineBankAccount) : null;
+    $selectedOnlineBankAccountKey = old('bank_account_key', $onlineStore?->payment_settings['bank_account_key'] ?? $storedOnlineBankAccountKey);
     $onlineShippingOptions = collect(old('shipping_options', $onlineStore?->shipping_options ?? []));
     $onlineShippingOptions = $onlineShippingOptions->isNotEmpty() ? $onlineShippingOptions : collect([null]);
     $onlineFaqs = collect(old('faqs', $onlineStore?->faqs ?? []));
     $onlineFaqs = $onlineFaqs->isNotEmpty() ? $onlineFaqs : collect([null]);
+    $onlineSlides = collect(old('slides', $onlineStore?->slides ?? []))
+        ->filter(fn ($slide) => is_array($slide));
+
+    if ($onlineSlides->isEmpty() && ($onlineStore?->hero_image_path || $onlineStore?->hero_image_text || $onlineStore?->hero_image_description || $onlineStore?->hero_image_tag)) {
+        $onlineSlides = collect([[
+            'image_path' => $onlineStore?->hero_image_path,
+            'hero_image_tag' => $onlineStore?->hero_image_tag,
+            'hero_image_text' => $onlineStore?->hero_image_text,
+            'hero_image_description' => $onlineStore?->hero_image_description,
+        ]]);
+    }
+
     $onlinePages = old('pages', $onlineStore?->pages ?? []);
     $onlineSocials = old('socials', $onlineStore?->social_accounts ?? []);
     $onlinePaystack = old('paystack', $onlineStore?->payment_settings['paystack'] ?? []);
+    $onlineSettlementBank = old('settlement_bank_account', $onlineStore?->payment_settings['settlement_bank_account'] ?? []);
     $onlinePaystackMethod = old('paystack_method', in_array('self_hosted_paystack', $onlinePaymentMethods, true) ? 'self_hosted_paystack' : (in_array('storeboot_paystack', $onlinePaymentMethods, true) ? 'storeboot_paystack' : 'none'));
     $onlineMaintenanceMode = (bool) old('maintenance_mode', $onlineStore?->maintenance_mode ?? false);
     $selectedOnlineCategories = collect(old('category_ids', $onlineStore?->categories?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id);
@@ -31,6 +62,8 @@
         'bank_account' => 'Pay via Transfer',
         'place_order' => 'Place Order',
     ];
+    $businessPaymentMethods = collect($tenant?->settings['payment_methods'] ?? []);
+    $openBusinessDays = collect($tenant?->opening_hours ?? [])->filter(fn ($hours) => (bool) ($hours['is_open'] ?? false));
 @endphp
 
 <x-layouts.admin title="Organization & Branch Management">
@@ -59,7 +92,23 @@
         .setup-empty-line { border: 1px dashed var(--line); border-radius: 8px; padding: 14px; color: #667085; background: #f8fafc; }
         .setup-row-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
         .setup-list-toolbar { margin-bottom: 12px; }
-        @media (max-width: 700px) { .check-grid { grid-template-columns: 1fr; } }
+        .setup-accordion { border: 1px solid #c7d7fe; border-radius: 8px; background: #fff; overflow: hidden; }
+        .setup-accordion + .setup-accordion { margin-top: 12px; }
+        .setup-accordion summary { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; font-weight: 900; color: #111827; list-style: none; background: #eef4ff; border-bottom: 1px solid #c7d7fe; }
+        .setup-accordion summary::-webkit-details-marker { display: none; }
+        .setup-accordion[open] summary { background: #e0ecff; }
+        .setup-accordion-toggle { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+        .setup-accordion-icon { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 999px; background: #101828; color: #fff; transition: transform .16s ease; }
+        .setup-accordion-icon svg { width: 14px; height: 14px; }
+        .setup-accordion[open] .setup-accordion-icon { transform: rotate(90deg); }
+        .setup-accordion-body { border-top: 1px solid var(--line); padding: 16px; display: grid; gap: 14px; }
+        .online-slide-card { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 14px; display: grid; grid-template-columns: minmax(180px, 30%) 1fr; gap: 16px; }
+        .online-slide-card + .online-slide-card { margin-top: 12px; }
+        .online-slide-photo { min-height: 180px; border: 1px dashed var(--line); border-radius: 8px; background: #f8fafc; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; color: #667085; font-weight: 800; text-align: center; padding: 12px; }
+        .online-slide-photo img { width: 100%; height: 100%; min-height: 160px; object-fit: cover; border-radius: 6px; }
+        .online-slide-photo input { display: none; }
+        .online-slide-form { display: grid; gap: 12px; }
+        @media (max-width: 700px) { .check-grid, .online-slide-card { grid-template-columns: 1fr; } }
     </style>
 
     <div class="topbar">
@@ -113,6 +162,7 @@
         <div class="tab-layout">
             <nav class="pill-nav" aria-label="Business setup sections" role="tablist">
                 <a href="#business-profile" role="tab" data-tab-target="business-profile">Business profile</a>
+                <a href="#subscriptions" role="tab" data-tab-target="subscriptions">Subscriptions <span class="badge neutral">{{ $tenantSubscriptions->count() }}</span></a>
                 <a href="#online-store" role="tab" data-tab-target="online-store">Online Store</a>
                 <a href="#branches" role="tab" data-tab-target="branches">Branches / stores <span class="badge neutral">{{ $branches->count() }}</span></a>
                 <a href="#departments" role="tab" data-tab-target="departments">Departments / units <span class="badge neutral">{{ $departments->count() }}</span></a>
@@ -137,16 +187,80 @@
                                 <div class="summary-item"><span>Business name</span><strong>{{ $tenant->name }}</strong></div>
                                 <div class="summary-item"><span>Business type</span><strong>{{ $businessTypes[$tenant->business_type] ?? $tenant->business_type ?? 'Not set' }}</strong></div>
                                 <div class="summary-item"><span>Status</span><strong>{{ $tenant->status->label() }}</strong></div>
+                                <div class="summary-item"><span>Registration number</span><strong>{{ $tenant->registration_number ?: 'Not set' }}</strong></div>
                                 <div class="summary-item"><span>Email</span><strong>{{ $tenant->email ?: 'Not set' }}</strong></div>
                                 <div class="summary-item"><span>Phone</span><strong>{{ $tenant->phone ?: 'Not set' }}</strong></div>
                                 <div class="summary-item"><span>Website</span><strong>{{ $tenant->website ?: 'Not set' }}</strong></div>
+                                <div class="summary-item"><span>Country</span><strong>{{ $tenant->country_code }}</strong></div>
                                 <div class="summary-item"><span>Currency</span><strong>{{ $tenant->currency_code }}</strong></div>
+                                <div class="summary-item"><span>Tax identifier</span><strong>{{ $tenant->tax_identifier ?: 'Not set' }}</strong></div>
                                 <div class="summary-item"><span>Tax rate</span><strong>{{ $tenant->default_tax_rate }}%</strong></div>
                                 <div class="summary-item"><span>Timezone</span><strong>{{ $tenant->timezone }}</strong></div>
+                                <div class="summary-item"><span>Subscription plan</span><strong>{{ $selectedPlan?->name ?? 'None' }}</strong></div>
+                                <div class="summary-item"><span>Logo</span><strong>{{ $tenant->logo_path ? 'Uploaded' : 'Not set' }}</strong></div>
+                                <div class="summary-item"><span>Opening days</span><strong>{{ $openBusinessDays->count() }} of 7 days</strong></div>
+                                <div class="summary-item"><span>Payment methods</span><strong>{{ $businessPaymentMethods->isNotEmpty() ? $businessPaymentMethods->join(', ') : 'Not set' }}</strong></div>
                                 <div class="summary-item" style="grid-column: 1 / -1;"><span>Address</span><strong>{{ $tenant->address ?: 'Not set' }}</strong></div>
                                 <div class="summary-item"><span>Maintenance mode</span><strong>{{ ($tenant->settings['maintenance_mode'] ?? false) ? 'Enabled' : 'Disabled' }}</strong></div>
                                 <div class="summary-item"><span>Bank accounts</span><strong>{{ count($tenant->settings['bank_details'] ?? []) }}</strong></div>
-                                <div class="summary-item"><span>SEO title</span><strong>{{ $tenant->settings['seo']['meta_title'] ?? 'Not set' }}</strong></div>
+                                <div class="summary-item"><span>Estimated cost COGS</span><strong>{{ ($tenant->settings['use_estimated_cost_for_cogs'] ?? false) ? 'Enabled' : 'Disabled' }}</strong></div>
+                            </div>
+                        @endif
+                    </div>
+                </section>
+
+                <section class="panel tab-panel" id="subscriptions" role="tabpanel" data-tab-panel hidden>
+                    <div class="panel-header">
+                        <div>
+                            <h2 class="panel-title">Tenant subscriptions</h2>
+                            <p class="subtle">Plans and billing periods assigned to this organization.</p>
+                        </div>
+                        @if ($tenant && $isPlatformAdmin)
+                            <button class="btn primary" type="button" data-dialog-open="subscription-dialog">Add subscription</button>
+                        @endif
+                    </div>
+                    <div class="panel-body">
+                        @if (! $tenant)
+                            <div class="empty">Save the business profile first, then add subscriptions.</div>
+                        @else
+                            <div class="list">
+                                @forelse ($tenantSubscriptions as $subscription)
+                                    <div class="item">
+                                        <div>
+                                            <div class="item-title">{{ $subscription->plan?->name ?? 'Plan not found' }}</div>
+                                            <div class="subtle">
+                                                {{ ucfirst($subscription->billing_interval) }}
+                                                @if ($subscription->current_period_starts_at || $subscription->current_period_ends_at)
+                                                    · Period:
+                                                    {{ $subscription->current_period_starts_at?->format('M j, Y') ?? 'Not set' }}
+                                                    to
+                                                    {{ $subscription->current_period_ends_at?->format('M j, Y') ?? 'Not set' }}
+                                                @endif
+                                            </div>
+                                            @if ($subscription->trial_ends_at || $subscription->cancelled_at)
+                                                <div class="subtle">
+                                                    @if ($subscription->trial_ends_at)
+                                                        Trial ends {{ $subscription->trial_ends_at->format('M j, Y') }}
+                                                    @endif
+                                                    @if ($subscription->trial_ends_at && $subscription->cancelled_at)
+                                                        ·
+                                                    @endif
+                                                    @if ($subscription->cancelled_at)
+                                                        Cancelled {{ $subscription->cancelled_at->format('M j, Y') }}
+                                                    @endif
+                                                </div>
+                                            @endif
+                                        </div>
+                                        <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+                                            <span class="badge neutral">{{ $subscription->status->label() }}</span>
+                                            @if ($isPlatformAdmin)
+                                                <button class="btn secondary" type="button" data-dialog-open="subscription-edit-{{ $subscription->id }}">Edit</button>
+                                            @endif
+                                        </div>
+                                    </div>
+                                @empty
+                                    <div class="empty">No subscriptions have been added for this organization yet.</div>
+                                @endforelse
                             </div>
                         @endif
                     </div>
@@ -169,14 +283,17 @@
                             <form class="mini-form" method="POST" action="{{ route('admin.business.online-store.save') }}" enctype="multipart/form-data" data-online-store-form>
                                 @csrf
                                 <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                                <input type="hidden" name="online_store_section" value="{{ old('online_store_section', request('online_store_section', 'online-store-basics')) }}" data-online-store-active-section>
 
                                 <div class="online-store-section-nav" role="tablist" aria-label="Online store setup sections">
                                     <button class="btn secondary active" type="button" role="tab" aria-selected="true" data-online-store-section-target="online-store-basics">Basics</button>
-                                    <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-menu">Menu</button>
+                                    <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-contact">Contact</button>
+                                    <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-theme">Theme</button>
                                     <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-payments">Payment</button>
                                     <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-shipping">Shipping</button>
                                     <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-socials">Socials</button>
-                                    <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-pages">Pages & FAQ</button>
+                                    <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-pages">Pages</button>
+                                    <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-faq">FAQ</button>
                                 </div>
 
                                 <div class="setup-section online-store-section-panel" id="online-store-basics" role="tabpanel" data-online-store-section-panel>
@@ -195,49 +312,133 @@
                                                 </div>
                                             @endif
                                         </div>
-                                        <div class="field">
-                                            <label>Banner / Hero Image <span class="subtle">(recommended 1600 x 600px)</span></label>
-                                            <input name="hero_image" type="file" accept="image/*">
-                                            @if ($onlineStore?->hero_image_path)
-                                                <div class="upload-preview hero">
-                                                    <img src="{{ $publicImageUrl($onlineStore->hero_image_path) }}" alt="{{ $onlineStore->store_name }} banner preview">
-                                                    <span class="subtle">Current banner uploaded.</span>
-                                                </div>
-                                            @endif
-                                        </div>
-                                        <div class="field"><label>Site Email</label><input name="site_email" type="email" value="{{ old('site_email', $onlineStore?->site_email ?? $tenant->email) }}"></div>
-                                        <div class="field"><label>Store Phone number</label><input name="store_phone" value="{{ old('store_phone', $onlineStore?->store_phone ?? $tenant->phone) }}"></div>
-                                        <div class="field"><label>Store WhatsApp Number</label><input name="store_whatsapp" value="{{ old('store_whatsapp', $onlineStore?->store_whatsapp) }}"></div>
-                                        <div class="field"><label>Banner Image Text</label><input name="hero_image_text" value="{{ old('hero_image_text', $onlineStore?->hero_image_text) }}"></div>
-                                        <div class="field"><label>Banner Image Description</label><input name="hero_image_description" value="{{ old('hero_image_description', $onlineStore?->hero_image_description) }}"></div>
-                                        <div class="field"><label>Banner Image Tag</label><input name="hero_image_tag" value="{{ old('hero_image_tag', $onlineStore?->hero_image_tag) }}"></div>
                                         <div class="field"><label>Theme primary color</label><input class="theme-color-input" name="theme_primary_color" type="color" value="{{ old('theme_primary_color', $onlineStore?->theme_primary_color ?? '#006554') }}" style="background-color: {{ old('theme_primary_color', $onlineStore?->theme_primary_color ?? '#006554') }};" data-theme-color-field></div>
                                         <div class="field"><label>Theme secondary color</label><input class="theme-color-input" name="theme_secondary_color" type="color" value="{{ old('theme_secondary_color', $onlineStore?->theme_secondary_color ?? '#f59e0b') }}" style="background-color: {{ old('theme_secondary_color', $onlineStore?->theme_secondary_color ?? '#f59e0b') }};" data-theme-color-field></div>
                                         <div class="field"><label>Fulfilment branch</label><select name="fulfilment_branch_id"><option value="">Select branch</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((string) old('fulfilment_branch_id', $onlineStore?->fulfilment_branch_id) === (string) $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
                                         <div class="field"><label>Store status</label><label class="inline-check"><input type="checkbox" name="maintenance_mode" value="1" @checked($onlineMaintenanceMode)> Enable maintenance mode</label></div>
-                                        <div class="field full"><label>Address</label><textarea name="address" rows="2">{{ old('address', $onlineStore?->address ?? $tenant->address) }}</textarea></div>
                                         <div class="field full"><label>Announcement</label><textarea name="announcement" rows="2">{{ old('announcement', $onlineStore?->announcement) }}</textarea></div>
                                     </div>
                                     <div class="button-row"><button class="btn primary" type="submit">Save basics</button></div>
                                 </div>
 
-                                <div class="setup-section online-store-section-panel" id="online-store-menu" role="tabpanel" data-online-store-section-panel hidden>
-                                    <h3 class="setup-section-title">Menu Setup</h3>
-                                    <div class="check-grid">
-                                        @forelse ($productCategories as $category)
-                                            <label class="inline-check"><input type="checkbox" name="category_ids[]" value="{{ $category->id }}" @checked($selectedOnlineCategories->contains($category->id))> {{ $category->name }}</label>
-                                        @empty
-                                            <span class="subtle">No product categories yet.</span>
-                                        @endforelse
+                                <div class="setup-section online-store-section-panel" id="online-store-contact" role="tabpanel" data-online-store-section-panel hidden>
+                                    <h3 class="setup-section-title">Contact</h3>
+                                    <div class="form-grid">
+                                        <div class="field full"><label>Address</label><textarea name="address" rows="2">{{ old('address', $onlineStore?->address ?? $tenant->address) }}</textarea></div>
+                                        <div class="field"><label>City</label><input name="city" value="{{ old('city', $onlineStore?->city) }}"></div>
+                                        <div class="field"><label>State</label><input name="state" value="{{ old('state', $onlineStore?->state) }}"></div>
+                                        <div class="field"><label>Country</label><input name="country" value="{{ old('country', $onlineStore?->country ?? $tenant->country_code) }}"></div>
+                                        <div class="field"><label>Site Email</label><input name="site_email" type="email" value="{{ old('site_email', $onlineStore?->site_email ?? $tenant->email) }}"></div>
+                                        <div class="field"><label>Store Phone number</label><input name="store_phone" value="{{ old('store_phone', $onlineStore?->store_phone ?? $tenant->phone) }}"></div>
+                                        <div class="field"><label>Store WhatsApp Number</label><input name="store_whatsapp" value="{{ old('store_whatsapp', $onlineStore?->store_whatsapp) }}"></div>
                                     </div>
-                                    <div class="button-row"><button class="btn primary" type="submit">Save menu setup</button></div>
+                                    <div class="button-row"><button class="btn primary" type="submit">Save contact</button></div>
+                                </div>
+
+                                <div class="setup-section online-store-section-panel" id="online-store-theme" role="tabpanel" data-online-store-section-panel hidden>
+                                    <h3 class="setup-section-title">Theme</h3>
+
+                                    <details class="setup-accordion" open>
+                                        <summary>
+                                            <span class="setup-accordion-toggle">
+                                                <span class="setup-accordion-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 4.5 13 10l-6 5.5v-11Z"/></svg></span>
+                                                <span>Section A: Menu Setup</span>
+                                            </span>
+                                            <span class="subtle">Storefront category menu</span>
+                                        </summary>
+                                        <div class="setup-accordion-body">
+                                            <div class="check-grid">
+                                                @forelse ($productCategories as $category)
+                                                    <label class="inline-check"><input type="checkbox" name="category_ids[]" value="{{ $category->id }}" @checked($selectedOnlineCategories->contains($category->id))> {{ $category->name }}</label>
+                                                @empty
+                                                    <span class="subtle">No product categories yet.</span>
+                                                @endforelse
+                                            </div>
+                                        </div>
+                                    </details>
+
+                                    <details class="setup-accordion" open>
+                                        <summary>
+                                            <span class="setup-accordion-toggle">
+                                                <span class="setup-accordion-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 4.5 13 10l-6 5.5v-11Z"/></svg></span>
+                                                <span>Section B: Slides</span>
+                                            </span>
+                                            <span class="subtle">Hero section slider</span>
+                                        </summary>
+                                        <div class="setup-accordion-body">
+                                            <div class="setup-line-header">
+                                                <label>Slides</label>
+                                                <button class="btn primary" type="button" data-add-online-slide>Add Slide</button>
+                                            </div>
+                                            <div data-online-slides>
+                                                @foreach ($onlineSlides as $index => $slide)
+                                                    @php
+                                                        $slideImagePath = (string) ($slide['image_path'] ?? $slide['existing_image_path'] ?? '');
+                                                        $slideTag = (string) ($slide['hero_image_tag'] ?? '');
+                                                        $slideText = (string) ($slide['hero_image_text'] ?? '');
+                                                        $slideDescription = (string) ($slide['hero_image_description'] ?? '');
+                                                    @endphp
+                                                    <div class="online-slide-card" data-online-slide>
+                                                        <label class="online-slide-photo">
+                                                            <input type="file" name="slides[{{ $index }}][image]" accept="image/*" data-slide-image-input>
+                                                            <input type="hidden" name="slides[{{ $index }}][existing_image_path]" value="{{ $slideImagePath }}" data-slide-field="existing_image_path">
+                                                            @if ($slideImagePath !== '')
+                                                                <img src="{{ $publicImageUrl($slideImagePath) }}" alt="Slide {{ $index + 1 }} image" data-slide-preview>
+                                                            @else
+                                                                <span data-slide-placeholder>Upload Banner / Hero Image<br><small>(recommended 1600 x 600px)</small></span>
+                                                            @endif
+                                                        </label>
+                                                        <div class="online-slide-form">
+                                                            <div class="setup-line-header">
+                                                                <strong data-slide-title>Slide {{ $index + 1 }}</strong>
+                                                                <button class="btn danger" type="button" data-remove-online-slide>Remove</button>
+                                                            </div>
+                                                            <div class="field"><label>Banner Image Tag</label><input name="slides[{{ $index }}][hero_image_tag]" value="{{ $slideTag }}" data-slide-field="hero_image_tag"></div>
+                                                            <div class="field"><label>Banner Image Text</label><input name="slides[{{ $index }}][hero_image_text]" value="{{ $slideText }}" data-slide-field="hero_image_text"></div>
+                                                            <div class="field"><label>Banner Image Description</label><textarea name="slides[{{ $index }}][hero_image_description]" rows="3" data-slide-field="hero_image_description">{{ $slideDescription }}</textarea></div>
+                                                        </div>
+                                                    </div>
+                                                @endforeach
+                                                <div class="setup-empty-line" data-online-slides-empty @if ($onlineSlides->isNotEmpty()) hidden @endif>No Slides Added Yet.</div>
+                                            </div>
+                                        </div>
+                                    </details>
+
+                                    <div class="button-row"><button class="btn primary" type="submit">Save theme</button></div>
                                 </div>
 
                                 <div class="setup-section online-store-section-panel" id="online-store-payments" role="tabpanel" data-online-store-section-panel hidden>
                                     <h3 class="setup-section-title">Payment Method</h3>
                                     <div class="check-list">
                                         @foreach ($onlinePaymentOptions as $value => $label)
-                                            <label class="inline-check"><input type="checkbox" name="payment_methods[]" value="{{ $value }}" @checked(in_array($value, $onlinePaymentMethods, true))> {{ $label }}</label>
+                                            @if ($value === 'bank_account')
+                                                <div>
+                                                    <label class="inline-check"><input type="checkbox" name="payment_methods[]" value="{{ $value }}" @checked(in_array($value, $onlinePaymentMethods, true))> {{ $label }}</label>
+                                                    <div class="nested-check-list" data-transfer-bank-selector @if (! in_array('bank_account', $onlinePaymentMethods, true)) hidden @endif>
+                                                        <div class="field">
+                                                            <label>Bank account</label>
+                                                            @if ($businessBankAccountOptions->isNotEmpty())
+                                                                <select name="bank_account_key">
+                                                                    <option value="">Select a bank account</option>
+                                                                    @foreach ($businessBankAccountOptions as $account)
+                                                                        <option value="{{ $account['key'] }}" @selected($selectedOnlineBankAccountKey === $account['key'])>
+                                                                            {{ $account['bank_name'] }} · {{ $account['account_name'] ?: 'Account name not set' }} · {{ $account['account_number'] }}
+                                                                        </option>
+                                                                    @endforeach
+                                                                </select>
+                                                                <span class="subtle">Manage bank accounts from Business Profile.</span>
+                                                            @else
+                                                                <select name="bank_account_key" disabled>
+                                                                    <option value="">No active business bank accounts available</option>
+                                                                </select>
+                                                                <span class="subtle">Add an active bank account in Business Profile to use Pay via Transfer.</span>
+                                                            @endif
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            @else
+                                                <label class="inline-check"><input type="checkbox" name="payment_methods[]" value="{{ $value }}" @checked(in_array($value, $onlinePaymentMethods, true))> {{ $label }}</label>
+                                            @endif
                                         @endforeach
                                         <div>
                                             <label class="inline-check"><input type="checkbox" data-paystack-toggle @checked($onlinePaystackMethod !== 'none')> Paystack</label>
@@ -252,37 +453,10 @@
                                         <div class="field"><label>Self Hosted Paystack Live Public Key</label><input name="paystack[public_key]" value="{{ $onlinePaystack['public_key'] ?? '' }}"><span class="subtle">Required only when Self Hosted Paystack is selected.</span></div>
                                         <div class="field"><label>Self Hosted Paystack Live Private Key</label><input name="paystack[private_key]" value="{{ $onlinePaystack['private_key'] ?? '' }}"><span class="subtle">Required only when Self Hosted Paystack is selected.</span></div>
                                     </div>
-                                    <div>
-                                        <div class="setup-line-header setup-list-toolbar">
-                                            <label>Pay via Transfer</label>
-                                            <button class="btn primary" type="button" data-open-online-bank-account-dialog>Add bank account</button>
-                                        </div>
-                                        <div data-online-bank-accounts>
-                                            @foreach ($onlineBankAccounts as $index => $account)
-                                                @php
-                                                    $bankName = trim((string) ($account['bank_name'] ?? ''));
-                                                    $accountName = trim((string) ($account['account_name'] ?? ''));
-                                                    $accountNumber = trim((string) ($account['account_number'] ?? ''));
-                                                @endphp
-                                                @continue($bankName === '' && $accountName === '' && $accountNumber === '')
-                                                <div class="setup-line-card" data-online-bank-account>
-                                                    <div class="setup-line-header">
-                                                        <div>
-                                                            <strong data-bank-summary>{{ $bankName ?: 'Bank account' }}</strong>
-                                                            <div class="subtle"><span data-bank-account-name>{{ $accountName ?: 'Account name not set' }}</span> · <span data-bank-account-number>{{ $accountNumber ?: 'Account number not set' }}</span></div>
-                                                        </div>
-                                                        <div class="setup-row-actions">
-                                                            <button class="btn secondary" type="button" data-edit-online-bank-account>Edit</button>
-                                                            <button class="btn danger" type="button" data-delete-online-bank-account>Delete</button>
-                                                        </div>
-                                                    </div>
-                                                    <input type="hidden" data-bank-field="bank_name" name="bank_accounts[{{ $index }}][bank_name]" value="{{ $bankName }}">
-                                                    <input type="hidden" data-bank-field="account_name" name="bank_accounts[{{ $index }}][account_name]" value="{{ $accountName }}">
-                                                    <input type="hidden" data-bank-field="account_number" name="bank_accounts[{{ $index }}][account_number]" value="{{ $accountNumber }}">
-                                                </div>
-                                            @endforeach
-                                            <div class="setup-empty-line" data-online-bank-empty @if ($onlineBankAccounts->filter(fn ($account) => trim((string) ($account['bank_name'] ?? '')) !== '' || trim((string) ($account['account_name'] ?? '')) !== '' || trim((string) ($account['account_number'] ?? '')) !== '')->isNotEmpty()) hidden @endif>No bank accounts added yet.</div>
-                                        </div>
+                                    <div class="form-grid" data-paystack-settlement-bank-fields @if ($onlinePaystackMethod !== 'storeboot_paystack') hidden @endif>
+                                        <div class="field"><label>Settlement Bank Name</label><input name="settlement_bank_account[bank_name]" value="{{ $onlineSettlementBank['bank_name'] ?? '' }}" placeholder="Bank name"></div>
+                                        <div class="field"><label>Settlement Bank Account</label><input name="settlement_bank_account[account_number]" value="{{ $onlineSettlementBank['account_number'] ?? '' }}" placeholder="Account number"></div>
+                                        <div class="field"><label>Settlement Account Name</label><input name="settlement_bank_account[account_name]" value="{{ $onlineSettlementBank['account_name'] ?? '' }}" placeholder="Account name"></div>
                                     </div>
                                     <div class="button-row"><button class="btn primary" type="submit">Save payment method</button></div>
                                 </div>
@@ -297,6 +471,7 @@
                                         @foreach ($onlineShippingOptions as $index => $option)
                                             @php
                                                 $location = trim((string) ($option['location'] ?? ''));
+                                                $description = trim((string) ($option['description'] ?? ''));
                                                 $price = (string) ($option['price'] ?? 0);
                                             @endphp
                                             @continue($location === '')
@@ -304,6 +479,7 @@
                                                 <div class="setup-line-header">
                                                     <div>
                                                         <strong data-shipping-location>{{ $location }}</strong>
+                                                        <div class="subtle" data-shipping-description @if ($description === '') hidden @endif>{{ $description }}</div>
                                                         <div class="subtle">Price: <span data-shipping-price>{{ $price }}</span></div>
                                                     </div>
                                                     <div class="setup-row-actions">
@@ -312,6 +488,7 @@
                                                     </div>
                                                 </div>
                                                 <input type="hidden" data-shipping-field="location" name="shipping_options[{{ $index }}][location]" value="{{ $location }}">
+                                                <input type="hidden" data-shipping-field="description" name="shipping_options[{{ $index }}][description]" value="{{ $description }}">
                                                 <input type="hidden" data-shipping-field="price" name="shipping_options[{{ $index }}][price]" value="{{ $price }}">
                                             </div>
                                         @endforeach
@@ -326,6 +503,8 @@
                                         <div class="field"><label>Instagram</label><input name="socials[instagram]" value="{{ $onlineSocials['instagram'] ?? '' }}"></div>
                                         <div class="field"><label>TikTok</label><input name="socials[tiktok]" value="{{ $onlineSocials['tiktok'] ?? '' }}"></div>
                                         <div class="field"><label>Facebook</label><input name="socials[facebook]" value="{{ $onlineSocials['facebook'] ?? '' }}"></div>
+                                        <div class="field"><label>Twitter / X</label><input name="socials[twitter]" value="{{ $onlineSocials['twitter'] ?? '' }}"></div>
+                                        <div class="field"><label>YouTube</label><input name="socials[youtube]" value="{{ $onlineSocials['youtube'] ?? '' }}"></div>
                                         <div class="field"><label>WhatsApp</label><input name="socials[whatsapp]" value="{{ $onlineSocials['whatsapp'] ?? '' }}"></div>
                                     </div>
                                     <div class="button-row"><button class="btn primary" type="submit">Save social accounts</button></div>
@@ -340,6 +519,11 @@
                                         <div class="field full"><label>Privacy Policy</label><textarea name="pages[privacy_policy]" rows="4">{{ $onlinePages['privacy_policy'] ?? '' }}</textarea></div>
                                         <div class="field full"><label>Shipping Information</label><textarea name="pages[shipping_information]" rows="4">{{ $onlinePages['shipping_information'] ?? '' }}</textarea></div>
                                     </div>
+                                    <div class="button-row"><button class="btn primary" type="submit">Save pages</button></div>
+                                </div>
+
+                                <div class="setup-section online-store-section-panel" id="online-store-faq" role="tabpanel" data-online-store-section-panel hidden>
+                                    <h3 class="setup-section-title">FAQ</h3>
                                     <div class="setup-line-header setup-list-toolbar">
                                         <label>FAQ</label>
                                         <button class="btn primary" type="button" data-add-online-faq>Add FAQ</button>
@@ -368,30 +552,8 @@
                                         @endforeach
                                         <div class="setup-empty-line" data-online-faq-empty @if ($onlineFaqs->filter(fn ($faq) => trim((string) ($faq['question'] ?? '')) !== '' || trim((string) ($faq['answer'] ?? '')) !== '')->isNotEmpty()) hidden @endif>No FAQ items added yet.</div>
                                     </div>
-                                    <div class="button-row"><button class="btn primary" type="submit">Save pages & FAQ</button></div>
+                                    <div class="button-row"><button class="btn primary" type="submit">Save FAQ</button></div>
                                 </div>
-
-                                <dialog class="dialog" id="online-bank-account-dialog" data-online-bank-account-dialog>
-                                    <div class="dialog-header">
-                                        <div>
-                                            <h2 class="panel-title" data-online-bank-dialog-title>Bank account</h2>
-                                            <p class="subtle">Add or update bank account details for store checkout.</p>
-                                        </div>
-                                        <button class="icon-btn" type="button" data-online-bank-cancel aria-label="Close">x</button>
-                                    </div>
-                                    <div class="dialog-body">
-                                        <input type="hidden" data-online-bank-edit-index>
-                                        <div class="form-grid">
-                                            <div class="field"><label>Bank Name</label><input data-online-bank-input="bank_name"></div>
-                                            <div class="field"><label>Bank Account Name</label><input data-online-bank-input="account_name"></div>
-                                            <div class="field"><label>Bank Account Number</label><input data-online-bank-input="account_number"></div>
-                                        </div>
-                                        <div class="button-row">
-                                            <button class="btn secondary" type="button" data-online-bank-cancel>Cancel</button>
-                                            <button class="btn primary" type="button" data-save-online-bank-account>Save bank account</button>
-                                        </div>
-                                    </div>
-                                </dialog>
 
                                 <dialog class="dialog" id="online-shipping-dialog" data-online-shipping-dialog>
                                     <div class="dialog-header">
@@ -405,6 +567,7 @@
                                         <input type="hidden" data-online-shipping-edit-index>
                                         <div class="form-grid">
                                             <div class="field"><label>Location</label><input data-online-shipping-input="location"></div>
+                                            <div class="field"><label>Description</label><textarea data-online-shipping-input="description" rows="2" placeholder="e.g 3-5 days"></textarea></div>
                                             <div class="field"><label>Price</label><input data-online-shipping-input="price" type="number" min="0" step="0.01" value="0"></div>
                                         </div>
                                         <div class="button-row">
@@ -627,20 +790,16 @@
                                             <div class="field"><label>Bank account name</label><input name="bank_details[{{ $index }}][account_name]" value="{{ $account['account_name'] ?? '' }}"></div>
                                             <div class="field"><label>Bank account number</label><input name="bank_details[{{ $index }}][account_number]" value="{{ $account['account_number'] ?? '' }}"></div>
                                             <div class="field"><label>Status</label><select name="bank_details[{{ $index }}][status]"><option value="active" @selected(($account['status'] ?? 'active') === 'active')>Active</option><option value="inactive" @selected(($account['status'] ?? 'active') === 'inactive')>Inactive</option></select></div>
+                                            <div class="field">
+                                                <label>Asset account code</label>
+                                                <input type="hidden" name="bank_details[{{ $index }}][asset_account_code]" value="{{ $account['asset_account_code'] ?? '' }}">
+                                                <span class="subtle" data-bank-asset-code>{{ $account['asset_account_code'] ?? 'Created on save' }}</span>
+                                            </div>
                                         </div>
                                     </div>
                                 @endforeach
                             </div>
                             <button class="btn primary" type="button" data-add-business-bank-detail style="margin-top: 10px;">Add bank account</button>
-                        </div>
-                        <div class="field full">
-                            <label>SEO and policy links</label>
-                            <div class="form-grid">
-                                <div class="field"><label>Meta title</label><input name="seo[meta_title]" value="{{ $seo['meta_title'] ?? '' }}"></div>
-                                <div class="field"><label>Privacy policy URL</label><input name="seo[privacy_policy_url]" type="url" value="{{ $seo['privacy_policy_url'] ?? '' }}"></div>
-                                <div class="field full"><label>Meta description</label><textarea name="seo[meta_description]">{{ $seo['meta_description'] ?? '' }}</textarea></div>
-                                <div class="field"><label>Terms & Conditions URL</label><input name="seo[terms_url]" type="url" value="{{ $seo['terms_url'] ?? '' }}"></div>
-                            </div>
                         </div>
                         <div class="field full"><label><input type="checkbox" name="maintenance_mode" value="1" @checked($maintenanceMode)> Enable maintenance mode</label></div>
                         <div class="field">
@@ -648,9 +807,12 @@
                             <select id="plan_id" name="plan_id">
                                 <option value="">No plan selected</option>
                                 @foreach ($plans as $plan)
-                                    <option value="{{ $plan->id }}" @selected((string) old('plan_id', $selectedPlanId) === (string) $plan->id)>{{ $plan->name }}</option>
+                                    <option value="{{ $plan->id }}" data-has-inventory="{{ $plan->modules->contains(fn ($module) => $module->slug === 'inventory' && (bool) ($module->pivot->is_enabled ?? true)) ? '1' : '0' }}" @selected((string) old('plan_id', $selectedPlanId) === (string) $plan->id)>{{ $plan->name }}</option>
                                 @endforeach
                             </select>
+                        </div>
+                        <div class="field full" data-estimated-cost-cogs-setting @if ($selectedPlanHasInventory) hidden @endif>
+                            <label><input type="hidden" name="use_estimated_cost_for_cogs" value="0" @disabled($selectedPlanHasInventory)><input type="checkbox" name="use_estimated_cost_for_cogs" value="1" @checked($useEstimatedCostForCogs) @disabled($selectedPlanHasInventory)> Use Estimated cost for COGS</label>
                         </div>
                         <div class="field full">
                             <label>Opening and closing hours</label>
@@ -679,6 +841,92 @@
         </dialog>
 
         @if ($tenant)
+            @if ($isPlatformAdmin)
+                <dialog class="dialog" id="subscription-dialog">
+                    <div class="dialog-header"><div><h2 class="panel-title">Add subscription</h2><p class="subtle">Assign a plan and billing period to this organization.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
+                    <div class="dialog-body">
+                        <form class="mini-form" method="POST" action="{{ route('admin.business.subscriptions.store') }}">
+                            @csrf
+                            <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                            <div class="form-grid">
+                                <div class="field">
+                                    <label>Plan</label>
+                                    <select name="plan_id" required>
+                                        <option value="">Select plan</option>
+                                        @foreach ($plans as $plan)
+                                            <option value="{{ $plan->id }}">{{ $plan->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Status</label>
+                                    <select name="status" required>
+                                        @foreach ($subscriptionStatuses as $status)
+                                            <option value="{{ $status->value }}" @selected($status->value === 'active')>{{ $status->label() }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Billing interval</label>
+                                    <select name="billing_interval" required>
+                                        <option value="monthly">Monthly</option>
+                                        <option value="yearly">Yearly</option>
+                                    </select>
+                                </div>
+                                <div class="field"><label>Trial ends</label><input name="trial_ends_at" type="date"></div>
+                                <div class="field"><label>Period starts</label><input name="current_period_starts_at" type="date"></div>
+                                <div class="field"><label>Period ends</label><input name="current_period_ends_at" type="date"></div>
+                                <div class="field"><label>Cancelled at</label><input name="cancelled_at" type="date"></div>
+                            </div>
+                            <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Cancel</button><button class="btn primary" type="submit">Add subscription</button></div>
+                        </form>
+                    </div>
+                </dialog>
+
+                @foreach ($tenantSubscriptions as $subscription)
+                    <dialog class="dialog" id="subscription-edit-{{ $subscription->id }}">
+                        <div class="dialog-header"><div><h2 class="panel-title">Edit subscription</h2><p class="subtle">Update the plan, status, and billing period.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
+                        <div class="dialog-body">
+                            <form class="mini-form" method="POST" action="{{ route('admin.business.subscriptions.update', $subscription) }}">
+                                @csrf
+                                @method('PUT')
+                                <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                                <div class="form-grid">
+                                    <div class="field">
+                                        <label>Plan</label>
+                                        <select name="plan_id" required>
+                                            @foreach ($plans as $plan)
+                                                <option value="{{ $plan->id }}" @selected((int) $subscription->plan_id === (int) $plan->id)>{{ $plan->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="field">
+                                        <label>Status</label>
+                                        <select name="status" required>
+                                            @foreach ($subscriptionStatuses as $status)
+                                                <option value="{{ $status->value }}" @selected($subscription->status->value === $status->value)>{{ $status->label() }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="field">
+                                        <label>Billing interval</label>
+                                        <select name="billing_interval" required>
+                                            <option value="monthly" @selected($subscription->billing_interval === 'monthly')>Monthly</option>
+                                            <option value="yearly" @selected($subscription->billing_interval === 'yearly')>Yearly</option>
+                                        </select>
+                                    </div>
+                                    <div class="field"><label>Trial ends</label><input name="trial_ends_at" type="date" value="{{ $subscription->trial_ends_at?->format('Y-m-d') }}"></div>
+                                    <div class="field"><label>Period starts</label><input name="current_period_starts_at" type="date" value="{{ $subscription->current_period_starts_at?->format('Y-m-d') }}"></div>
+                                    <div class="field"><label>Period ends</label><input name="current_period_ends_at" type="date" value="{{ $subscription->current_period_ends_at?->format('Y-m-d') }}"></div>
+                                    <div class="field"><label>Cancelled at</label><input name="cancelled_at" type="date" value="{{ $subscription->cancelled_at?->format('Y-m-d') }}"></div>
+                                </div>
+                                <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Cancel</button><button class="btn primary" type="submit">Save subscription</button></div>
+                            </form>
+                        </div>
+                    </dialog>
+                @endforeach
+            @endif
+
             <dialog class="dialog" id="branch-dialog">
                 <div class="dialog-header"><div><h2 class="panel-title">Add branch</h2><p class="subtle">Create a store, outlet, warehouse, or operating branch.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
                 <div class="dialog-body">
@@ -851,8 +1099,26 @@
 
             document.querySelectorAll('[data-theme-color-field]').forEach(paintThemeColorField);
 
+            const planSelect = document.querySelector('#plan_id');
+            const estimatedCostCogsSetting = document.querySelector('[data-estimated-cost-cogs-setting]');
+            const syncEstimatedCostCogsSetting = () => {
+                if (!planSelect || !estimatedCostCogsSetting) return;
+
+                const selectedOption = planSelect.options[planSelect.selectedIndex];
+                const hasInventory = selectedOption?.dataset.hasInventory === '1';
+
+                estimatedCostCogsSetting.hidden = hasInventory;
+                estimatedCostCogsSetting.querySelectorAll('input').forEach((input) => {
+                    input.disabled = hasInventory;
+                });
+            };
+
+            planSelect?.addEventListener('change', syncEstimatedCostCogsSetting);
+            syncEstimatedCostCogsSetting();
+
             const onlineStoreSectionPanels = Array.from(document.querySelectorAll('[data-online-store-section-panel]'));
             const onlineStoreSectionTabs = Array.from(document.querySelectorAll('[data-online-store-section-target]'));
+            const onlineStoreActiveSection = document.querySelector('[data-online-store-active-section]');
 
             const activateOnlineStoreSection = (id) => {
                 if (!onlineStoreSectionPanels.length) return;
@@ -870,6 +1136,10 @@
                     tab.classList.toggle('active', isActive);
                     tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
                 });
+
+                if (onlineStoreActiveSection) {
+                    onlineStoreActiveSection.value = panelId;
+                }
             };
 
             onlineStoreSectionTabs.forEach((tab) => {
@@ -878,11 +1148,14 @@
                 });
             });
 
+            activateOnlineStoreSection(onlineStoreActiveSection?.value ?? new URLSearchParams(window.location.search).get('online_store_section') ?? 'online-store-basics');
+
             const syncPaystackOptions = () => {
                 const toggle = document.querySelector('[data-paystack-toggle]');
                 const options = document.querySelector('[data-paystack-options]');
                 const fallback = document.querySelector('[data-paystack-method-fallback]');
                 const selfHostedFields = document.querySelector('[data-self-hosted-paystack-fields]');
+                const settlementBankFields = document.querySelector('[data-paystack-settlement-bank-fields]');
                 const radios = Array.from(document.querySelectorAll('[data-paystack-method-option]'));
                 if (!toggle || !options || !fallback) return;
 
@@ -901,6 +1174,9 @@
                 if (selfHostedFields) {
                     selfHostedFields.hidden = !toggle.checked || selectedMethod !== 'self_hosted_paystack';
                 }
+                if (settlementBankFields) {
+                    settlementBankFields.hidden = !toggle.checked || selectedMethod !== 'storeboot_paystack';
+                }
             };
 
             document.querySelector('[data-paystack-toggle]')?.addEventListener('change', syncPaystackOptions);
@@ -909,25 +1185,19 @@
             });
             syncPaystackOptions();
 
-            const onlineBankDialog = document.querySelector('[data-online-bank-account-dialog]');
             const onlineShippingDialog = document.querySelector('[data-online-shipping-dialog]');
             const onlineFaqDialog = document.querySelector('[data-online-faq-dialog]');
-            const onlineBankList = document.querySelector('[data-online-bank-accounts]');
             const onlineShippingList = document.querySelector('[data-online-shipping-options]');
             const onlineFaqList = document.querySelector('[data-online-faqs]');
+            const onlineSlidesList = document.querySelector('[data-online-slides]');
+            const transferBankSelector = document.querySelector('[data-transfer-bank-selector]');
+            const transferMethodCheckbox = document.querySelector('input[name="payment_methods[]"][value="bank_account"]');
 
             const setDialogInputValues = (dialog, selector, values) => {
                 Object.entries(values).forEach(([key, value]) => {
                     const input = dialog?.querySelector(`${selector}="${key}"]`);
                     if (input) input.value = value ?? '';
                 });
-            };
-
-            const updateOnlineBankEmptyState = () => {
-                const empty = onlineBankList?.querySelector('[data-online-bank-empty]');
-                if (empty) {
-                    empty.hidden = Boolean(onlineBankList?.querySelector('[data-online-bank-account]'));
-                }
             };
 
             const updateOnlineShippingEmptyState = () => {
@@ -944,18 +1214,17 @@
                 }
             };
 
-            const renumberOnlineBankAccounts = () => {
-                onlineBankList?.querySelectorAll('[data-online-bank-account]').forEach((row, index) => {
-                    row.querySelector('[data-bank-field="bank_name"]').name = `bank_accounts[${index}][bank_name]`;
-                    row.querySelector('[data-bank-field="account_name"]').name = `bank_accounts[${index}][account_name]`;
-                    row.querySelector('[data-bank-field="account_number"]').name = `bank_accounts[${index}][account_number]`;
-                });
-                updateOnlineBankEmptyState();
+            const updateOnlineSlidesEmptyState = () => {
+                const empty = onlineSlidesList?.querySelector('[data-online-slides-empty]');
+                if (empty) {
+                    empty.hidden = Boolean(onlineSlidesList?.querySelector('[data-online-slide]'));
+                }
             };
 
             const renumberOnlineShippingOptions = () => {
                 onlineShippingList?.querySelectorAll('[data-online-shipping-option]').forEach((row, index) => {
                     row.querySelector('[data-shipping-field="location"]').name = `shipping_options[${index}][location]`;
+                    row.querySelector('[data-shipping-field="description"]').name = `shipping_options[${index}][description]`;
                     row.querySelector('[data-shipping-field="price"]').name = `shipping_options[${index}][price]`;
                 });
                 updateOnlineShippingEmptyState();
@@ -969,67 +1238,39 @@
                 updateOnlineFaqEmptyState();
             };
 
-            const updateOnlineBankRow = (row, values) => {
-                const bankName = (values.bank_name ?? '').trim();
-                const accountName = (values.account_name ?? '').trim();
-                const accountNumber = (values.account_number ?? '').trim();
+            const renumberOnlineSlides = () => {
+                onlineSlidesList?.querySelectorAll('[data-online-slide]').forEach((row, index) => {
+                    const title = row.querySelector('[data-slide-title]');
+                    const image = row.querySelector('[data-slide-image-input]');
+                    const existingPath = row.querySelector('[data-slide-field="existing_image_path"]');
+                    const tag = row.querySelector('[data-slide-field="hero_image_tag"]');
+                    const text = row.querySelector('[data-slide-field="hero_image_text"]');
+                    const description = row.querySelector('[data-slide-field="hero_image_description"]');
 
-                row.querySelector('[data-bank-summary]').textContent = bankName || 'Bank account';
-                row.querySelector('[data-bank-account-name]').textContent = accountName || 'Account name not set';
-                row.querySelector('[data-bank-account-number]').textContent = accountNumber || 'Account number not set';
-                row.querySelector('[data-bank-field="bank_name"]').value = bankName;
-                row.querySelector('[data-bank-field="account_name"]').value = accountName;
-                row.querySelector('[data-bank-field="account_number"]').value = accountNumber;
-            };
-
-            const createOnlineBankRow = (values) => {
-                const row = document.createElement('div');
-                row.className = 'setup-line-card';
-                row.dataset.onlineBankAccount = '';
-                row.innerHTML = `
-                    <div class="setup-line-header">
-                        <div>
-                            <strong data-bank-summary>Bank account</strong>
-                            <div class="subtle"><span data-bank-account-name>Account name not set</span> · <span data-bank-account-number>Account number not set</span></div>
-                        </div>
-                        <div class="setup-row-actions">
-                            <button class="btn secondary" type="button" data-edit-online-bank-account>Edit</button>
-                            <button class="btn danger" type="button" data-delete-online-bank-account>Delete</button>
-                        </div>
-                    </div>
-                    <input type="hidden" data-bank-field="bank_name">
-                    <input type="hidden" data-bank-field="account_name">
-                    <input type="hidden" data-bank-field="account_number">
-                `;
-                updateOnlineBankRow(row, values);
-                return row;
-            };
-
-            const openOnlineBankDialog = (values = {}, index = '') => {
-                if (!onlineBankDialog) return;
-                onlineBankDialog.querySelector('[data-online-bank-dialog-title]').textContent = index === '' ? 'Add bank account' : 'Edit bank account';
-                onlineBankDialog.querySelector('[data-online-bank-edit-index]').value = index;
-                setDialogInputValues(onlineBankDialog, '[data-online-bank-input', {
-                    bank_name: values.bank_name ?? '',
-                    account_name: values.account_name ?? '',
-                    account_number: values.account_number ?? '',
+                    if (title) title.textContent = `Slide ${index + 1}`;
+                    if (image) image.name = `slides[${index}][image]`;
+                    if (existingPath) existingPath.name = `slides[${index}][existing_image_path]`;
+                    if (tag) tag.name = `slides[${index}][hero_image_tag]`;
+                    if (text) text.name = `slides[${index}][hero_image_text]`;
+                    if (description) description.name = `slides[${index}][hero_image_description]`;
                 });
-                onlineBankDialog.showModal();
+                updateOnlineSlidesEmptyState();
             };
-
-            const onlineBankValuesFromRow = (row) => ({
-                bank_name: row.querySelector('[data-bank-field="bank_name"]')?.value ?? '',
-                account_name: row.querySelector('[data-bank-field="account_name"]')?.value ?? '',
-                account_number: row.querySelector('[data-bank-field="account_number"]')?.value ?? '',
-            });
 
             const updateOnlineShippingRow = (row, values) => {
                 const location = (values.location ?? '').trim();
+                const description = (values.description ?? '').trim();
                 const price = `${values.price ?? 0}`.trim() || '0';
+                const descriptionNode = row.querySelector('[data-shipping-description]');
 
                 row.querySelector('[data-shipping-location]').textContent = location || 'Shipping option';
+                if (descriptionNode) {
+                    descriptionNode.textContent = description;
+                    descriptionNode.hidden = description === '';
+                }
                 row.querySelector('[data-shipping-price]').textContent = price;
                 row.querySelector('[data-shipping-field="location"]').value = location;
+                row.querySelector('[data-shipping-field="description"]').value = description;
                 row.querySelector('[data-shipping-field="price"]').value = price;
             };
 
@@ -1041,6 +1282,7 @@
                     <div class="setup-line-header">
                         <div>
                             <strong data-shipping-location>Shipping option</strong>
+                            <div class="subtle" data-shipping-description hidden></div>
                             <div class="subtle">Price: <span data-shipping-price>0</span></div>
                         </div>
                         <div class="setup-row-actions">
@@ -1049,6 +1291,7 @@
                         </div>
                     </div>
                     <input type="hidden" data-shipping-field="location">
+                    <input type="hidden" data-shipping-field="description">
                     <input type="hidden" data-shipping-field="price">
                 `;
                 updateOnlineShippingRow(row, values);
@@ -1061,6 +1304,7 @@
                 onlineShippingDialog.querySelector('[data-online-shipping-edit-index]').value = index;
                 setDialogInputValues(onlineShippingDialog, '[data-online-shipping-input', {
                     location: values.location ?? '',
+                    description: values.description ?? '',
                     price: values.price ?? '0',
                 });
                 onlineShippingDialog.showModal();
@@ -1068,6 +1312,7 @@
 
             const onlineShippingValuesFromRow = (row) => ({
                 location: row.querySelector('[data-shipping-field="location"]')?.value ?? '',
+                description: row.querySelector('[data-shipping-field="description"]')?.value ?? '',
                 price: row.querySelector('[data-shipping-field="price"]')?.value ?? '0',
             });
 
@@ -1119,14 +1364,62 @@
                 answer: row.querySelector('[data-faq-field="answer"]')?.value ?? '',
             });
 
-            renumberOnlineBankAccounts();
+            const createOnlineSlideRow = () => {
+                const row = document.createElement('div');
+                row.className = 'online-slide-card';
+                row.dataset.onlineSlide = '';
+                row.innerHTML = `
+                    <label class="online-slide-photo">
+                        <input type="file" accept="image/*" data-slide-image-input>
+                        <input type="hidden" value="" data-slide-field="existing_image_path">
+                        <span data-slide-placeholder>Upload Banner / Hero Image<br><small>(recommended 1600 x 600px)</small></span>
+                    </label>
+                    <div class="online-slide-form">
+                        <div class="setup-line-header">
+                            <strong data-slide-title>Slide</strong>
+                            <button class="btn danger" type="button" data-remove-online-slide>Remove</button>
+                        </div>
+                        <div class="field"><label>Banner Image Tag</label><input data-slide-field="hero_image_tag"></div>
+                        <div class="field"><label>Banner Image Text</label><input data-slide-field="hero_image_text"></div>
+                        <div class="field"><label>Banner Image Description</label><textarea rows="3" data-slide-field="hero_image_description"></textarea></div>
+                    </div>
+                `;
+
+                return row;
+            };
+
+            const syncTransferBankSelector = () => {
+                if (!transferBankSelector || !transferMethodCheckbox) return;
+                transferBankSelector.hidden = !transferMethodCheckbox.checked;
+            };
+
+            transferMethodCheckbox?.addEventListener('change', syncTransferBankSelector);
+            syncTransferBankSelector();
+
             renumberOnlineShippingOptions();
             renumberOnlineFaqs();
+            renumberOnlineSlides();
 
             document.addEventListener('input', (event) => {
                 const colorField = event.target.closest('[data-theme-color-field]');
                 if (colorField) {
                     paintThemeColorField(colorField);
+                }
+
+                const slideImageInput = event.target.closest('[data-slide-image-input]');
+                if (slideImageInput?.files?.[0]) {
+                    const row = slideImageInput.closest('[data-online-slide]');
+                    const photo = slideImageInput.closest('.online-slide-photo');
+                    const previousPreview = photo?.querySelector('[data-slide-preview]');
+                    const placeholder = photo?.querySelector('[data-slide-placeholder]');
+                    const preview = previousPreview ?? document.createElement('img');
+                    preview.dataset.slidePreview = '';
+                    preview.alt = 'Selected slide image preview';
+                    preview.src = URL.createObjectURL(slideImageInput.files[0]);
+                    placeholder?.remove();
+                    if (!previousPreview) photo?.appendChild(preview);
+                    const existingPath = row?.querySelector('[data-slide-field="existing_image_path"]');
+                    if (existingPath) existingPath.value = '';
                 }
             });
 
@@ -1176,59 +1469,30 @@
                         if (field.tagName === 'SELECT') field.value = 'active';
                         else field.value = '';
                     });
+                    const assetCode = row.querySelector('[data-bank-asset-code]');
+                    if (assetCode) assetCode.textContent = 'Created on save';
                     list.appendChild(row);
                     return;
                 }
 
-                const openBankAccountDialog = event.target.closest('[data-open-online-bank-account-dialog]');
-                if (openBankAccountDialog) {
-                    openOnlineBankDialog();
-                    return;
-                }
-
-                const editOnlineBank = event.target.closest('[data-edit-online-bank-account]');
-                if (editOnlineBank) {
-                    const row = editOnlineBank.closest('[data-online-bank-account]');
-                    const rows = Array.from(onlineBankList?.querySelectorAll('[data-online-bank-account]') ?? []);
-                    if (row) openOnlineBankDialog(onlineBankValuesFromRow(row), rows.indexOf(row));
-                    return;
-                }
-
-                const deleteOnlineBank = event.target.closest('[data-delete-online-bank-account]');
-                if (deleteOnlineBank) {
-                    const row = deleteOnlineBank.closest('[data-online-bank-account]');
-                    if (row) {
-                        row.remove();
-                        renumberOnlineBankAccounts();
+                const addSlide = event.target.closest('[data-add-online-slide]');
+                if (addSlide) {
+                    event.preventDefault();
+                    const row = createOnlineSlideRow();
+                    const empty = onlineSlidesList?.querySelector('[data-online-slides-empty]');
+                    if (empty) {
+                        onlineSlidesList?.insertBefore(row, empty);
+                    } else {
+                        onlineSlidesList?.appendChild(row);
                     }
+                    renumberOnlineSlides();
                     return;
                 }
 
-                const saveOnlineBank = event.target.closest('[data-save-online-bank-account]');
-                if (saveOnlineBank) {
-                    const values = {
-                        bank_name: onlineBankDialog?.querySelector('[data-online-bank-input="bank_name"]')?.value ?? '',
-                        account_name: onlineBankDialog?.querySelector('[data-online-bank-input="account_name"]')?.value ?? '',
-                        account_number: onlineBankDialog?.querySelector('[data-online-bank-input="account_number"]')?.value ?? '',
-                    };
-                    const index = onlineBankDialog?.querySelector('[data-online-bank-edit-index]')?.value ?? '';
-                    const rows = Array.from(onlineBankList?.querySelectorAll('[data-online-bank-account]') ?? []);
-                    const row = index === '' ? createOnlineBankRow(values) : rows[Number(index)];
-
-                    if (index === '') {
-                        onlineBankList?.appendChild(row);
-                    } else if (row) {
-                        updateOnlineBankRow(row, values);
-                    }
-
-                    renumberOnlineBankAccounts();
-                    onlineBankDialog?.close();
-                    return;
-                }
-
-                const cancelOnlineBank = event.target.closest('[data-online-bank-cancel]');
-                if (cancelOnlineBank) {
-                    onlineBankDialog?.close();
+                const removeSlide = event.target.closest('[data-remove-online-slide]');
+                if (removeSlide) {
+                    removeSlide.closest('[data-online-slide]')?.remove();
+                    renumberOnlineSlides();
                     return;
                 }
 
@@ -1260,6 +1524,7 @@
                 if (saveOnlineShipping) {
                     const values = {
                         location: onlineShippingDialog?.querySelector('[data-online-shipping-input="location"]')?.value ?? '',
+                        description: onlineShippingDialog?.querySelector('[data-online-shipping-input="description"]')?.value ?? '',
                         price: onlineShippingDialog?.querySelector('[data-online-shipping-input="price"]')?.value ?? '0',
                     };
                     const index = onlineShippingDialog?.querySelector('[data-online-shipping-edit-index]')?.value ?? '';

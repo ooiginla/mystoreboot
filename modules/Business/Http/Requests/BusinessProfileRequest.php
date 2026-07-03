@@ -22,6 +22,12 @@ final class BusinessProfileRequest extends FormRequest
             'currency_code' => strtoupper((string) $this->input('currency_code', 'NGN')),
             'maintenance_mode' => $this->boolean('maintenance_mode'),
         ]);
+
+        if ($this->has('use_estimated_cost_for_cogs')) {
+            $this->merge([
+                'use_estimated_cost_for_cogs' => $this->boolean('use_estimated_cost_for_cogs'),
+            ]);
+        }
     }
 
     /**
@@ -56,11 +62,9 @@ final class BusinessProfileRequest extends FormRequest
             'bank_details.*.account_name' => ['nullable', 'string', 'max:160'],
             'bank_details.*.account_number' => ['nullable', 'string', 'max:80'],
             'bank_details.*.status' => ['nullable', Rule::in(['active', 'inactive'])],
-            'seo.meta_title' => ['nullable', 'string', 'max:180'],
-            'seo.meta_description' => ['nullable', 'string', 'max:500'],
-            'seo.privacy_policy_url' => ['nullable', 'url', 'max:255'],
-            'seo.terms_url' => ['nullable', 'url', 'max:255'],
+            'bank_details.*.asset_account_code' => ['nullable', 'string', 'max:40'],
             'maintenance_mode' => ['boolean'],
+            'use_estimated_cost_for_cogs' => ['sometimes', 'boolean'],
         ];
     }
 }

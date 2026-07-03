@@ -19,6 +19,7 @@
                 <div class="field"><label>Payment date</label><input name="payment_date" type="date" value="{{ now()->toDateString() }}" required></div>
                 <div class="field"><label>Amount</label><input name="amount" type="text" inputmode="decimal" data-money-input value="{{ $selectedPo ? $money($selectedPo->balance_minor) : '' }}" required></div>
                 <div class="field"><label>Payment method</label><select name="payment_method"><option value="">Select method</option>@foreach ($paymentMethods as $method)<option value="{{ $method }}">{{ $method }}</option>@endforeach</select></div>
+                <div class="field"><label>Paid from</label><select name="payment_account_code" required><option value="">Select current asset</option>@foreach ($paymentAssetAccounts as $account)<option value="{{ $account->code }}">{{ $account->code }} · {{ $account->name }}</option>@endforeach</select></div>
                 <div class="field"><label>Reference number</label><input name="reference_number"></div>
                 <div class="field full"><label>Notes</label><textarea name="notes"></textarea></div>
             </div>

@@ -14,21 +14,21 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
+use Modules\Business\Models\Branch;
 use Modules\Customers\Models\Customer;
 use Modules\Finance\Actions\EnsureDefaultChartOfAccountsAction;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Finance\Http\Requests\ExpenseCategoryRequest;
 use Modules\Finance\Http\Requests\ExpenseRequest;
 use Modules\Finance\Http\Requests\ManualJournalEntryRequest;
-use Modules\Finance\Http\Requests\PettyCashTransactionRequest;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Finance\Models\FinanceExpense;
 use Modules\Finance\Models\FinanceExpenseCategory;
 use Modules\Finance\Models\FinanceJournalEntry;
 use Modules\Finance\Models\FinanceJournalLine;
-use Modules\Finance\Models\FinancePettyCashTransaction;
 use Modules\Inventory\Models\InventoryStockLevel;
 use Modules\Procurement\Enums\PurchaseOrderStatus;
 use Modules\Procurement\Models\PurchaseOrder;
@@ -135,12 +135,6 @@ final class FinanceReportController extends Controller
             ->whereBetween('expense_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
             ->latest('expense_date')
             ->get();
-        $pettyCashTransactions = FinancePettyCashTransaction::query()
-            ->with('category')
-            ->where('tenant_id', $tenant->id)
-            ->latest('transaction_date')
-            ->limit(50)
-            ->get();
         $accounts = FinanceAccount::query()
             ->where('tenant_id', $tenant->id)
             ->orderBy('code')
@@ -206,7 +200,6 @@ final class FinanceReportController extends Controller
             'accounts' => $accounts,
             'expenseCategories' => $expenseCategories,
             'operationalExpenses' => $operationalExpenses,
-            'pettyCashTransactions' => $pettyCashTransactions,
             'journalEntries' => $journalEntries,
             'customerBalances' => $this->customerBalances($tenant->id),
             'vendorBalances' => $this->vendorBalances($tenant->id),
@@ -247,25 +240,37 @@ final class FinanceReportController extends Controller
             ->orderBy('name')
             ->get();
         $operationalExpenses = FinanceExpense::query()
-            ->with('category')
+            ->with(['category', 'expenseAccount', 'paymentAccount'])
             ->where('tenant_id', $tenant->id)
             ->latest('expense_date')
             ->limit(100)
             ->get();
-        $pettyCashTransactions = FinancePettyCashTransaction::query()
-            ->with('category')
-            ->where('tenant_id', $tenant->id)
-            ->latest('transaction_date')
-            ->limit(100)
-            ->get();
-        $journalEntries = FinanceJournalEntry::query()
-            ->with('lines.account')
-            ->where('tenant_id', $tenant->id)
-            ->latest('entry_date')
-            ->limit(100)
-            ->get();
         $accounts = FinanceAccount::query()
             ->where('tenant_id', $tenant->id)
+            ->where('is_active', true)
+            ->orderBy('code')
+            ->get();
+        $journalFilters = $this->journalFilters($request);
+        $journalEntries = $this->journalEntriesQuery($tenant->id, $journalFilters)
+            ->paginate(25, ['*'], 'journals_page')
+            ->withQueryString()
+            ->fragment('journals');
+        $expenseAccounts = FinanceAccount::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('type', 'expense')
+            ->where('is_active', true)
+            ->orderBy('category')
+            ->orderBy('code')
+            ->get();
+        $expenseAccountCategories = $expenseAccounts
+            ->pluck('category')
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values();
+        $assetAccounts = FinanceAccount::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('type', 'asset')
             ->where('is_active', true)
             ->orderBy('code')
             ->get();
@@ -276,11 +281,55 @@ final class FinanceReportController extends Controller
             'isPlatformAdmin' => $user->is_platform_admin,
             'expenseCategories' => $expenseCategories,
             'operationalExpenses' => $operationalExpenses,
-            'pettyCashTransactions' => $pettyCashTransactions,
             'journalEntries' => $journalEntries,
             'accounts' => $accounts,
+            'journalFilters' => $journalFilters,
+            'journalAccountCategories' => $accounts->pluck('category')->filter()->unique()->sort()->values(),
+            'journalAccountTypes' => $accounts->pluck('type')->filter()->unique()->sort()->values(),
+            'expenseAccounts' => $expenseAccounts,
+            'expenseAccountCategories' => $expenseAccountCategories,
+            'assetAccounts' => $assetAccounts,
+            'branches' => Branch::query()->where('tenant_id', $tenant->id)->orderBy('name')->get(),
             'pettyCashBalanceMinor' => $this->accountBalance($tenant->id, '1010'),
         ]);
+    }
+
+    public function downloadJournalEntries(Request $request): StreamedResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenants = $this->visibleTenantsFor($user);
+        $tenant = $this->resolveTenant($request, $tenants);
+
+        abort_if(! $tenant, 403);
+        app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
+
+        $journalFilters = $this->journalFilters($request);
+        $entries = $this->journalEntriesQuery($tenant->id, $journalFilters)->get();
+        $filename = 'journal-entries-'.$tenant->slug.'-'.now()->format('Ymd-His').'.csv';
+
+        return response()->streamDownload(function () use ($entries): void {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, ['Date', 'Source', 'Particulars', 'Post Ref', 'Debit (DR)', 'Credit (CR)', 'Branch', 'Memo', 'Entry No']);
+
+            foreach ($entries as $entry) {
+                foreach ($entry->lines as $line) {
+                    fputcsv($handle, [
+                        $entry->entry_date->format('Y-M-d'),
+                        $this->journalSourceLabel($entry->source_type),
+                        $line->memo ?: $line->account->name,
+                        $line->account->code,
+                        $line->debit_minor > 0 ? number_format($line->debit_minor / 100, 2, '.', '') : '',
+                        $line->credit_minor > 0 ? number_format($line->credit_minor / 100, 2, '.', '') : '',
+                        $line->branch?->name ?? 'Unassigned branch',
+                        $entry->memo,
+                        $entry->entry_number,
+                    ]);
+                }
+            }
+
+            fclose($handle);
+        }, $filename, ['Content-Type' => 'text/csv']);
     }
 
     public function storeExpenseCategory(ExpenseCategoryRequest $request): RedirectResponse
@@ -334,22 +383,36 @@ final class FinanceReportController extends Controller
     {
         $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
         $data = $request->validated();
-        $category = FinanceExpenseCategory::query()->with('account')->where('tenant_id', $data['tenant_id'])->findOrFail($data['finance_expense_category_id']);
+        $expenseAccount = FinanceAccount::query()->where('tenant_id', $data['tenant_id'])->where('code', $data['expense_account_code'])->firstOrFail();
+        $category = FinanceExpenseCategory::query()->firstOrCreate([
+            'tenant_id' => $data['tenant_id'],
+            'code' => Str::slug($data['expense_category']),
+        ], [
+            'finance_account_id' => $expenseAccount->id,
+            'name' => $data['expense_category'],
+            'description' => 'Expense category for '.$data['expense_category'].'.',
+            'is_active' => true,
+        ]);
         $amountMinor = $this->moneyToMinor($data['amount']);
         $paidMinor = match ($data['payment_status']) {
             'paid' => $amountMinor,
             'unpaid' => 0,
             default => min($amountMinor, $this->moneyToMinor($data['paid_amount'] ?? 0)),
         };
+        $paymentAccount = $paidMinor > 0
+            ? FinanceAccount::query()->where('tenant_id', $data['tenant_id'])->where('code', $data['payment_account_code'])->firstOrFail()
+            : null;
 
-        $expense = DB::transaction(function () use ($data, $category, $amountMinor, $paidMinor, $postJournalEntry): FinanceExpense {
+        $expense = DB::transaction(function () use ($data, $category, $expenseAccount, $paymentAccount, $amountMinor, $paidMinor, $postJournalEntry): FinanceExpense {
             $expense = FinanceExpense::query()->create([
                 'tenant_id' => $data['tenant_id'],
                 'finance_expense_category_id' => $category->id,
+                'finance_account_id' => $expenseAccount->id,
+                'payment_finance_account_id' => $paymentAccount?->id,
                 'expense_number' => $this->number('EXP', $data['tenant_id'], FinanceExpense::class),
                 'expense_date' => $data['expense_date'],
                 'payee_name' => $data['payee_name'] ?? null,
-                'payment_method' => $data['payment_method'],
+                'payment_method' => $paymentAccount?->code ?? 'Unpaid',
                 'payment_status' => $data['payment_status'],
                 'amount_minor' => $amountMinor,
                 'paid_minor' => $paidMinor,
@@ -362,9 +425,9 @@ final class FinanceReportController extends Controller
                 $expense->expense_date->toDateString(),
                 'Operational expense '.$expense->expense_number,
                 [
-                    ['account_code' => $category->account->code, 'debit_minor' => $amountMinor, 'memo' => $expense->description],
-                    ['account_code' => $this->cashAccountFor($expense->payment_method), 'credit_minor' => $paidMinor, 'memo' => $expense->payment_method],
-                    ['account_code' => '2000', 'credit_minor' => max(0, $amountMinor - $paidMinor), 'party_type' => 'payee', 'memo' => $expense->payee_name],
+                    ['account_code' => $expenseAccount->code, 'branch_id' => $data['branch_id'] ?? null, 'debit_minor' => $amountMinor, 'memo' => $expense->description],
+                    ['account_code' => $paymentAccount?->code ?? '1000', 'branch_id' => $data['branch_id'] ?? null, 'credit_minor' => $paidMinor, 'memo' => $paymentAccount?->name],
+                    ['account_code' => '2000', 'branch_id' => $data['branch_id'] ?? null, 'credit_minor' => max(0, $amountMinor - $paidMinor), 'party_type' => 'payee', 'memo' => $expense->payee_name],
                 ],
                 'finance_expense',
                 $expense->id,
@@ -375,61 +438,6 @@ final class FinanceReportController extends Controller
         });
 
         return redirect()->to(route('admin.finance.expenses', ['tenant' => $expense->tenant_id]).'#expense-list')->with('status', 'Expense recorded and journal posted.');
-    }
-
-    public function storePettyCashTransaction(PettyCashTransactionRequest $request, PostJournalEntryAction $postJournalEntry): RedirectResponse
-    {
-        $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
-        $data = $request->validated();
-        $amountMinor = $this->moneyToMinor($data['amount']);
-
-        if ($data['transaction_type'] === 'expense' && empty($data['finance_expense_category_id'])) {
-            return back()->withErrors(['finance_expense_category_id' => 'Choose an expense category for petty cash expenses.'])->withInput();
-        }
-
-        $transaction = DB::transaction(function () use ($data, $amountMinor, $postJournalEntry): FinancePettyCashTransaction {
-            $transaction = FinancePettyCashTransaction::query()->create([
-                'tenant_id' => $data['tenant_id'],
-                'finance_expense_category_id' => $data['finance_expense_category_id'] ?? null,
-                'transaction_number' => $this->number('PC', $data['tenant_id'], FinancePettyCashTransaction::class, 'transaction_number'),
-                'transaction_date' => $data['transaction_date'],
-                'transaction_type' => $data['transaction_type'],
-                'amount_minor' => $amountMinor,
-                'payee_name' => $data['payee_name'] ?? null,
-                'reference_number' => $data['reference_number'] ?? null,
-                'description' => $data['description'] ?? null,
-            ]);
-            $category = $transaction->category?->load('account');
-
-            $lines = match ($transaction->transaction_type) {
-                'top_up' => [
-                    ['account_code' => '1010', 'debit_minor' => $amountMinor],
-                    ['account_code' => '1000', 'credit_minor' => $amountMinor],
-                ],
-                'return_to_bank' => [
-                    ['account_code' => '1000', 'debit_minor' => $amountMinor],
-                    ['account_code' => '1010', 'credit_minor' => $amountMinor],
-                ],
-                default => [
-                    ['account_code' => $category?->account?->code ?? '6000', 'debit_minor' => $amountMinor, 'memo' => $transaction->description],
-                    ['account_code' => '1010', 'credit_minor' => $amountMinor],
-                ],
-            };
-
-            $postJournalEntry->execute(
-                $transaction->tenant_id,
-                $transaction->transaction_date->toDateString(),
-                'Petty cash '.$transaction->transaction_number,
-                $lines,
-                'finance_petty_cash_transaction',
-                $transaction->id,
-                $transaction->transaction_type,
-            );
-
-            return $transaction;
-        });
-
-        return redirect()->to(route('admin.finance.expenses', ['tenant' => $transaction->tenant_id]).'#petty-cash')->with('status', 'Petty cash transaction posted.');
     }
 
     public function storeJournalEntry(ManualJournalEntryRequest $request, PostJournalEntryAction $postJournalEntry): RedirectResponse
@@ -445,6 +453,7 @@ final class FinanceReportController extends Controller
                 'account_code' => $line['account_code'],
                 'debit_minor' => $this->moneyToMinor($line['debit'] ?? 0),
                 'credit_minor' => $this->moneyToMinor($line['credit'] ?? 0),
+                'branch_id' => $line['branch_id'] ?? null,
                 'memo' => $line['memo'] ?? null,
             ])->all(),
             'manual_journal',
@@ -476,6 +485,61 @@ final class FinanceReportController extends Controller
         }
 
         abort_unless(TenantMembership::query()->where('tenant_id', $tenantId)->where('user_id', $user->id)->where('status', MembershipStatus::Active->value)->exists(), 403);
+    }
+
+    /**
+     * @return array{date_from: string, date_to: string, category: string, type: string, account: string}
+     */
+    private function journalFilters(Request $request): array
+    {
+        return [
+            'date_from' => $request->string('journal_date_from')->toString(),
+            'date_to' => $request->string('journal_date_to')->toString(),
+            'category' => $request->string('journal_category')->toString(),
+            'type' => $request->string('journal_type')->toString(),
+            'account' => $request->string('journal_account')->toString(),
+        ];
+    }
+
+    /**
+     * @param  array{date_from: string, date_to: string, category: string, type: string, account: string}  $journalFilters
+     */
+    private function journalEntriesQuery(string $tenantId, array $journalFilters)
+    {
+        return FinanceJournalEntry::query()
+            ->with(['lines.account', 'lines.branch'])
+            ->where('tenant_id', $tenantId)
+            ->when($journalFilters['date_from'] !== '', fn ($query) => $query->whereDate('entry_date', '>=', $journalFilters['date_from']))
+            ->when($journalFilters['date_to'] !== '', fn ($query) => $query->whereDate('entry_date', '<=', $journalFilters['date_to']))
+            ->when($journalFilters['category'] !== '', fn ($query) => $query->whereHas('lines.account', fn ($accountQuery) => $accountQuery->where('category', $journalFilters['category'])))
+            ->when($journalFilters['type'] !== '', fn ($query) => $query->whereHas('lines.account', fn ($accountQuery) => $accountQuery->where('type', $journalFilters['type'])))
+            ->when($journalFilters['account'] !== '', function ($query) use ($journalFilters): void {
+                $search = '%'.$journalFilters['account'].'%';
+
+                $query->whereHas('lines.account', fn ($accountQuery) => $accountQuery
+                    ->where('code', 'like', $search)
+                    ->orWhere('name', 'like', $search));
+            })
+            ->latest('entry_date')
+            ->latest('id');
+    }
+
+    private function journalSourceLabel(?string $sourceType): string
+    {
+        return match ($sourceType) {
+            'hr_payroll_run' => 'Payroll posting',
+            'finance_expense' => 'Expense posting',
+            'vendor_payment' => 'Vendor payment posting',
+            'purchase_order' => 'Purchase posting',
+            'sales_order' => 'Sales posting',
+            'sales_payment' => 'Sales payment posting',
+            'sales_return' => 'Sales return posting',
+            'inventory_movement' => 'Inventory posting',
+            'till_movement' => 'Till posting',
+            'manual_journal' => 'Manual journal',
+            null => 'Manual journal',
+            default => Str::headline($sourceType),
+        };
     }
 
     private function resolveTenant(Request $request, EloquentCollection $visibleTenants): ?Tenant
@@ -546,11 +610,6 @@ final class FinanceReportController extends Controller
             })
             ->sortByDesc('profit_minor')
             ->values();
-    }
-
-    private function cashAccountFor(?string $paymentMethod): string
-    {
-        return str_contains(Str::lower((string) $paymentMethod), 'petty') ? '1010' : '1000';
     }
 
     private function accountBalance(string $tenantId, string $accountCode): int

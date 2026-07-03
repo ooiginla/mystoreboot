@@ -19,6 +19,7 @@
     ][strtoupper($currency)] ?? strtoupper($currency);
     $logoUrl = $imageUrl($store->logo_path);
     $whatsapp = preg_replace('/\D+/', '', (string) ($store->store_whatsapp ?: data_get($store->social_accounts, 'whatsapp')));
+    $storeAddress = collect([$store->address, $store->city, $store->state, $store->country])->filter()->join(', ');
     $socialUrl = function (string $network, mixed $handle): string {
         $handle = trim((string) $handle);
 
@@ -30,6 +31,10 @@
             'facebook' => 'https://facebook.com/'.ltrim($handle, '@/'),
             'instagram' => 'https://instagram.com/'.ltrim($handle, '@/'),
             'tiktok' => 'https://tiktok.com/@'.ltrim($handle, '@/'),
+            'twitter' => 'https://x.com/'.ltrim($handle, '@/'),
+            'youtube' => str_starts_with(ltrim($handle, '@/'), '@')
+                ? 'https://youtube.com/'.ltrim($handle, '/')
+                : 'https://youtube.com/@'.ltrim($handle, '@/'),
             'whatsapp' => 'https://wa.me/'.preg_replace('/\D+/', '', $handle),
             default => '#',
         };
@@ -66,15 +71,12 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title ?? $store->store_name }}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
     @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
         @vite(['resources/css/app.css', 'resources/js/app.js'])
-    @else
-        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries,line-clamp"></script>
     @endif
+    <script src="https://js.paystack.co/v2/inline.js"></script>
     <style>
         :root {
             --store-primary: {{ $store->theme_primary_color ?: '#00236f' }};
@@ -85,12 +87,23 @@
             --store-soft: #f5f6fa;
             --store-surface: #ffffff;
         }
-        body { font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif; color: var(--store-ink); background: #fafafa; }
-        h1, h2, h3, .store-display { font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; }
-        .material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24; }
+        body { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--store-ink); background: #fafafa; font-size: 16px; line-height: 24px; font-weight: 400; letter-spacing: 0; }
+        h1, h2, h3, .store-display, .sf-display-xl, .sf-headline-lg, .sf-headline-md, .sf-label-md { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+        .sf-display-xl { font-size: 48px; line-height: 56px; letter-spacing: -0.02em; font-weight: 700; }
+        .sf-headline-lg { font-size: 32px; line-height: 40px; letter-spacing: -0.01em; font-weight: 600; }
+        .sf-headline-lg-mobile { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: 0; }
+        .sf-headline-md { font-size: 20px; line-height: 28px; font-weight: 600; }
+        .sf-body-lg { font-size: 18px; line-height: 28px; font-weight: 400; }
+        .sf-body-md { font-size: 16px; line-height: 24px; font-weight: 400; }
+        .sf-label-md { font-size: 14px; line-height: 20px; letter-spacing: 0.05em; font-weight: 600; }
+        .sf-caption { font-size: 12px; line-height: 16px; font-weight: 400; }
+        @media (max-width: 767px) {
+            .sf-display-xl { font-size: 24px; line-height: 32px; letter-spacing: 0; font-weight: 600; }
+            .sf-headline-lg { font-size: 24px; line-height: 32px; letter-spacing: 0; }
+        }
         .store-shell { max-width: 1280px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
         @media (min-width: 768px) { .store-shell { padding-left: 48px; padding-right: 48px; } }
-        .store-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 8px; padding: 10px 18px; font-weight: 800; transition: transform .16s ease, box-shadow .16s ease, opacity .16s ease; }
+        .store-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 8px; padding: 10px 18px; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; line-height: 20px; letter-spacing: 0.05em; font-weight: 600; text-transform: uppercase; transition: transform .16s ease, box-shadow .16s ease, opacity .16s ease; }
         .store-btn:active { transform: scale(.98); }
         .store-btn-primary { background: var(--store-primary); color: white; }
         .store-btn-secondary { background: var(--store-secondary); color: white; }
@@ -105,10 +118,11 @@
         @keyframes storeBlink { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
         @keyframes whatsappRipple { 0% { transform: scale(.85); opacity: .65; } 100% { transform: scale(1.9); opacity: 0; } }
     </style>
+    @stack('styles')
 </head>
 <body data-storefront data-cart-key="storefront-cart-{{ $store->username }}">
     @if ($store->announcement)
-        <div class="bg-black px-4 py-2 text-center text-xs font-bold uppercase tracking-[.2em] text-white">
+        <div class="sf-label-md bg-black px-4 py-2 text-center uppercase text-white">
             <span class="store-announcement inline-block">{{ $store->announcement }}</span>
         </div>
     @endif
@@ -120,41 +134,49 @@
                     @if ($logoUrl)
                         <img src="{{ $logoUrl }}" alt="{{ $store->store_name }} logo" class="h-10 w-10 rounded-lg object-cover">
                     @else
-                        <span class="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-black text-white" style="background: var(--store-primary);">{{ Str::of($store->store_name)->substr(0, 2)->upper() }}</span>
+                        <span class="sf-label-md flex h-10 w-10 items-center justify-center rounded-lg text-white" style="background: var(--store-primary);">{{ Str::of($store->store_name)->substr(0, 2)->upper() }}</span>
                     @endif
-                    <span class="store-display truncate text-xl font-black text-[var(--store-primary)] md:text-2xl">{{ $store->store_name }}</span>
+                    <span class="sf-headline-md truncate text-[var(--store-primary)]">{{ $store->store_name }}</span>
                 </a>
                 <nav class="hidden items-center gap-5 lg:flex">
                     <div class="relative">
-                        <button type="button" class="flex items-center gap-2 text-sm font-bold text-[var(--store-secondary)] hover:text-[var(--store-primary)]" data-categories-toggle aria-expanded="false">
-                            <span class="material-symbols-outlined text-[20px] text-[var(--store-secondary)]">menu</span>
+                        <button type="button" class="sf-body-md flex items-center gap-2 font-bold text-[var(--store-secondary)] hover:text-[var(--store-primary)]" data-categories-toggle aria-expanded="false">
+                            @include('storefront::partials.icon', ['name' => 'menu', 'class' => 'h-5 w-5 text-[var(--store-secondary)]'])
                             All Categories
                         </button>
                         <div class="store-card invisible absolute left-0 top-9 z-50 w-72 translate-y-2 p-2 opacity-0 transition" data-categories-menu>
                             @forelse ($menuCategories as $category)
-                                <a href="{{ route('storefront.storefront.store.home', [$store, 'category' => $category->slug]) }}" class="flex items-center justify-between rounded-md px-3 py-2 text-sm font-semibold hover:bg-[var(--store-soft)]">
+                                <a href="{{ route('storefront.storefront.store.home', [$store, 'category' => $category->slug]) }}" class="sf-body-md flex items-center justify-between rounded-md px-3 py-2 font-semibold hover:bg-[var(--store-soft)]">
                                     {{ $category->name }}
-                                    <span class="material-symbols-outlined text-[18px]">chevron_right</span>
+                                    @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
                                 </a>
                             @empty
-                                <span class="block px-3 py-2 text-sm text-[var(--store-muted)]">No categories yet</span>
+                                <span class="sf-body-md block px-3 py-2 text-[var(--store-muted)]">No categories yet</span>
                             @endforelse
                         </div>
                     </div>
                     @foreach ($navLinks as $link)
-                        <a href="{{ $link['href'] }}" class="text-sm font-bold text-[var(--store-muted)] hover:text-[var(--store-primary)]">{{ $link['label'] }}</a>
+                        <a href="{{ $link['href'] }}" class="sf-body-md font-bold text-[var(--store-muted)] hover:text-[var(--store-primary)]">{{ $link['label'] }}</a>
                     @endforeach
                 </nav>
             </div>
             <div class="flex items-center gap-2">
-                <a href="{{ route('storefront.storefront.store.contact', $store) }}" class="hidden rounded-md border border-[var(--store-line)] px-3 py-2 text-sm font-bold text-[var(--store-muted)] hover:text-[var(--store-primary)] md:inline-flex">Contact</a>
+                <a href="{{ route('storefront.storefront.store.contact', $store) }}" class="sf-body-md hidden rounded-md border border-[var(--store-line)] px-3 py-2 font-bold text-[var(--store-muted)] hover:text-[var(--store-primary)] md:inline-flex">Contact</a>
                 <button type="button" class="relative rounded-full p-3 hover:bg-[var(--store-soft)]" data-cart-open aria-label="Open cart">
-                    <span class="material-symbols-outlined text-[var(--store-primary)]">shopping_cart</span>
-                    <span class="absolute right-1 top-1 hidden min-w-5 rounded-full bg-black px-1 text-center text-[10px] font-bold leading-5 text-white" data-cart-count>0</span>
+                    @include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5 text-[var(--store-primary)]'])
+                    <span class="sf-caption absolute right-1 top-1 hidden min-w-5 rounded-full bg-black px-1 text-center font-bold text-white" data-cart-count>0</span>
                 </button>
             </div>
         </div>
     </header>
+
+    @if (session('status') || session('payment_error'))
+        <div class="store-shell pt-4">
+            <div class="sf-body-md rounded-lg border p-4 font-semibold {{ session('payment_error') ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-800' }}">
+                {{ session('payment_error') ?: session('status') }}
+            </div>
+        </div>
+    @endif
 
     <main>
         @yield('content')
@@ -163,12 +185,12 @@
     <footer class="mt-16 bg-black text-white">
         <div class="store-shell grid gap-8 py-12 md:grid-cols-4">
             <div>
-                <h2 class="store-display text-xl font-black text-white">{{ $store->store_name }}</h2>
-                <p class="mt-3 text-sm leading-6 text-zinc-300">{{ $store->description ?: 'Shop curated products from our online store.' }}</p>
+                <h2 class="sf-headline-md text-white">{{ $store->store_name }}</h2>
+                <p class="sf-body-md mt-3 text-zinc-300">{{ $store->description ?: 'Shop curated products from our online store.' }}</p>
             </div>
             <div>
-                <h3 class="font-bold text-white">Shop</h3>
-                <div class="mt-3 grid gap-2 text-sm text-zinc-300">
+                <h3 class="sf-headline-md text-white">Shop</h3>
+                <div class="sf-body-md mt-3 grid gap-2 text-zinc-300">
                     <a class="hover:text-[var(--store-secondary)]" href="{{ route('storefront.storefront.store.home', $store) }}">Products</a>
                     @if ($hasServices)
                         <a class="hover:text-[var(--store-secondary)]" href="{{ route('storefront.storefront.store.services', $store) }}">Services</a>
@@ -178,30 +200,30 @@
                 </div>
             </div>
             <div>
-                <h3 class="font-bold text-white">Info</h3>
-                <div class="mt-3 grid gap-2 text-sm text-zinc-300">
+                <h3 class="sf-headline-md text-white">Info</h3>
+                <div class="sf-body-md mt-3 grid gap-2 text-zinc-300">
                     @foreach ($footerPages as $link)
                         <a class="hover:text-[var(--store-secondary)]" href="{{ $link['href'] }}">{{ $link['label'] }}</a>
                     @endforeach
                 </div>
             </div>
             <div>
-                <h3 class="font-bold text-white">Connect</h3>
-                @if ($store->address || $store->store_phone || $store->site_email)
-                    <div class="mt-3 grid gap-2 text-sm text-zinc-300">
-                        @if ($store->address)
-                            <p class="flex items-start gap-2"><span class="material-symbols-outlined mt-0.5 text-[18px] text-[var(--store-secondary)]">location_on</span><span>{{ $store->address }}</span></p>
+                <h3 class="sf-headline-md text-white">Connect</h3>
+                @if ($storeAddress || $store->store_phone || $store->site_email)
+                    <div class="sf-body-md mt-3 grid gap-2 text-zinc-300">
+                        @if ($storeAddress)
+                            <p class="flex items-start gap-2">@include('storefront::partials.icon', ['name' => 'location_on', 'class' => 'mt-0.5 h-5 w-5 shrink-0 text-[var(--store-secondary)]'])<span>{{ $storeAddress }}</span></p>
                         @endif
                         @if ($store->store_phone)
-                            <p class="flex items-center gap-2"><span class="material-symbols-outlined text-[18px] text-[var(--store-secondary)]">call</span>{{ $store->store_phone }}</p>
+                            <p class="flex items-center gap-2">@include('storefront::partials.icon', ['name' => 'call', 'class' => 'h-5 w-5 shrink-0 text-[var(--store-secondary)]']){{ $store->store_phone }}</p>
                         @endif
                         @if ($store->site_email)
-                            <p class="flex items-center gap-2"><span class="material-symbols-outlined text-[18px] text-[var(--store-secondary)]">mail</span>{{ $store->site_email }}</p>
+                            <p class="flex items-center gap-2">@include('storefront::partials.icon', ['name' => 'mail', 'class' => 'h-5 w-5 shrink-0 text-[var(--store-secondary)]']){{ $store->site_email }}</p>
                         @endif
                     </div>
                 @endif
                 <div class="mt-3 flex flex-wrap gap-3">
-                    @foreach (['facebook', 'instagram', 'tiktok', 'whatsapp'] as $network)
+                    @foreach (['facebook', 'instagram', 'tiktok', 'twitter', 'youtube', 'whatsapp'] as $network)
                         @php $handle = data_get($store->social_accounts, $network); @endphp
                         @if ($handle)
                             <a href="{{ $socialUrl($network, $handle) }}" class="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-zinc-200 transition hover:border-[var(--store-secondary)] hover:bg-[var(--store-secondary)] hover:text-black" aria-label="{{ ucfirst($network) }}">
@@ -234,18 +256,274 @@
             const formatter = new Intl.NumberFormat('en-NG', { style: 'currency', currency: @json($currency), currencyDisplay: 'narrowSymbol' });
             let cart = JSON.parse(localStorage.getItem(cartKey) || '[]');
             let step = 'cart';
+            let checkoutOrder = null;
+            let gatewayChargeMinor = 0;
+            const paystackMethods = ['storeboot_paystack', 'self_hosted_paystack'];
+            const checkoutSteps = ['cart', 'shipping', 'payment', 'confirm'];
+            const paystackInitializeUrl = @json(route('storefront.storefront.store.checkout.paystack.initialize', [$store, '__ORDER_ID__']));
+
+            @if (session('clear_cart'))
+                cart = [];
+                localStorage.removeItem(cartKey);
+            @endif
 
             const money = (minor) => formatter.format((Number(minor) || 0) / 100);
             const save = () => localStorage.setItem(cartKey, JSON.stringify(cart));
             const subtotal = () => cart.reduce((sum, item) => sum + (item.priceMinor * item.quantity), 0);
             const selectedShipping = () => document.querySelector('input[name="shipping_option"]:checked');
-            const shippingMinor = () => selectedShipping() ? Number(selectedShipping().dataset.priceMinor || 0) : 0;
+            const shippingMinor = () => cart.length > 0 && selectedShipping() ? Number(selectedShipping().dataset.priceMinor || 0) : 0;
+            const field = (name) => document.querySelector(`[name="${name}"]`);
+            const alertNode = () => document.querySelector('[data-drawer-alert]');
+            const setAlert = (message) => alertNode().textContent = message || '';
+            const validationMessage = (errors) => {
+                const first = errors ? Object.values(errors).flat()[0] : null;
+                return first || 'Please check your checkout details and try again.';
+            };
+            const checkoutPayload = () => ({
+                customer: {
+                    name: field('checkout_name')?.value.trim() || '',
+                    phone: field('checkout_phone')?.value.trim() || '',
+                    email: field('checkout_email')?.value.trim() || '',
+                    address: field('checkout_address')?.value.trim() || '',
+                },
+                shipping_option: selectedShipping()?.value || '',
+                payment_method: document.querySelector('input[name="payment_method"]:checked')?.value || null,
+                items: cart.map((item) => ({
+                    product_variant_id: item.productVariantId,
+                    quantity: item.quantity,
+                })),
+            });
+            const selectedPaymentMethod = () => document.querySelector('input[name="payment_method"]:checked')?.value || null;
+            const syncBankTransferDetails = () => {
+                document.querySelectorAll('[data-bank-transfer-details]').forEach((node) => {
+                    node.hidden = selectedPaymentMethod() !== 'bank_account';
+                });
+            };
+            const resetPendingCheckout = () => {
+                checkoutOrder = null;
+                gatewayChargeMinor = 0;
+                document.querySelector('[data-order-reference]').textContent = 'Pending';
+            };
+            const canNavigateToStep = (targetStep) => {
+                if (step === 'confirm' || targetStep === 'confirm') {
+                    return false;
+                }
+
+                return checkoutSteps.indexOf(targetStep) < checkoutSteps.indexOf(step);
+            };
+            const navigateBackToStep = (targetStep) => {
+                if (!canNavigateToStep(targetStep)) {
+                    return;
+                }
+
+                resetPendingCheckout();
+                setAlert('');
+                showStep(targetStep);
+            };
+
+            const validateShippingStep = () => {
+                const requiredFields = ['checkout_name', 'checkout_phone', 'checkout_email', 'checkout_address'];
+                const invalid = requiredFields.map(field).find((input) => !input?.checkValidity());
+
+                if (invalid) {
+                    invalid.reportValidity();
+                    setAlert('Enter your name, email, phone, and delivery address to continue.');
+                    return false;
+                }
+
+                if (!selectedShipping()) {
+                    setAlert('Select a shipping option to continue.');
+                    return false;
+                }
+
+                if (cart.length === 0) {
+                    setAlert('Add an item to your cart before checkout.');
+                    showStep('cart');
+                    return false;
+                }
+
+                if (cart.some((item) => !item.productVariantId)) {
+                    setAlert('One or more cart items are unavailable. Please remove and add them again.');
+                    return false;
+                }
+
+                return true;
+            };
+
+            const createCheckoutOrder = async (button) => {
+                if (!validateShippingStep()) return;
+
+                button.disabled = true;
+                button.dataset.originalText = button.textContent;
+                button.textContent = 'Creating order...';
+                setAlert('');
+
+                try {
+                    const response = await fetch(@json(route('storefront.storefront.store.checkout', $store)), {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        },
+                        body: JSON.stringify(checkoutPayload()),
+                    });
+                    const result = await response.json();
+
+                    if (!response.ok) {
+                        setAlert(validationMessage(result.errors));
+                        return;
+                    }
+
+                    checkoutOrder = result;
+                    document.querySelector('[data-order-reference]').textContent = result.order_reference;
+                    showStep('payment');
+                } catch (error) {
+                    setAlert('We could not create your order. Please try again.');
+                } finally {
+                    button.disabled = false;
+                    button.textContent = button.dataset.originalText || 'Continue to payment';
+                }
+            };
+
+            const initializePaystackPayment = async (button) => {
+                if (!checkoutOrder?.order_id) {
+                    setAlert('Create your order before payment.');
+                    showStep('shipping');
+                    return;
+                }
+
+                button.disabled = true;
+                button.dataset.originalText = button.textContent;
+                button.textContent = 'Opening Paystack...';
+                setAlert('');
+                let authorizationUrl = null;
+
+                try {
+                    const response = await fetch(paystackInitializeUrl.replace('__ORDER_ID__', checkoutOrder.order_id), {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        },
+                        body: JSON.stringify({ payment_method: selectedPaymentMethod() }),
+                    });
+                    const contentType = response.headers.get('content-type') || '';
+                    const result = contentType.includes('application/json') ? await response.json() : { message: await response.text() };
+
+                    if (!response.ok) {
+                        setAlert(validationMessage(result.errors) || result.message || 'Paystack could not initialize this payment.');
+                        return;
+                    }
+
+                    authorizationUrl = result.authorization_url;
+                    gatewayChargeMinor = Number(result.gateway_charge_minor || 0);
+                    render();
+
+                    const verifyPaystackReference = async (reference) => {
+                        button.textContent = 'Verifying payment...';
+                        const verification = await fetch(`${result.verify_url}?reference=${encodeURIComponent(reference || result.reference)}`, {
+                            headers: {
+                                'Accept': 'application/json',
+                            },
+                        });
+                        const verified = await verification.json();
+
+                        if (!verification.ok) {
+                            setAlert(verified.message || 'Paystack could not verify this payment.');
+                            return;
+                        }
+
+                        cart = [];
+                        save();
+                        checkoutOrder = null;
+                        gatewayChargeMinor = 0;
+                        document.querySelector('[data-order-reference]').textContent = verified.order_reference || result.reference;
+                        setAlert('');
+                        showStep('confirm');
+                    };
+
+                    if (!window.PaystackPop) {
+                        if (authorizationUrl) {
+                            window.location.href = authorizationUrl;
+                            return;
+                        }
+
+                        throw new Error('Paystack inline script unavailable.');
+                    }
+
+                    if (typeof PaystackPop.setup === 'function') {
+                        const handler = PaystackPop.setup({
+                            key: result.public_key,
+                            email: result.email,
+                            amount: result.amount,
+                            currency: result.currency,
+                            ref: result.reference,
+                            callback: (paystackResponse) => verifyPaystackReference(paystackResponse.reference),
+                            onClose: () => {
+                                setAlert('Paystack payment was closed before completion.');
+                            },
+                        });
+
+                        handler.openIframe();
+                        return;
+                    }
+
+                    const paystack = new PaystackPop();
+
+                    if (typeof paystack.resumeTransaction === 'function' && result.access_code) {
+                        paystack.resumeTransaction(result.access_code, {
+                            onSuccess: (transaction) => verifyPaystackReference(transaction.reference),
+                            onCancel: () => {
+                                setAlert('Paystack payment was closed before completion.');
+                            },
+                        });
+                        return;
+                    }
+
+                    if (typeof paystack.newTransaction === 'function') {
+                        paystack.newTransaction({
+                            key: result.public_key,
+                            email: result.email,
+                            amount: result.amount,
+                            currency: result.currency,
+                            reference: result.reference,
+                            ref: result.reference,
+                            onSuccess: (transaction) => verifyPaystackReference(transaction.reference),
+                            onCancel: () => {
+                                setAlert('Paystack payment was closed before completion.');
+                            },
+                        });
+                        return;
+                    }
+
+                    if (authorizationUrl) {
+                        window.location.href = authorizationUrl;
+                        return;
+                    }
+
+                    throw new Error('Unsupported Paystack inline script.');
+                } catch (error) {
+                    if (authorizationUrl) {
+                        window.location.href = authorizationUrl;
+                        return;
+                    }
+
+                    console.error(error);
+                    setAlert('We could not open Paystack. Please try again.');
+                } finally {
+                    button.disabled = false;
+                    button.textContent = button.dataset.originalText || 'Pay now';
+                }
+            };
 
             const showStep = (nextStep) => {
                 step = nextStep;
                 document.querySelectorAll('[data-checkout-step]').forEach((panel) => panel.hidden = panel.dataset.checkoutStep !== step);
                 document.querySelectorAll('[data-progress-step]').forEach((item) => {
                     item.dataset.active = item.dataset.progressStep === step ? 'true' : 'false';
+                    item.disabled = !canNavigateToStep(item.dataset.progressTarget);
                 });
                 render();
             };
@@ -272,23 +550,32 @@
                     <div class="flex gap-3 rounded-lg border border-[var(--store-line)] p-3">
                         <div class="h-20 w-20 flex-none overflow-hidden rounded-md bg-[var(--store-soft)]">${item.image ? `<img src="${item.image}" alt="" class="h-full w-full object-cover">` : ''}</div>
                         <div class="min-w-0 flex-1">
-                            <p class="truncate font-bold">${item.name}</p>
-                            <p class="text-sm text-[var(--store-muted)]">${money(item.priceMinor)}</p>
+                            <p class="sf-body-md truncate font-bold">${item.name}</p>
+                            <p class="sf-body-md text-[var(--store-muted)]">${money(item.priceMinor)}</p>
                             <div class="mt-3 flex items-center gap-2">
                                 <button class="rounded border px-2" data-cart-qty="${item.id}" data-delta="-1" type="button">-</button>
-                                <span class="min-w-6 text-center text-sm font-bold">${item.quantity}</span>
+                                <span class="sf-body-md min-w-6 text-center font-bold">${item.quantity}</span>
                                 <button class="rounded border px-2" data-cart-qty="${item.id}" data-delta="1" type="button">+</button>
-                                <button class="ml-auto text-xs font-bold text-red-600" data-cart-remove="${item.id}" type="button">Remove</button>
+                                <button class="sf-caption ml-auto font-bold text-red-600" data-cart-remove="${item.id}" type="button">Remove</button>
                             </div>
                         </div>
                     </div>
-                `).join('') : '<div class="rounded-lg border border-dashed border-[var(--store-line)] p-6 text-center text-sm text-[var(--store-muted)]">Your cart is empty.</div>';
+                `).join('') : '<div class="sf-body-md rounded-lg border border-dashed border-[var(--store-line)] p-6 text-center text-[var(--store-muted)]">Your cart is empty.</div>';
 
                 document.querySelectorAll('[data-subtotal]').forEach((node) => node.textContent = money(subtotal()));
                 document.querySelectorAll('[data-shipping-total]').forEach((node) => node.textContent = money(shippingMinor()));
-                document.querySelectorAll('[data-grand-total]').forEach((node) => node.textContent = money(subtotal() + shippingMinor()));
+                document.querySelectorAll('[data-gateway-charge]').forEach((node) => node.textContent = money(gatewayChargeMinor));
+                document.querySelectorAll('[data-gateway-charge-row]').forEach((node) => node.classList.toggle('hidden', gatewayChargeMinor <= 0));
+                document.querySelectorAll('[data-grand-total]').forEach((node) => node.textContent = money(subtotal() + shippingMinor() + gatewayChargeMinor));
                 document.querySelectorAll('[data-requires-cart]').forEach((button) => button.disabled = cart.length === 0);
+                syncBankTransferDetails();
             };
+
+            document.addEventListener('change', (event) => {
+                if (event.target.matches('input[name="payment_method"]')) {
+                    syncBankTransferDetails();
+                }
+            });
 
             document.addEventListener('click', (event) => {
                 const add = event.target.closest('[data-add-to-cart]');
@@ -299,6 +586,7 @@
                         : 1;
                     const existing = cart.find((item) => item.id === product.id);
                     existing ? existing.quantity += requestedQuantity : cart.push({ ...product, quantity: requestedQuantity });
+                    resetPendingCheckout();
                     save();
                     render();
                     openDrawer();
@@ -311,6 +599,7 @@
                 if (qty) {
                     const item = cart.find((row) => row.id === qty.dataset.cartQty);
                     if (item) item.quantity = Math.max(1, item.quantity + Number(qty.dataset.delta));
+                    resetPendingCheckout();
                     save();
                     render();
                 }
@@ -318,23 +607,38 @@
                 const remove = event.target.closest('[data-cart-remove]');
                 if (remove) {
                     cart = cart.filter((item) => item.id !== remove.dataset.cartRemove);
+                    resetPendingCheckout();
                     save();
                     render();
                 }
 
+                const progressButton = event.target.closest('[data-progress-target]');
+                if (progressButton) {
+                    navigateBackToStep(progressButton.dataset.progressTarget);
+                    return;
+                }
+
                 const stepButton = event.target.closest('[data-go-step]');
                 if (stepButton) {
-                    if (stepButton.dataset.goStep === 'payment' && !selectedShipping()) {
-                        document.querySelector('[data-drawer-alert]').textContent = 'Select a shipping option to continue.';
+                    if (stepButton.dataset.goStep === 'payment') {
+                        createCheckoutOrder(stepButton);
                         return;
                     }
-                    document.querySelector('[data-drawer-alert]').textContent = '';
+                    setAlert('');
                     showStep(stepButton.dataset.goStep);
                 }
 
-                if (event.target.closest('[data-confirm-order]')) {
+                const confirmButton = event.target.closest('[data-confirm-order]');
+                if (confirmButton) {
+                    if (paystackMethods.includes(selectedPaymentMethod())) {
+                        initializePaystackPayment(confirmButton);
+                        return;
+                    }
+
                     cart = [];
                     save();
+                    checkoutOrder = null;
+                    gatewayChargeMinor = 0;
                     showStep('confirm');
                 }
 
@@ -409,5 +713,6 @@
             showStep('cart');
         })();
     </script>
+    @stack('scripts')
 </body>
 </html>

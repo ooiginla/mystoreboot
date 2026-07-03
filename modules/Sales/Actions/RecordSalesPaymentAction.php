@@ -74,8 +74,8 @@ final class RecordSalesPaymentAction
                 (string) $data['payment_date'],
                 'Customer payment for '.$order->order_number,
                 [
-                    ['account_code' => $this->cashAccountFor($data['payment_method'], $tillSession), 'debit_minor' => $amountMinor, 'party_type' => 'customer', 'party_id' => $order->customer_id],
-                    ['account_code' => '1100', 'credit_minor' => $amountMinor, 'party_type' => 'customer', 'party_id' => $order->customer_id],
+                    ['account_code' => $this->cashAccountFor($data['payment_method'], $tillSession), 'branch_id' => $order->branch_id, 'debit_minor' => $amountMinor, 'party_type' => 'customer', 'party_id' => $order->customer_id],
+                    ['account_code' => '1100', 'branch_id' => $order->branch_id, 'credit_minor' => $amountMinor, 'party_type' => 'customer', 'party_id' => $order->customer_id],
                 ],
                 'sales_order_payment',
                 $payment->id,
@@ -110,6 +110,13 @@ final class RecordSalesPaymentAction
     private function ensureTillCashLocation(SalesTillSession $tillSession): SalesCashLocation
     {
         if ($tillSession->cashLocation?->financeAccount) {
+            $tillSession->cashLocation->financeAccount->fill([
+                'type' => 'asset',
+                'category' => 'Current Assets',
+                'description' => 'Cash held in a cashier till for point-of-sale transactions.',
+                'normal_balance' => 'debit',
+            ])->save();
+
             return $tillSession->cashLocation;
         }
 
@@ -119,6 +126,8 @@ final class RecordSalesPaymentAction
         ], [
             'name' => 'Cashier Till '.$tillSession->session_number,
             'type' => 'asset',
+            'category' => 'Current Assets',
+            'description' => 'Cash held in a cashier till for point-of-sale transactions.',
             'normal_balance' => 'debit',
             'is_system' => true,
             'is_active' => true,

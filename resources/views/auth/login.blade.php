@@ -1,59 +1,64 @@
-<!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="csrf-token" content="{{ csrf_token() }}">
-        <title>Sign in · Storeboot</title>
-        <style>
-            :root { --bg: #f7f8fb; --ink: #18202f; --muted: #667085; --line: #d9e0ea; --brand: #0f766e; --brand-dark: #115e59; --danger: #b42318; }
-            * { box-sizing: border-box; }
-            body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-            main { width: min(420px, calc(100vw - 32px)); }
-            .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; font-weight: 800; font-size: 20px; }
-            .mark { width: 38px; height: 38px; border-radius: 8px; display: grid; place-items: center; background: var(--brand); color: white; }
-            .panel { background: white; border: 1px solid var(--line); border-radius: 8px; padding: 24px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
-            h1 { margin: 0 0 6px; font-size: 24px; line-height: 1.2; }
-            p { margin: 0 0 20px; color: var(--muted); }
-            form { display: grid; gap: 14px; }
-            label { display: grid; gap: 6px; color: #344054; font-size: 13px; font-weight: 650; }
-            input { width: 100%; border: 1px solid #cfd8e3; border-radius: 8px; padding: 10px 11px; outline: none; font: inherit; }
-            input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(15,118,110,.14); }
-            .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-            .check { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
-            .check input { width: auto; }
-            button { border: 0; border-radius: 8px; background: var(--brand); color: white; padding: 11px 14px; cursor: pointer; font-weight: 800; }
-            button:hover { background: var(--brand-dark); }
-            .error { margin-bottom: 14px; border-radius: 8px; border: 1px solid #fecdca; background: #fef3f2; color: var(--danger); padding: 10px 12px; }
-        </style>
-    </head>
-    <body>
-        <main>
-            <div class="brand"><span class="mark">S</span><span>Storeboot</span></div>
-            <section class="panel">
-                <h1>Sign in</h1>
-                <p>Access the Storeboot administration workspace.</p>
+@extends('auth.layout')
 
-                @if ($errors->any())
-                    <div class="error">{{ $errors->first() }}</div>
-                @endif
+@section('title', 'Sign in · Storeboot')
 
-                <form method="POST" action="{{ route('login.store') }}">
+@section('content')
+    <div class="mb-8">
+        <h1 class="font-display text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">Welcome back</h1>
+        <p class="mt-2 text-zinc-600 dark:text-zinc-400">Sign in to your Storeboot workspace.</p>
+    </div>
+
+    @if (session('status'))
+        <div class="mb-5 flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800 dark:border-brand-500/25 dark:bg-brand-500/10 dark:text-brand-200">
+            <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/></svg>
+            <span>{{ session('status') }}</span>
+        </div>
+    @endif
+
+    @if ($errors->any())
+        <div class="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300">
+            <p class="font-medium">{{ $errors->first() }}</p>
+            @if (session('unverified_email'))
+                <form class="mt-3" method="POST" action="{{ route('verification.send') }}">
                     @csrf
-                    <label>
-                        Email
-                        <input name="email" type="email" value="{{ old('email') }}" autocomplete="email" required autofocus>
-                    </label>
-                    <label>
-                        Password
-                        <input name="password" type="password" autocomplete="current-password" required>
-                    </label>
-                    <div class="row">
-                        <label class="check"><input name="remember" type="checkbox" value="1"> Remember me</label>
-                    </div>
-                    <button type="submit">Sign in</button>
+                    <input type="hidden" name="email" value="{{ session('unverified_email') }}">
+                    <p class="mb-2 text-red-600/90 dark:text-red-300/80">Check your inbox and spam. Missed it? Resend the verification email.</p>
+                    <button type="submit" class="sb-btn sb-btn-ghost w-full !py-2 text-xs">Resend verification email</button>
                 </form>
-            </section>
-        </main>
-    </body>
-</html>
+            @endif
+        </div>
+    @endif
+
+    <form method="POST" action="{{ route('login.store') }}" class="space-y-4">
+        @csrf
+
+        <div>
+            <label for="email" class="mb-1.5 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">Email</label>
+            <input id="email" name="email" type="email" value="{{ old('email') }}" autocomplete="email" required autofocus
+                class="w-full rounded-xl border border-zinc-300 bg-white px-3.5 py-2.5 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                placeholder="you@business.com">
+        </div>
+
+        <div>
+            <div class="mb-1.5 flex items-center justify-between">
+                <label for="password" class="block text-sm font-semibold text-zinc-700 dark:text-zinc-300">Password</label>
+                <a href="{{ route('password.request') }}" class="text-xs font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400">Forgot password?</a>
+            </div>
+            <input id="password" name="password" type="password" autocomplete="current-password" required
+                class="w-full rounded-xl border border-zinc-300 bg-white px-3.5 py-2.5 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                placeholder="••••••••">
+        </div>
+
+        <label class="flex items-center gap-2.5 text-sm text-zinc-600 dark:text-zinc-400">
+            <input name="remember" type="checkbox" value="1" class="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500 dark:border-white/20 dark:bg-white/5">
+            Keep me signed in
+        </label>
+
+        <button type="submit" class="sb-btn sb-btn-primary w-full py-3 text-base">Sign in</button>
+    </form>
+
+    <p class="mt-8 text-center text-sm text-zinc-600 dark:text-zinc-400">
+        New to Storeboot?
+        <a href="{{ route('register') }}" class="font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400">Create an account</a>
+    </p>
+@endsection

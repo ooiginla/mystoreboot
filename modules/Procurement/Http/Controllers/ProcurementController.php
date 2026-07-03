@@ -15,6 +15,7 @@ use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\ProductVariant;
+use Modules\Finance\Models\FinanceAccount;
 use Modules\Inventory\Enums\InventoryLocationType;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Procurement\Actions\ApprovePurchaseOrderAction;
@@ -101,6 +102,13 @@ final class ProcurementController extends Controller
             'vendorSearch' => $vendorSearch,
             'poFilters' => $poFilters,
             'paymentMethods' => $tenant->settings['payment_methods'] ?? ['Cash', 'Bank transfer', 'POS/Card', 'Cheque'],
+            'paymentAssetAccounts' => FinanceAccount::query()
+                ->where('tenant_id', $tenant->id)
+                ->where('type', 'asset')
+                ->where('category', 'Current Assets')
+                ->where('is_active', true)
+                ->orderBy('code')
+                ->get(),
             'pendingOrders' => $allPurchaseOrders->whereIn('status.value', ['approved', 'partially_received']),
             'pricingRows' => PurchaseOrderItem::query()->with(['purchaseOrder.vendor', 'variant.product'])->where('tenant_id', $tenant->id)->latest()->limit(80)->get(),
             'vendorPerformance' => $allVendors->map(fn (Vendor $vendor): array => [

@@ -26,6 +26,7 @@ final class OnlineStore extends Model
             'social_accounts' => 'array',
             'pages' => 'array',
             'faqs' => 'array',
+            'slides' => 'array',
             'is_active' => 'boolean',
             'maintenance_mode' => 'boolean',
         ];

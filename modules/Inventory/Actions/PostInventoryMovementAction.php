@@ -46,7 +46,7 @@ final class PostInventoryMovementAction
 
         $this->assertEnoughStock($source, $quantity);
 
-        $unitCostMinor = $this->moneyToMinor($data['unit_cost'] ?? 0) ?: $source->average_cost_minor;
+        $unitCostMinor = $this->moneyToMinor($data['unit_cost'] ?? 0) ?: (int) $source->average_cost_minor;
 
         $this->applyDelta($source, -$quantity, $unitCostMinor);
         $this->applyDelta($destination, $quantity, $unitCostMinor);
@@ -67,7 +67,7 @@ final class PostInventoryMovementAction
         $stockLevel = $this->stockLevel($data['tenant_id'], (int) $data['inventory_location_id'], (int) $data['product_variant_id']);
         $quantity = (int) $data['quantity'];
         $delta = $quantity * $type->stockDeltaSign();
-        $unitCostMinor = $this->moneyToMinor($data['unit_cost'] ?? 0) ?: $stockLevel->average_cost_minor;
+        $unitCostMinor = $this->moneyToMinor($data['unit_cost'] ?? 0) ?: (int) $stockLevel->average_cost_minor;
 
         if ($delta < 0) {
             $this->assertEnoughStock($stockLevel, abs($delta));
@@ -76,7 +76,7 @@ final class PostInventoryMovementAction
         $this->applyDelta($stockLevel, $delta, $unitCostMinor);
         $this->recordMovement($data, $type, $stockLevel, $delta, $unitCostMinor);
         $this->recordBatchIfApplicable($data, $type, $delta, $unitCostMinor);
-        $this->postAccountingEntryIfApplicable($data, $type, $delta, $unitCostMinor);
+        $this->postAccountingEntryIfApplicable($data, $type, $delta, $unitCostMinor, $stockLevel);
     }
 
     private function stockLevel(string $tenantId, int $locationId, int $variantId): InventoryStockLevel
@@ -183,7 +183,7 @@ final class PostInventoryMovementAction
     /**
      * @param  array<string, mixed>  $data
      */
-    private function postAccountingEntryIfApplicable(array $data, InventoryMovementType $type, int $delta, int $unitCostMinor): void
+    private function postAccountingEntryIfApplicable(array $data, InventoryMovementType $type, int $delta, int $unitCostMinor, InventoryStockLevel $stockLevel): void
     {
         if (in_array($data['reference_type'] ?? null, ['sales_order', 'sales_return', 'purchase_order'], true)) {
             return;
@@ -197,12 +197,12 @@ final class PostInventoryMovementAction
 
         $lines = $delta > 0
             ? [
-                ['account_code' => '1200', 'debit_minor' => $valueMinor],
-                ['account_code' => '3000', 'credit_minor' => $valueMinor],
+                ['account_code' => '1200', 'branch_id' => $stockLevel->loadMissing('location')->location?->branch_id, 'debit_minor' => $valueMinor],
+                ['account_code' => 'EXP-6050', 'branch_id' => $stockLevel->location?->branch_id, 'credit_minor' => $valueMinor],
             ]
             : [
-                ['account_code' => '5000', 'debit_minor' => $valueMinor],
-                ['account_code' => '1200', 'credit_minor' => $valueMinor],
+                ['account_code' => 'EXP-6050', 'branch_id' => $stockLevel->loadMissing('location')->location?->branch_id, 'debit_minor' => $valueMinor],
+                ['account_code' => '1200', 'branch_id' => $stockLevel->location?->branch_id, 'credit_minor' => $valueMinor],
             ];
 
         $this->postJournalEntry->execute(

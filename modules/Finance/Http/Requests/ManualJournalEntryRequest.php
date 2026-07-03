@@ -43,6 +43,7 @@ final class ManualJournalEntryRequest extends FormRequest
             'lines.*.account_code' => ['required', 'string', Rule::exists('finance_accounts', 'code')->where('tenant_id', $tenantId)],
             'lines.*.debit' => ['nullable', 'numeric', 'min:0', 'max:999999999'],
             'lines.*.credit' => ['nullable', 'numeric', 'min:0', 'max:999999999'],
+            'lines.*.branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')->where('tenant_id', $tenantId)],
             'lines.*.memo' => ['nullable', 'string', 'max:500'],
         ];
     }

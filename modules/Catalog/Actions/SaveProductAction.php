@@ -9,7 +9,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\Product;
+use Modules\Catalog\Models\ProductAttributeDefinition;
 use Modules\Catalog\Models\ProductOption;
+use Modules\Catalog\Models\ProductTag;
+use Modules\Catalog\Models\ProductTax;
 use Modules\Catalog\Models\ProductVariant;
 
 final class SaveProductAction
@@ -22,6 +25,7 @@ final class SaveProductAction
         return DB::transaction(function () use ($data, $product): Product {
             $product ??= new Product;
             $imagePath = $product->image_path;
+            $taxRate = $this->taxRateFor($data);
 
             if (($data['image'] ?? null) instanceof UploadedFile) {
                 $imagePath = $data['image']->store("tenants/{$data['tenant_id']}/catalog/products", 'public');
@@ -38,9 +42,9 @@ final class SaveProductAction
                 'has_variants' => (bool) ($data['has_variants'] ?? false),
                 'base_price_minor' => $this->moneyToMinor($data['base_price'] ?? 0),
                 'base_cost_price_minor' => $this->moneyToMinor($data['base_cost_price'] ?? 0),
-                'discount_price_minor' => isset($data['discount_price']) ? $this->moneyToMinor($data['discount_price']) : null,
+                'compare_at_price_minor' => $this->optionalMoneyToMinor($data['compare_at_price'] ?? null),
                 'tax_behavior' => $data['tax_behavior'],
-                'tax_rate' => $data['tax_rate'] ?? null,
+                'tax_rate' => $taxRate,
                 'image_path' => $imagePath,
                 'status' => $data['status'],
             ]);
@@ -55,10 +59,25 @@ final class SaveProductAction
                 $this->syncDefaultVariant($product, $data);
             }
 
-            $product->tags()->sync($data['tag_ids'] ?? []);
-            $product->attributeValues()->sync($data['attribute_value_ids'] ?? []);
+            $tagIds = collect($data['tag_ids'] ?? [])
+                ->merge($this->syncInlineTags($data))
+                ->map(fn (mixed $id): int => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
+            $attributeValueIds = collect($data['attribute_value_ids'] ?? [])
+                ->merge($this->syncInlineAttributeValues($data))
+                ->map(fn (mixed $id): int => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
 
-            return $product->refresh()->load(['category', 'options.values', 'variants.optionValues.option', 'tags', 'attributeValues.definition']);
+            $product->tags()->sync($tagIds);
+            $product->taxes()->sync($data['tax_behavior'] === 'taxable' ? collect($data['tax_ids'] ?? [])->map(fn (mixed $id): int => (int) $id)->unique()->values()->all() : []);
+            $product->attributeValues()->sync($attributeValueIds);
+            $this->syncProductImages($product, $data);
+
+            return $product->refresh()->load(['category', 'images', 'options.values', 'variants.optionValues.option', 'tags', 'taxes', 'attributeValues.definition']);
         });
     }
 
@@ -67,6 +86,7 @@ final class SaveProductAction
      */
     private function syncDefaultVariant(Product $product, array $data): ProductVariant
     {
+        $taxRate = $this->taxRateFor($data);
         $variant = $product->variants()->oldest('id')->first() ?? new ProductVariant([
             'tenant_id' => $product->tenant_id,
             'product_id' => $product->id,
@@ -80,9 +100,9 @@ final class SaveProductAction
             'barcode' => $data['barcode'] ?? null,
             'selling_price_minor' => $this->moneyToMinor($data['base_price'] ?? 0),
             'cost_price_minor' => $this->moneyToMinor($data['base_cost_price'] ?? 0),
-            'discount_price_minor' => isset($data['discount_price']) ? $this->moneyToMinor($data['discount_price']) : null,
+            'compare_at_price_minor' => $this->optionalMoneyToMinor($data['compare_at_price'] ?? null),
             'tax_behavior' => $data['tax_behavior'],
-            'tax_rate' => $data['tax_rate'] ?? null,
+            'tax_rate' => $taxRate,
             'status' => $data['status'],
         ]);
 
@@ -189,6 +209,7 @@ final class SaveProductAction
      */
     private function syncVariantRows(Product $product, array $data, array $optionValueMap = []): void
     {
+        $taxRate = $this->taxRateFor($data);
         $rows = collect((array) ($data['variants'] ?? []))
             ->filter(fn (array $row): bool => trim((string) ($row['variant_name'] ?? '')) !== '')
             ->values();
@@ -219,9 +240,9 @@ final class SaveProductAction
                 'barcode' => $row['barcode'] ?? null,
                 'selling_price_minor' => $this->moneyToMinor($row['selling_price'] ?? $data['base_price'] ?? 0),
                 'cost_price_minor' => $this->moneyToMinor($row['cost_price'] ?? $data['base_cost_price'] ?? 0),
-                'discount_price_minor' => isset($row['discount_price']) ? $this->moneyToMinor($row['discount_price']) : null,
+                'compare_at_price_minor' => $this->optionalMoneyToMinor($row['compare_at_price'] ?? null),
                 'tax_behavior' => $data['tax_behavior'],
-                'tax_rate' => $data['tax_rate'] ?? null,
+                'tax_rate' => $taxRate,
                 'status' => $row['status'] ?? $data['status'],
             ]);
 
@@ -240,6 +261,148 @@ final class SaveProductAction
         return trim($option).':'.trim($value);
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function syncProductImages(Product $product, array $data): void
+    {
+        $images = collect((array) ($data['images'] ?? []))
+            ->filter(fn (mixed $image): bool => $image instanceof UploadedFile)
+            ->values();
+
+        if ($images->isEmpty()) {
+            return;
+        }
+
+        $sortOrder = (int) $product->images()->max('sort_order');
+
+        foreach ($images as $image) {
+            $sortOrder++;
+            $product->images()->create([
+                'image_path' => $image->store("tenants/{$product->tenant_id}/catalog/products", 'public'),
+                'sort_order' => $sortOrder,
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<int>
+     */
+    private function syncInlineTags(array $data): array
+    {
+        return collect(explode(',', (string) ($data['new_tags'] ?? '')))
+            ->map(fn (string $name): string => trim($name))
+            ->filter()
+            ->unique(fn (string $name): string => strtolower($name))
+            ->map(function (string $name) use ($data): int {
+                $slug = $this->uniqueSlug(ProductTag::class, $data['tenant_id'], $name);
+                $tag = ProductTag::query()
+                    ->where('tenant_id', $data['tenant_id'])
+                    ->whereRaw('lower(name) = ?', [strtolower($name)])
+                    ->first();
+
+                $tag ??= ProductTag::query()->create([
+                    'tenant_id' => $data['tenant_id'],
+                    'name' => $name,
+                    'slug' => $slug,
+                ]);
+
+                return (int) $tag->id;
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<int>
+     */
+    private function syncInlineAttributeValues(array $data): array
+    {
+        $valueIds = [];
+
+        foreach ((array) ($data['new_attribute_values'] ?? []) as $attributeId => $values) {
+            $attribute = ProductAttributeDefinition::query()
+                ->where('tenant_id', $data['tenant_id'])
+                ->find((int) $attributeId);
+
+            if (! $attribute) {
+                continue;
+            }
+
+            $valueIds = array_merge($valueIds, $this->syncAttributeValues($attribute, (string) $values));
+        }
+
+        foreach ((array) ($data['new_attributes'] ?? []) as $row) {
+            $name = trim((string) ($row['name'] ?? ''));
+            $values = trim((string) ($row['values'] ?? ''));
+
+            if ($name === '' || $values === '') {
+                continue;
+            }
+
+            $slug = $this->uniqueSlug(ProductAttributeDefinition::class, $data['tenant_id'], $name);
+            $attribute = ProductAttributeDefinition::query()
+                ->where('tenant_id', $data['tenant_id'])
+                ->whereRaw('lower(name) = ?', [strtolower($name)])
+                ->first();
+
+            $attribute ??= ProductAttributeDefinition::query()->create([
+                'tenant_id' => $data['tenant_id'],
+                'name' => $name,
+                'slug' => $slug,
+            ]);
+
+            $valueIds = array_merge($valueIds, $this->syncAttributeValues($attribute, $values));
+        }
+
+        return collect($valueIds)->unique()->values()->all();
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function syncAttributeValues(ProductAttributeDefinition $attribute, string $values): array
+    {
+        return collect(explode(',', $values))
+            ->map(fn (string $value): string => trim($value))
+            ->filter()
+            ->unique(fn (string $value): string => strtolower($value))
+            ->map(function (string $value, int $index) use ($attribute): int {
+                $attributeValue = $attribute->values()
+                    ->whereRaw('lower(value) = ?', [strtolower($value)])
+                    ->first() ?? $attribute->values()->make();
+
+                $attributeValue->fill([
+                    'value' => $value,
+                    'sort_order' => $attributeValue->exists ? $attributeValue->sort_order : $attribute->values()->count() + $index,
+                ]);
+                $attributeValue->save();
+
+                return (int) $attributeValue->id;
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $modelClass
+     */
+    private function uniqueSlug(string $modelClass, string $tenantId, string $name): string
+    {
+        $base = Str::slug($name) ?: 'item';
+        $slug = $base;
+        $counter = 2;
+
+        while ($modelClass::query()->where('tenant_id', $tenantId)->where('slug', $slug)->exists()) {
+            $slug = $base.'-'.$counter;
+            $counter++;
+        }
+
+        return $slug;
+    }
+
     private function generateSku(Product $product, ?string $name = null, int $seed = 1): string
     {
         $prefix = strtoupper(Str::slug(Str::limit($name ?: $product->name, 18, ''), ''));
@@ -255,8 +418,42 @@ final class SaveProductAction
         return $candidate;
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function taxRateFor(array $data): float
+    {
+        if (($data['tax_behavior'] ?? null) !== 'taxable') {
+            return 0.0;
+        }
+
+        $taxIds = collect($data['tax_ids'] ?? [])
+            ->filter()
+            ->map(fn (mixed $id): int => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($taxIds->isEmpty()) {
+            return 0.0;
+        }
+
+        return (float) ProductTax::query()
+            ->where('tenant_id', $data['tenant_id'])
+            ->whereIn('id', $taxIds)
+            ->sum('rate');
+    }
+
     private function moneyToMinor(mixed $value): int
     {
         return (int) round(((float) (is_string($value) ? str_replace(',', '', $value) : ($value ?: 0))) * 100);
+    }
+
+    private function optionalMoneyToMinor(mixed $value): ?int
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        return $this->moneyToMinor($value);
     }
 }

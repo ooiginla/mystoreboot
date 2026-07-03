@@ -31,7 +31,7 @@
                 <div class="panel-body" data-bank-accounts>
                     @foreach ($vendorAccounts as $index => $account)
                         <div class="po-line-card" data-bank-account>
-                            <div class="po-line-header"><strong>Bank account</strong><button class="btn secondary" type="button" data-remove-bank-account>Remove</button></div>
+                            <div class="po-line-header"><strong>Bank account</strong><button class="btn danger" type="button" data-remove-bank-account>Remove</button></div>
                             <div class="form-grid">
                                 <div class="field"><label>Bank name</label><input name="bank_accounts[{{ $index }}][bank_name]" value="{{ $account?->bank_name }}"></div>
                                 <div class="field"><label>Account name</label><input name="bank_accounts[{{ $index }}][account_name]" value="{{ $account?->account_name }}"></div>
