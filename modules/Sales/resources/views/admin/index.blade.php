@@ -158,9 +158,9 @@
 
     <div class="topbar">
         <div>
-            <div class="eyebrow">Sales, invoicing & point of sale</div>
-            <h1>Sales & POS</h1>
-            <p class="subtle">Create sales orders, collect payments, issue receipts, manage credit sales, coupons, returns, and refunds for {{ $tenant->name }}.</p>
+            <div class="eyebrow">Record sale · invoicing · till</div>
+            <h1>Record Sale</h1>
+            <p class="subtle">Record offline &amp; back-office sales, manage the till, invoices, receipts, credit sales, coupons, returns and refunds for {{ $tenant->name }}. For live counter selling, use <a href="{{ route('admin.sales.retail-pos', ['tenant' => $tenant->id]) }}" style="color:var(--brand-strong); font-weight:700;">Retail POS</a>.</p>
         </div>
         @if ($isPlatformAdmin)
             <form method="GET" action="{{ route('admin.sales.index') }}" style="min-width: 260px;">
@@ -182,111 +182,14 @@
 
     <div class="tab-layout">
         <nav class="pill-nav" aria-label="Sales sections" role="tablist">
-            <a href="#till" role="tab" data-tab-target="till">Till</a>
-            <a href="#pos" role="tab" data-tab-target="pos">Point of Sale</a>
+            <a href="#pos" role="tab" data-tab-target="pos">Record sale</a>
             <a href="#orders" role="tab" data-tab-target="orders">Orders <span class="badge neutral">{{ $orders->count() }}</span></a>
             <a href="#coupons" role="tab" data-tab-target="coupons">Coupons <span class="badge neutral">{{ $coupons->count() }}</span></a>
             <a href="#returns" role="tab" data-tab-target="returns">Returns</a>
         </nav>
 
         <div class="content-stack">
-            <section class="panel tab-panel" id="till" role="tabpanel" data-tab-panel>
-                <div class="panel-header">
-                    <div>
-                        <h2 class="panel-title">Till Management</h2>
-                        <p class="subtle">Open a branch till, track payment collections, record cash movement, and reconcile before closing.</p>
-                    </div>
-                </div>
-                <div class="panel-body stack">
-                    @if (! $activeTill)
-                        <div class="sales-card">
-                            <h3 class="sales-card-title">Open Till</h3>
-                            <form class="mini-form" method="POST" action="{{ route('admin.sales.tills.open') }}">
-                                @csrf
-                                <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
-                                <div class="form-grid">
-                                    <div class="field"><label>Branch</label><select name="branch_id" required>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((int) old('branch_id', $activeBranchForView?->id) === $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
-                                    <div class="field"><label>Opening cash float</label><input name="opening_float" type="text" inputmode="decimal" data-money-input value="0.00"></div>
-                                    <div class="field full"><label>Opening note</label><textarea name="opening_note" rows="2"></textarea></div>
-                                </div>
-                                <div class="button-row"><button class="btn primary" type="submit">Open till</button></div>
-                            </form>
-                        </div>
-                    @else
-                        <div class="till-status-band">
-                            <div>
-                                <strong>{{ $activeTill->session_number }}</strong>
-                                <div class="subtle">{{ $activeTill->branch?->name }} · opened {{ $activeTill->opened_at->format('M j, Y H:i') }} · {{ $tenant->currency_code }} {{ $money($activeTill->opening_float_minor) }} opening float</div>
-                                <div class="subtle">Cashier till: {{ $activeTill->cashLocation?->name ?? 'Pending' }} · Safe vault: {{ $activeTill->vaultCashLocation?->name ?? 'Pending' }}</div>
-                            </div>
-                            <div class="till-actions">
-                                @foreach ($movementTypes as $value => $label)
-                                    <button class="till-action-button {{ str_replace('_', '-', $value) }}" type="button" data-dialog-open="till-movement-{{ $value }}">{{ $label }}</button>
-                                @endforeach
-                            </div>
-                        </div>
-
-                        <form class="mini-form" method="POST" action="{{ route('admin.sales.tills.close', $activeTill) }}" data-till-close-form>
-                            @csrf
-                            <table class="table">
-                                <thead><tr><th>Payment method</th><th>Collected</th><th>Cash movement</th><th>Expected</th><th>Actual counted</th><th>Variance</th></tr></thead>
-                                <tbody>
-                                    @foreach ($activeTillRows as $row)
-                                        @php
-                                            $actualValue = old('actuals.'.$row['method'], $money($row['expected_minor']));
-                                        @endphp
-                                        <tr>
-                                            <td><strong>{{ $row['method'] }}</strong></td>
-                                            <td>{{ $tenant->currency_code }} {{ $money($row['collected_minor']) }}</td>
-                                            <td>{{ $signedMoney($row['movement_minor']) }}</td>
-                                            <td><strong>{{ $tenant->currency_code }} {{ $money($row['expected_minor']) }}</strong></td>
-                                            <td><input name="actuals[{{ $row['method'] }}]" type="text" inputmode="decimal" data-money-input data-till-actual data-expected="{{ $row['expected_minor'] / 100 }}" value="{{ $actualValue }}"></td>
-                                            <td><input type="text" data-till-variance value="{{ $tenant->currency_code }} 0.00" disabled><span class="till-variance ok" data-till-variance-label hidden>0</span></td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                            <div class="till-close-warning" data-till-close-warning hidden>Variance must be 0 for every payment method before this till can be closed.</div>
-                            <div class="till-breakdown-header">
-                                <h3>Actions</h3>
-                                <button class="btn secondary" type="button" data-dialog-open="till-breakdown-dialog">Breakdown</button>
-                            </div>
-                            <div class="field"><label>Closing note</label><textarea name="closing_note" rows="2"></textarea></div>
-                            <div class="button-row">
-                                <button class="btn primary" type="submit" data-till-close-button>Close till</button>
-                            </div>
-                        </form>
-
-                        <div class="sales-card">
-                            <h3 class="sales-card-title">Cash movements</h3>
-                            <table class="table">
-                                <thead><tr><th>Time</th><th>Type</th><th>Amount</th><th>Reference</th><th>Note</th></tr></thead>
-                                <tbody>
-                                    @forelse ($activeTill->movements->sortByDesc('occurred_at') as $movement)
-                                        <tr><td>{{ $movement->occurred_at->format('H:i') }}</td><td>{{ $movementTypes[$movement->movement_type] ?? $movement->movement_type }}</td><td>{{ $tenant->currency_code }} {{ $money($movement->amount_minor) }}</td><td>{{ $movement->reference_number ?: 'Not set' }}</td><td>{{ $movement->notes ?: 'Not set' }}</td></tr>
-                                    @empty
-                                        <tr><td colspan="5"><div class="empty">No till movements recorded.</div></td></tr>
-                                    @endforelse
-                                </tbody>
-                            </table>
-                        </div>
-                    @endif
-
-                    <div class="sales-card">
-                        <h3 class="sales-card-title">Recent till sessions</h3>
-                        <table class="table">
-                            <thead><tr><th>Session</th><th>Branch</th><th>Vault</th><th>Status</th><th>Opened</th><th>Closed</th><th>Expected</th><th>Actual</th><th>Variance</th></tr></thead>
-                            <tbody>
-                                @forelse ($recentTillSessions as $session)
-                                    <tr><td>{{ $session->session_number }}</td><td>{{ $session->branch?->name ?? 'Not set' }}</td><td>{{ $session->vaultCashLocation?->name ?? 'Not set' }}</td><td><span class="sales-tag {{ $session->status === 'open' ? 'success' : 'neutral' }}">{{ ucfirst($session->status) }}</span></td><td>{{ $session->opened_at->format('M j, H:i') }}</td><td>{{ $session->closed_at?->format('M j, H:i') ?? 'Not closed' }}</td><td>{{ $tenant->currency_code }} {{ $money($session->expected_total_minor) }}</td><td>{{ $tenant->currency_code }} {{ $money($session->actual_total_minor) }}</td><td>{{ $signedMoney($session->variance_total_minor) }}</td></tr>
-                                @empty
-                                    <tr><td colspan="9"><div class="empty">No till session has been opened yet.</div></td></tr>
-                                @endforelse
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
+            {{-- Till & cash management (open / movements / close / reconcile / sessions) now lives entirely in Retail POS. --}}
 
             <section class="panel tab-panel" id="pos" role="tabpanel" data-tab-panel hidden>
                 <div class="panel-header">
@@ -305,13 +208,14 @@
                 <div class="panel-body">
                     @if (! $activeTill)
                         <div class="till-locked-pos">
-                            <h3 class="panel-title">Open a till before selling</h3>
-                            <p class="subtle">You must open a branch till session before the POS form is activated. Close the current till before opening another branch.</p>
-                            <div class="button-row" style="justify-content: center;"><a class="btn primary" href="#till" data-tab-target="till">Go to Till</a></div>
+                            <h3 class="panel-title">Open a till before recording a sale</h3>
+                            <p class="subtle">Sales post against an open till session. Open your till from the Retail POS, then come back to record offline sales here.</p>
+                            <div class="button-row" style="justify-content: center;"><a class="btn primary" href="{{ route('admin.sales.retail-pos', ['tenant' => $tenant->id]) }}">Open till in Retail POS</a></div>
                         </div>
                     @else
                     <form class="mini-form" method="POST" action="{{ route('admin.sales.orders.store') }}" data-pos-form>
                         @csrf
+                        <input type="hidden" name="source" value="offline">
                         <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
                         <input type="hidden" name="sales_till_session_id" value="{{ $activeTill->id }}">
                         <input type="hidden" name="branch_id" value="{{ $activeTill->branch_id }}">
@@ -434,77 +338,7 @@
     </div>
 
     @include('sales::admin.partials.coupon-dialog')
-    @if ($activeTill)
-        @foreach ($movementTypes as $value => $label)
-            <dialog class="dialog" id="till-movement-{{ $value }}">
-                <div class="dialog-header"><div><h2 class="panel-title">{{ $label }}</h2><p class="subtle">{{ $activeTill->session_number }} · {{ $activeTill->branch?->name }}</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
-                <div class="dialog-body">
-                    <form class="mini-form" method="POST" action="{{ route('admin.sales.tills.movements.store', $activeTill) }}">
-                        @csrf
-                        <input type="hidden" name="movement_type" value="{{ $value }}">
-                        <div class="form-grid">
-                            <div class="field"><label>Amount</label><input name="amount" type="text" inputmode="decimal" data-money-input required></div>
-                            <div class="field"><label>Reference</label><input name="reference_number"></div>
-                            <div class="field full"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>
-                        </div>
-                        <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Cancel</button><button class="btn primary" type="submit">Save movement</button></div>
-                    </form>
-                </div>
-            </dialog>
-        @endforeach
-        <dialog class="dialog" id="till-breakdown-dialog">
-            <div class="dialog-header">
-                <div>
-                    <h2 class="panel-title">Expected Till Breakdown</h2>
-                    <p class="subtle">{{ $activeTill->session_number }} · {{ $activeTill->branch?->name }}</p>
-                </div>
-                <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
-            </div>
-            <div class="dialog-body">
-                <table class="table">
-                    <thead><tr><th>Time</th><th>Type</th><th>Details</th><th>Method</th><th>Amount</th></tr></thead>
-                    <tbody>
-                        <tr>
-                            <td>{{ $activeTill->opened_at->format('H:i') }}</td>
-                            <td>Opening float</td>
-                            <td>{{ $activeTill->opening_note ?: 'Till opened' }}</td>
-                            <td>Cash</td>
-                            <td class="success-text">+{{ $tenant->currency_code }} {{ $money($activeTill->opening_float_minor) }}</td>
-                        </tr>
-                        @foreach ($activeTill->payments->sortByDesc('created_at') as $payment)
-                            <tr>
-                                <td>{{ $payment->created_at?->format('H:i') ?? $payment->payment_date->format('H:i') }}</td>
-                                <td>Sale payment</td>
-                                <td>{{ $payment->order?->order_number ?? 'Order' }} · {{ $payment->order?->customer?->name ?? 'Walk-In' }}</td>
-                                <td>{{ $payment->payment_method }}</td>
-                                <td class="success-text">+{{ $tenant->currency_code }} {{ $money($payment->amount_minor) }}</td>
-                            </tr>
-                        @endforeach
-                        @foreach ($activeTill->movements->sortByDesc('occurred_at') as $movement)
-                            @php
-                                $movementSign = $movement->movement_type === 'cash_in' ? 1 : -1;
-                                $movementAmount = $movementSign * (int) $movement->amount_minor;
-                            @endphp
-                            <tr>
-                                <td>{{ $movement->occurred_at->format('H:i') }}</td>
-                                <td>{{ $movementTypes[$movement->movement_type] ?? $movement->movement_type }}</td>
-                                <td>{{ $movement->reference_number ?: 'No reference' }} · {{ $movement->notes ?: 'No note' }}</td>
-                                <td>{{ $movement->payment_method }}</td>
-                                <td class="{{ $movementAmount < 0 ? 'danger-text' : 'success-text' }}">{{ $movementAmount < 0 ? '-' : '+' }}{{ $tenant->currency_code }} {{ $money(abs($movementAmount)) }}</td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-                <div class="summary-grid" style="margin-top: 16px;">
-                    @foreach ($activeTillRows as $row)
-                        <div class="summary-item"><span>{{ $row['method'] }} expected</span><strong>{{ $tenant->currency_code }} {{ $money($row['expected_minor']) }}</strong></div>
-                    @endforeach
-                    <div class="summary-item"><span>Total expected</span><strong>{{ $tenant->currency_code }} {{ $money($activeTillRows->sum('expected_minor')) }}</strong></div>
-                </div>
-                <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Close</button></div>
-            </div>
-        </dialog>
-    @endif
+    {{-- Till movement & breakdown dialogs now live in Retail POS. --}}
     @foreach ($allOrders as $order)
         @include('sales::admin.partials.order-view-dialog', ['order' => $order])
         @include('sales::admin.partials.invoice-dialog', ['order' => $order])

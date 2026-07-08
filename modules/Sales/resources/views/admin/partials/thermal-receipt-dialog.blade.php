@@ -1,3 +1,35 @@
+@once
+<style>
+    .thermal-receipt-dialog { width: min(430px, calc(100vw - 24px)); }
+    .thermal-receipt-dialog .dialog-body { background: #f3f4f6; }
+    .thermal-receipt-paper { width: 80mm; max-width: 100%; margin: 0 auto; background: #fff; color: #111; padding: 14px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 11px; line-height: 1.4; box-shadow: 0 1px 4px rgba(16,24,40,.12); }
+    .thermal-receipt-paper strong { font-weight: 800; }
+    .thermal-receipt-paper .receipt-business { display: block; font-size: 15px; text-transform: uppercase; letter-spacing: .04em; }
+    .thermal-receipt-paper .receipt-center { display: grid; gap: 2px; text-align: center; }
+    .thermal-receipt-paper .receipt-rule { border-top: 1px dashed #111; margin: 9px 0; }
+    .thermal-receipt-paper .receipt-meta, .thermal-receipt-paper .receipt-totals { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; }
+    .thermal-receipt-paper .receipt-meta strong, .thermal-receipt-paper .receipt-totals strong { text-align: right; }
+    .thermal-receipt-paper .thermal-items { width: 100%; border-collapse: collapse; }
+    .thermal-receipt-paper .thermal-items th, .thermal-receipt-paper .thermal-items td { padding: 3px 0; vertical-align: top; border: 0; color: #111; }
+    .thermal-receipt-paper .thermal-items th { border-bottom: 1px dashed #111; font-size: 10px; text-align: left; }
+    .thermal-receipt-paper .thermal-items th:nth-child(2), .thermal-receipt-paper .thermal-items td:nth-child(2) { text-align: center; width: 28px; }
+    .thermal-receipt-paper .thermal-items th:nth-child(3), .thermal-receipt-paper .thermal-items td:nth-child(3) { text-align: right; width: 62px; }
+    .thermal-receipt-paper .thermal-items td span { display: block; color: #333; font-size: 10px; }
+    .thermal-receipt-paper .receipt-grand-total { font-size: 14px; text-transform: uppercase; }
+    .receipt-actions { margin-top: 16px; }
+    @media print {
+        body:has(dialog[open]) .shell { display: block; }
+        body:has(dialog[open]) .sidebar, body:has(dialog[open]) .topbar, body:has(dialog[open]) .tab-layout, body:has(dialog[open]) .sales-metrics, body:has(dialog[open]) .rpos, body:has(dialog[open]) .admin-context-bar { display: none; }
+        dialog[open] { display: block; position: static; width: 100%; max-width: none; box-shadow: none; }
+        dialog[open]::backdrop, dialog[open] .dialog-header .icon-btn, dialog[open] [data-print-dialog], dialog[open] [data-dialog-close] { display: none; }
+        .dialog-body { max-height: none; overflow: visible; }
+        dialog[open].thermal-receipt-dialog { width: 80mm; max-width: 80mm; margin: 0 auto; }
+        dialog[open].thermal-receipt-dialog .dialog-header, dialog[open].thermal-receipt-dialog .receipt-actions { display: none; }
+        dialog[open].thermal-receipt-dialog .dialog-body { padding: 0; background: #fff; }
+        dialog[open].thermal-receipt-dialog .thermal-receipt-paper { width: 80mm; max-width: 80mm; padding: 4mm 3mm; box-shadow: none; }
+    }
+</style>
+@endonce
 <dialog class="dialog thermal-receipt-dialog" id="sales-receipt-{{ $order->id }}">
     <div class="dialog-header">
         <div>
@@ -39,9 +71,6 @@
                         <tr>
                             <td>
                                 <strong>{{ $item->item_name }}</strong>
-                                @if ($item->sku)
-                                    <span>{{ $item->sku }}</span>
-                                @endif
                                 <span>@ {{ $tenant->currency_code }} {{ $money($item->unit_price_minor) }}</span>
                             </td>
                             <td>{{ $item->quantity }}</td>

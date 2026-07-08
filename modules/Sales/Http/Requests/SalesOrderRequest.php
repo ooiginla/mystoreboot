@@ -35,6 +35,7 @@ final class SalesOrderRequest extends FormRequest
 
         return [
             'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            'source' => ['nullable', Rule::in(['in_store', 'retail_pos', 'offline', 'online'])],
             'sales_till_session_id' => ['required', 'integer', Rule::exists('sales_till_sessions', 'id')->where('tenant_id', $tenantId)->where('status', 'open')],
             'branch_id' => ['required', 'integer', Rule::exists('branches', 'id')->where('tenant_id', $tenantId)],
             'inventory_location_id' => ['required', 'integer', Rule::exists('inventory_locations', 'id')->where('tenant_id', $tenantId)],

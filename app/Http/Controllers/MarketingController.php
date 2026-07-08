@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
 final class MarketingController extends Controller
 {
-    public function home(): View
+    public function home(): View|RedirectResponse
     {
+        // Signed-in users get their dashboard; guests see the marketing page.
+        if (Auth::check()) {
+            return redirect()->route('admin.analytics.index');
+        }
+
         return view('marketing.home', [
             'businessTypes' => $this->businessTypes(),
             'features' => $this->features(),

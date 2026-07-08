@@ -296,6 +296,7 @@
                 <g id="i-logout"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
                 <g id="i-spark"><path d="M13 2 4.5 13H11l-1 9 8.5-11H12l1-9Z" fill="currentColor"/></g>
                 <g id="i-grid"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+                <g id="i-pos"><path d="M4 5h16a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1ZM7 9h7M7 12h4M8 19h8M12 15v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
             </defs>
         </svg>
 
@@ -314,7 +315,8 @@
                     <a class="{{ request()->routeIs('admin.inventory.*') ? 'active' : '' }}" href="{{ route('admin.inventory.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-layers"/></svg><span>Inventory &amp; Stock</span></a>
                     <a class="{{ request()->routeIs('admin.procurement.*') ? 'active' : '' }}" href="{{ route('admin.procurement.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-truck"/></svg><span>Purchasing &amp; Suppliers</span></a>
                     <a class="{{ request()->routeIs('admin.customers.*') ? 'active' : '' }}" href="{{ route('admin.customers.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-users"/></svg><span>Customers &amp; Support</span></a>
-                    <a class="{{ request()->routeIs('admin.sales.*') && ! request()->routeIs('admin.sales.settlements.*') && ! request()->routeIs('admin.sales.admin-settlements.*') ? 'active' : '' }}" href="{{ route('admin.sales.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-cart"/></svg><span>Sales &amp; POS</span></a>
+                    <a class="{{ request()->routeIs('admin.sales.retail-pos') ? 'active' : '' }}" href="{{ route('admin.sales.retail-pos', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-pos"/></svg><span>Retail POS</span></a>
+                    <a class="{{ request()->routeIs('admin.sales.index') ? 'active' : '' }}" href="{{ route('admin.sales.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-cart"/></svg><span>Record Sale</span></a>
 
                     <div class="nav-group">Finance</div>
                     <a class="{{ request()->routeIs('admin.sales.settlements.*') ? 'active' : '' }}" href="{{ route('admin.sales.settlements.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-wallet"/></svg><span>Business Settlements</span></a>

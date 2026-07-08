@@ -128,10 +128,122 @@ final class SalesController extends Controller
         $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
         $order = $action->execute($request->validated(), $request->user()->id);
 
+        $target = $order->source === 'retail_pos'
+            ? route('admin.sales.retail-pos', ['tenant' => $order->tenant_id])
+            : route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders';
+
         return redirect()
-            ->to(route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders')
+            ->to($target)
             ->with('status', "Sales order {$order->order_number} created.")
             ->with('receipt_order_id', $order->id);
+    }
+
+    public function retailPos(Request $request): View
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenants = $this->visibleTenantsFor($user);
+        $tenant = $this->resolveTenant($request, $tenants);
+
+        abort_if(! $tenant, 403);
+
+        $walkInCustomer = $this->walkInCustomer($tenant);
+        $branches = Branch::query()->where('tenant_id', $tenant->id)->orderByDesc('is_primary')->orderBy('name')->get();
+        $locations = InventoryLocation::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
+        $activeTill = SalesTillSession::query()
+            ->with(['branch', 'user', 'cashLocation.financeAccount', 'vaultCashLocation.financeAccount', 'movements.user', 'payments.order.customer'])
+            ->where('tenant_id', $tenant->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'open')
+            ->latest('opened_at')
+            ->first();
+        $activeTillRows = $activeTill ? $this->tillBreakdown($activeTill, $tenant) : collect();
+        $recentTillSessions = SalesTillSession::query()
+            ->with(['branch', 'user', 'cashLocation', 'vaultCashLocation'])
+            ->where('tenant_id', $tenant->id)
+            ->where('user_id', $user->id)
+            ->latest('opened_at')
+            ->limit(10)
+            ->get();
+        $customers = Customer::query()->where('tenant_id', $tenant->id)->orderBy('first_name')->get();
+        $variants = ProductVariant::query()
+            ->with(['product', 'product.category', 'product.taxes'])
+            ->where('tenant_id', $tenant->id)
+            ->whereHas('product', fn ($query) => $query->where('product_type', ProductType::Product->value))
+            ->orderBy('sku')
+            ->get();
+        $categories = $variants
+            ->map(fn (ProductVariant $variant) => $variant->product?->category)
+            ->filter()
+            ->unique('id')
+            ->sortBy('name')
+            ->values();
+        $coupons = SalesCoupon::query()->where('tenant_id', $tenant->id)->latest()->get();
+        $sessionOrders = $activeTill
+            ? SalesOrder::query()
+                ->with(['customer', 'branch', 'cashier', 'tillSession', 'items.variant.product', 'payments'])
+                ->where('tenant_id', $tenant->id)
+                ->where('sales_till_session_id', $activeTill->id)
+                ->latest()
+                ->get()
+            : collect();
+        // Receipts are needed for both the session-orders list and the just-completed sale.
+        $recentOrders = SalesOrder::query()
+            ->with(['customer', 'branch', 'cashier', 'tillSession', 'items.variant.product', 'payments'])
+            ->where('tenant_id', $tenant->id)
+            ->latest()
+            ->limit(40)
+            ->get();
+        $recentOrders = $recentOrders->concat($sessionOrders)->unique('id')->values();
+
+        return view('sales::admin.retail-pos', [
+            'tenant' => $tenant,
+            'tenants' => $tenants,
+            'isPlatformAdmin' => $user->is_platform_admin,
+            'cashier' => $user,
+            'walkInCustomer' => $walkInCustomer,
+            'branches' => $branches,
+            'locations' => $locations,
+            'activeTill' => $activeTill,
+            'activeTillRows' => $activeTillRows,
+            'recentTillSessions' => $recentTillSessions,
+            'customers' => $customers,
+            'variants' => $variants,
+            'categories' => $categories,
+            'coupons' => $coupons,
+            'recentOrders' => $recentOrders,
+            'sessionOrders' => $sessionOrders,
+            'paymentMethods' => $tenant->settings['payment_methods'] ?? ['Cash', 'Bank transfer', 'POS/Card', 'Cheque'],
+            'deliveryMethods' => $branches->flatMap(fn (Branch $branch) => collect($branch->settings['delivery_methods'] ?? []))->where('status', 'active')->values(),
+        ]);
+    }
+
+    public function storeQuickCustomer(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
+
+        $data = $request->validate([
+            'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            'first_name' => ['required', 'string', 'max:120'],
+            'last_name' => ['nullable', 'string', 'max:120'],
+            'phone' => ['nullable', 'string', 'max:40'],
+            'email' => ['nullable', 'email', 'max:180'],
+        ]);
+
+        $customer = Customer::query()->create([
+            'tenant_id' => $data['tenant_id'],
+            'first_name' => $data['first_name'],
+            'last_name' => $data['last_name'] ?? null,
+            'phone' => $data['phone'] ?? null,
+            'email' => $data['email'] ?? null,
+            'status' => 'active',
+        ]);
+
+        return response()->json([
+            'id' => $customer->id,
+            'name' => $customer->name,
+            'phone' => $customer->phone,
+        ]);
     }
 
     public function storeCoupon(SalesCouponRequest $request): RedirectResponse
@@ -683,47 +795,91 @@ final class SalesController extends Controller
             ]);
         }
 
-        if ($varianceTotalMinor !== 0 || $tillSession->closingCounts()->where('variance_minor', '!=', 0)->exists()) {
+        $hasVariance = $varianceTotalMinor !== 0;
+        $bookVariance = (bool) ($data['book_variance'] ?? false);
+
+        if ($hasVariance && ! $bookVariance) {
             return redirect()
                 ->to(route('admin.sales.index', ['tenant' => $tillSession->tenant_id]).'#till')
-                ->withErrors(['actuals' => 'All till variances must be 0 before the till can be closed.'])
+                ->withErrors(['actuals' => 'Till variances must be 0 to close, or tick "book the variance as loss/gain" to write it off.'])
                 ->withInput();
         }
 
         $cashExpectedMinor = (int) ($rows->firstWhere('method', 'Cash')['expected_minor'] ?? 0);
+        $cashActualMinor = $this->moneyToMinor($actuals->get('Cash', 0));
 
         $tillSession->update([
             'status' => 'closed',
             'expected_cash_minor' => $cashExpectedMinor,
             'expected_total_minor' => (int) $rows->sum('expected_minor'),
             'actual_total_minor' => $actualTotalMinor,
-            'variance_total_minor' => 0,
+            'variance_total_minor' => $varianceTotalMinor,
             'closed_at' => now(),
             'closing_note' => $data['closing_note'] ?? null,
         ]);
 
-        if ($cashExpectedMinor > 0) {
-            $till = $this->ensureTillCashLocation($tillSession);
-            $vault = $this->ensureBranchVault($tillSession);
+        $till = $this->ensureTillCashLocation($tillSession);
+        $vault = $this->ensureBranchVault($tillSession);
 
+        // Hand the physically counted cash over to the branch safe vault.
+        if ($cashActualMinor > 0) {
             $postJournalEntry->execute(
                 $tillSession->tenant_id,
                 now()->toDateString(),
                 'Till close cash handover for '.$tillSession->session_number,
                 [
-                    ['account_code' => $vault->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'debit_minor' => $cashExpectedMinor, 'memo' => 'Balanced cash received into branch safe vault.'],
-                    ['account_code' => $till->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'credit_minor' => $cashExpectedMinor, 'memo' => 'Balanced cash handed over from cashier till.'],
+                    ['account_code' => $vault->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'debit_minor' => $cashActualMinor, 'memo' => 'Counted cash received into branch safe vault.'],
+                    ['account_code' => $till->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'credit_minor' => $cashActualMinor, 'memo' => 'Counted cash handed over from cashier till.'],
                 ],
                 'sales_till_session',
                 $tillSession->id,
                 'closed_remitted',
             );
 
-            $till->decrement('balance_minor', $cashExpectedMinor);
-            $vault->increment('balance_minor', $cashExpectedMinor);
+            $till->decrement('balance_minor', $cashActualMinor);
+            $vault->increment('balance_minor', $cashActualMinor);
         }
 
-        return redirect()->to(route('admin.sales.index', ['tenant' => $tillSession->tenant_id]).'#till')->with('status', "Till {$tillSession->session_number} closed.");
+        // Write off the drawer variance to Cash Short & Over so the till zeroes out.
+        if ($hasVariance && $bookVariance) {
+            $shortOver = $this->ensureCashShortOverAccount($tillSession->tenant_id);
+            $amount = abs($varianceTotalMinor);
+            $note = $data['variance_note'] ?? null;
+
+            if ($varianceTotalMinor < 0) {
+                // Shortage — recognise a loss.
+                $postJournalEntry->execute(
+                    $tillSession->tenant_id,
+                    now()->toDateString(),
+                    'Till shortage written off for '.$tillSession->session_number.($note ? ' — '.$note : ''),
+                    [
+                        ['account_code' => $shortOver->code, 'branch_id' => $tillSession->branch_id, 'debit_minor' => $amount, 'memo' => 'Cash drawer shortage recognised as loss.'],
+                        ['account_code' => $till->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'credit_minor' => $amount, 'memo' => 'Shortage removed from cashier till.'],
+                    ],
+                    'sales_till_session',
+                    $tillSession->id,
+                    'variance_shortage',
+                );
+                $till->decrement('balance_minor', $amount);
+            } else {
+                // Overage — recognise a gain (contra to the short/over account).
+                $postJournalEntry->execute(
+                    $tillSession->tenant_id,
+                    now()->toDateString(),
+                    'Till overage recognised for '.$tillSession->session_number.($note ? ' — '.$note : ''),
+                    [
+                        ['account_code' => $till->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'debit_minor' => $amount, 'memo' => 'Cash drawer overage added to cashier till.'],
+                        ['account_code' => $shortOver->code, 'branch_id' => $tillSession->branch_id, 'credit_minor' => $amount, 'memo' => 'Cash drawer overage recognised as gain.'],
+                    ],
+                    'sales_till_session',
+                    $tillSession->id,
+                    'variance_overage',
+                );
+                $till->increment('balance_minor', $amount);
+            }
+        }
+
+        return redirect()->to(route('admin.sales.index', ['tenant' => $tillSession->tenant_id]).'#till')->with('status', $hasVariance ? "Till {$tillSession->session_number} closed and variance booked." : "Till {$tillSession->session_number} closed.");
     }
 
     public function updateDeliveryStatus(Request $request, SalesOrder $order): RedirectResponse
@@ -744,6 +900,24 @@ final class SalesController extends Controller
         $salesReturn = $action->execute($order->load('items.variant', 'customer', 'branch'), $request->validated());
 
         return redirect()->to(route('admin.sales.index', ['tenant' => $salesReturn->tenant_id]).'#returns')->with('status', "Return {$salesReturn->return_number} processed.");
+    }
+
+    private function ensureCashShortOverAccount(string $tenantId): FinanceAccount
+    {
+        $account = FinanceAccount::query()->firstOrCreate(
+            ['tenant_id' => $tenantId, 'code' => 'EXP-6360'],
+            [
+                'name' => 'Cash Short & Over (Till Variance)',
+                'type' => 'expense',
+                'category' => 'Admin & Ops',
+                'description' => 'Cash drawer shortages and overages recognised at till close.',
+                'normal_balance' => 'debit',
+                'is_system' => true,
+                'is_active' => true,
+            ],
+        );
+
+        return $account;
     }
 
     private function walkInCustomer(Tenant $tenant): Customer

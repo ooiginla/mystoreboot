@@ -16,6 +16,7 @@ final class TillCloseRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
+            'book_variance' => $this->boolean('book_variance'),
             'actuals' => collect((array) $this->input('actuals', []))
                 ->map(fn (mixed $value): mixed => is_string($value) ? str_replace(',', '', $value) : $value)
                 ->all(),
@@ -27,6 +28,8 @@ final class TillCloseRequest extends FormRequest
         return [
             'actuals' => ['required', 'array'],
             'actuals.*' => ['nullable', 'numeric', 'min:0', 'max:999999999'],
+            'book_variance' => ['boolean'],
+            'variance_note' => ['nullable', 'string', 'max:255'],
             'closing_note' => ['nullable', 'string', 'max:1000'],
         ];
     }
