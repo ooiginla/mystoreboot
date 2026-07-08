@@ -627,7 +627,7 @@ final class SalesController extends Controller
             $postJournalEntry->execute(
                 $tillSession->tenant_id,
                 now()->toDateString(),
-                ($movement->movement_type === 'cash_deposit' ? 'Cash remittance from ' : 'Cash out from ').$tillSession->session_number,
+                ($movement->movement_type === 'cash_deposit' ? 'Move to vault from ' : 'Cash out from ').$tillSession->session_number,
                 [
                     ['account_code' => $vault->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'debit_minor' => $amountMinor, 'memo' => 'Cash received into branch safe vault.'],
                     ['account_code' => $till->financeAccount->code, 'branch_id' => $tillSession->branch_id, 'credit_minor' => $amountMinor, 'memo' => 'Cash remitted from cashier till.'],
@@ -765,31 +765,41 @@ final class SalesController extends Controller
 
     private function ensureBranchVault(SalesTillSession $tillSession): SalesCashLocation
     {
-        if ($tillSession->vaultCashLocation?->financeAccount) {
+        if ($tillSession->vaultCashLocation?->financeAccount?->code === '1030') {
             $tillSession->vaultCashLocation->financeAccount->fill([
+                'name' => 'Branch Safe / Vault',
                 'type' => 'asset',
                 'category' => 'Current Assets',
-                'description' => 'Cash held in a branch safe vault.',
+                'description' => 'Cash held in branch safes or vaults before banking.',
                 'normal_balance' => 'debit',
             ])->save();
 
             return $tillSession->vaultCashLocation;
         }
 
-        $code = 'BV-'.$tillSession->branch_id;
         $account = FinanceAccount::query()->firstOrCreate([
             'tenant_id' => $tillSession->tenant_id,
-            'code' => $code,
+            'code' => '1030',
         ], [
-            'name' => 'Branch Safe Vault - '.($tillSession->branch?->name ?? 'Branch '.$tillSession->branch_id),
+            'name' => 'Branch Safe / Vault',
             'type' => 'asset',
             'category' => 'Current Assets',
-            'description' => 'Cash held in a branch safe vault.',
+            'description' => 'Cash held in branch safes or vaults before banking.',
             'normal_balance' => 'debit',
             'is_system' => true,
             'is_active' => true,
         ]);
+        $account->fill([
+            'name' => 'Branch Safe / Vault',
+            'type' => 'asset',
+            'category' => 'Current Assets',
+            'description' => 'Cash held in branch safes or vaults before banking.',
+            'normal_balance' => 'debit',
+            'is_system' => true,
+            'is_active' => true,
+        ])->save();
 
+        $code = 'BV-'.$tillSession->branch_id;
         $location = SalesCashLocation::query()->firstOrCreate([
             'tenant_id' => $tillSession->tenant_id,
             'code' => $code,
@@ -800,6 +810,7 @@ final class SalesController extends Controller
             'location_type' => 'vault',
             'is_active' => true,
         ]);
+        $location->fill(['finance_account_id' => $account->id])->save();
 
         if (! $tillSession->vault_cash_location_id) {
             $tillSession->update(['vault_cash_location_id' => $location->id]);
@@ -810,31 +821,41 @@ final class SalesController extends Controller
 
     private function ensureTillCashLocation(SalesTillSession $tillSession): SalesCashLocation
     {
-        if ($tillSession->cashLocation?->financeAccount) {
+        if ($tillSession->cashLocation?->financeAccount?->code === '1020') {
             $tillSession->cashLocation->financeAccount->fill([
+                'name' => 'Cash in Tills',
                 'type' => 'asset',
                 'category' => 'Current Assets',
-                'description' => 'Cash held in a cashier till for point-of-sale transactions.',
+                'description' => 'Cash currently held by cashier tills and registers.',
                 'normal_balance' => 'debit',
             ])->save();
 
             return $tillSession->cashLocation;
         }
 
-        $code = 'CT-'.$tillSession->id;
         $account = FinanceAccount::query()->firstOrCreate([
             'tenant_id' => $tillSession->tenant_id,
-            'code' => $code,
+            'code' => '1020',
         ], [
-            'name' => 'Cashier Till '.$tillSession->session_number,
+            'name' => 'Cash in Tills',
             'type' => 'asset',
             'category' => 'Current Assets',
-            'description' => 'Cash held in a cashier till for point-of-sale transactions.',
+            'description' => 'Cash currently held by cashier tills and registers.',
             'normal_balance' => 'debit',
             'is_system' => true,
             'is_active' => true,
         ]);
+        $account->fill([
+            'name' => 'Cash in Tills',
+            'type' => 'asset',
+            'category' => 'Current Assets',
+            'description' => 'Cash currently held by cashier tills and registers.',
+            'normal_balance' => 'debit',
+            'is_system' => true,
+            'is_active' => true,
+        ])->save();
 
+        $code = 'CT-'.$tillSession->id;
         $location = SalesCashLocation::query()->firstOrCreate([
             'tenant_id' => $tillSession->tenant_id,
             'code' => $code,
@@ -847,6 +868,7 @@ final class SalesController extends Controller
             'location_type' => 'till',
             'is_active' => true,
         ]);
+        $location->fill(['finance_account_id' => $account->id])->save();
 
         if (! $tillSession->cash_location_id) {
             $tillSession->update(['cash_location_id' => $location->id]);
@@ -904,18 +926,29 @@ final class SalesController extends Controller
 
     private function refundAccountCodeFor(SalesOrder $order): string
     {
-        $cashPayment = $order->payments->first(fn ($payment): bool => $this->isCashMethod($payment->payment_method));
+        $payment = $order->payments->first();
 
-        if ($cashPayment?->tillSession?->cashLocation?->financeAccount) {
-            return $cashPayment->tillSession->cashLocation->financeAccount->code;
+        if ($payment && $this->isCashMethod($payment->payment_method) && $payment->tillSession?->cashLocation?->financeAccount) {
+            return $payment->tillSession->cashLocation->financeAccount->code;
         }
 
-        return '1000';
+        return $this->nonCashAccountFor($payment?->payment_method);
     }
 
     private function isCashMethod(?string $paymentMethod): bool
     {
         return str_contains(strtolower((string) $paymentMethod), 'cash');
+    }
+
+    private function nonCashAccountFor(?string $paymentMethod): string
+    {
+        $method = strtolower((string) $paymentMethod);
+
+        return match (true) {
+            str_contains($method, 'pos'), str_contains($method, 'card') => '1050',
+            str_contains($method, 'online'), str_contains($method, 'paystack'), str_contains($method, 'gateway') => '1060',
+            default => '1040',
+        };
     }
 
     private function moneyToMinor(mixed $value): int

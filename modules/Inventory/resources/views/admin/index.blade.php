@@ -1,6 +1,8 @@
 @php
     $money = fn (?int $minor): string => number_format(($minor ?? 0) / 100, 2);
     $variantLabel = fn ($variant): string => $variant->product?->name.' / '.$variant->variant_name.' ('.$variant->sku.')';
+    $activeBranchForView = app(\App\Support\ActiveBranchManager::class)->stateForRequest(request(), auth()->user())['activeBranch'];
+    $activeBranchLocationId = $activeBranchForView ? $locations->firstWhere('branch_id', $activeBranchForView->id)?->id : null;
 @endphp
 
 <x-layouts.admin title="Inventory & Stock">

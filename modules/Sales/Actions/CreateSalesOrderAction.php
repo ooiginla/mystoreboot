@@ -267,9 +267,11 @@ final class CreateSalesOrderAction
 
     private function cashAccountFor(?string $paymentMethod, SalesTillSession $tillSession): string
     {
-        return $this->isCashMethod($paymentMethod)
-            ? $this->ensureTillCashLocation($tillSession)->financeAccount->code
-            : '1000';
+        if ($this->isCashMethod($paymentMethod)) {
+            return $this->ensureTillCashLocation($tillSession)->financeAccount->code;
+        }
+
+        return $this->nonCashAccountFor($paymentMethod);
     }
 
     private function isCashMethod(?string $paymentMethod): bool
@@ -277,13 +279,25 @@ final class CreateSalesOrderAction
         return str_contains(strtolower((string) $paymentMethod), 'cash');
     }
 
+    private function nonCashAccountFor(?string $paymentMethod): string
+    {
+        $method = strtolower((string) $paymentMethod);
+
+        return match (true) {
+            str_contains($method, 'pos'), str_contains($method, 'card') => '1050',
+            str_contains($method, 'online'), str_contains($method, 'paystack'), str_contains($method, 'gateway') => '1060',
+            default => '1040',
+        };
+    }
+
     private function ensureTillCashLocation(SalesTillSession $tillSession): SalesCashLocation
     {
-        if ($tillSession->cashLocation?->financeAccount) {
+        if ($tillSession->cashLocation?->financeAccount?->code === '1020') {
             $tillSession->cashLocation->financeAccount->fill([
+                'name' => 'Cash in Tills',
                 'type' => 'asset',
                 'category' => 'Current Assets',
-                'description' => 'Cash held in a cashier till for point-of-sale transactions.',
+                'description' => 'Cash currently held by cashier tills and registers.',
                 'normal_balance' => 'debit',
             ])->save();
 
@@ -292,16 +306,25 @@ final class CreateSalesOrderAction
 
         $account = FinanceAccount::query()->firstOrCreate([
             'tenant_id' => $tillSession->tenant_id,
-            'code' => 'CT-'.$tillSession->id,
+            'code' => '1020',
         ], [
-            'name' => 'Cashier Till '.$tillSession->session_number,
+            'name' => 'Cash in Tills',
             'type' => 'asset',
             'category' => 'Current Assets',
-            'description' => 'Cash held in a cashier till for point-of-sale transactions.',
+            'description' => 'Cash currently held by cashier tills and registers.',
             'normal_balance' => 'debit',
             'is_system' => true,
             'is_active' => true,
         ]);
+        $account->fill([
+            'name' => 'Cash in Tills',
+            'type' => 'asset',
+            'category' => 'Current Assets',
+            'description' => 'Cash currently held by cashier tills and registers.',
+            'normal_balance' => 'debit',
+            'is_system' => true,
+            'is_active' => true,
+        ])->save();
 
         $location = SalesCashLocation::query()->firstOrCreate([
             'tenant_id' => $tillSession->tenant_id,
@@ -315,6 +338,7 @@ final class CreateSalesOrderAction
             'location_type' => 'till',
             'is_active' => true,
         ]);
+        $location->fill(['finance_account_id' => $account->id])->save();
 
         if (! $tillSession->cash_location_id) {
             $tillSession->update(['cash_location_id' => $location->id]);

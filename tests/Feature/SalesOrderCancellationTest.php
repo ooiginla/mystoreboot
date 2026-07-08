@@ -93,7 +93,7 @@ class SalesOrderCancellationTest extends TestCase
             ->firstOrFail();
 
         $this->assertTrue($refundJournal->lines->contains(fn ($line): bool => $line->account->code === '2300' && $line->debit_minor === 50000));
-        $this->assertTrue($refundJournal->lines->contains(fn ($line): bool => $line->account->code === '1000' && $line->credit_minor === 50000));
+        $this->assertTrue($refundJournal->lines->contains(fn ($line): bool => $line->account->code === '1040' && $line->credit_minor === 50000));
     }
 
     public function test_pending_unpaid_order_can_be_cancelled_without_refund_credit(): void

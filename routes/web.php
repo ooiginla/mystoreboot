@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\RegisteredTenantController;
+use App\Http\Controllers\Admin\ActiveBranchController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\MarketingController;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', [MarketingController::class, 'home'])->name('home');
 
 // Public marketing pages
+Route::get('/about', [MarketingController::class, 'about'])->name('about');
 Route::get('/contact', [ContactController::class, 'show'])->name('contact');
 Route::post('/contact', [ContactController::class, 'submit'])->name('contact.submit');
 Route::get('/privacy', [LegalController::class, 'privacy'])->name('legal.privacy');
@@ -39,3 +41,7 @@ Route::post('/email/verification-notification', [RegisteredTenantController::cla
 Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
     ->middleware('auth')
     ->name('logout');
+
+Route::post('/admin/active-branch', [ActiveBranchController::class, 'update'])
+    ->middleware('auth')
+    ->name('admin.active-branch.update');

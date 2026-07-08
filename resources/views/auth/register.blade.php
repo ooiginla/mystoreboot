@@ -97,8 +97,8 @@
 
         <p class="text-center text-xs text-zinc-500 dark:text-zinc-500">
             By creating an account you agree to our
-            <a href="#" class="font-semibold text-brand-600 dark:text-brand-400">Terms</a> and
-            <a href="#" class="font-semibold text-brand-600 dark:text-brand-400">Privacy Policy</a>.
+            <a href="{{ route('legal.terms') }}" target="_blank" rel="noopener" class="font-semibold text-brand-600 dark:text-brand-400">Terms</a> and
+            <a href="{{ route('legal.privacy') }}" target="_blank" rel="noopener" class="font-semibold text-brand-600 dark:text-brand-400">Privacy Policy</a>.
         </p>
     </form>
 

@@ -1,6 +1,7 @@
 @php
     $money = fn (?int $minor): string => $tenant->currency_code.' '.number_format(($minor ?? 0) / 100, 2);
     $headline = fn (?string $value): string => \Illuminate\Support\Str::headline((string) $value);
+    $activeBranchForView = app(\App\Support\ActiveBranchManager::class)->stateForRequest(request(), auth()->user())['activeBranch'];
 @endphp
 
 <x-layouts.admin title="HR & Payroll">

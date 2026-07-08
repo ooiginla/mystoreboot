@@ -20,7 +20,7 @@
             <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
             <div class="form-grid">
                 <div class="field"><label>Staff number</label><input name="staff_number" value="{{ old('staff_number', $selectedStaff?->staff_number) }}" placeholder="Auto-generated if blank"></div>
-                <div class="field"><label>Branch</label><select name="branch_id"><option value="">Unassigned</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((int) old('branch_id', $selectedStaff?->branch_id) === $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
+                <div class="field"><label>Branch</label><select name="branch_id"><option value="">Unassigned</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((int) old('branch_id', $selectedStaff ? $selectedStaff->branch_id : $activeBranchForView?->id) === $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
                 <div class="field"><label>First name</label><input name="first_name" value="{{ old('first_name', $selectedStaff?->first_name) }}" required></div>
                 <div class="field"><label>Last name</label><input name="last_name" value="{{ old('last_name', $selectedStaff?->last_name) }}" required></div>
                 <div class="field"><label>Email</label><input name="email" type="email" value="{{ old('email', $selectedStaff?->email) }}"></div>

@@ -21,10 +21,12 @@ use Modules\Business\Models\Branch;
 use Modules\Customers\Models\Customer;
 use Modules\Finance\Actions\EnsureDefaultChartOfAccountsAction;
 use Modules\Finance\Actions\PostJournalEntryAction;
+use Modules\Finance\Http\Requests\BankMovementRequest;
 use Modules\Finance\Http\Requests\ExpenseCategoryRequest;
 use Modules\Finance\Http\Requests\ExpenseRequest;
 use Modules\Finance\Http\Requests\ManualJournalEntryRequest;
 use Modules\Finance\Models\FinanceAccount;
+use Modules\Finance\Models\FinanceBankMovement;
 use Modules\Finance\Models\FinanceExpense;
 use Modules\Finance\Models\FinanceExpenseCategory;
 use Modules\Finance\Models\FinanceJournalEntry;
@@ -69,6 +71,12 @@ final class FinanceReportController extends Controller
 
         $dateFrom = CarbonImmutable::parse($request->string('date_from')->toString() ?: now()->startOfMonth()->toDateString())->startOfDay();
         $dateTo = CarbonImmutable::parse($request->string('date_to')->toString() ?: now()->toDateString())->endOfDay();
+        $branches = Branch::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
+        $selectedBranchId = $request->string('branch_id')->toString();
+        if ($selectedBranchId !== '') {
+            abort_unless($branches->contains('id', (int) $selectedBranchId), 403);
+        }
+        $selectedBranch = $selectedBranchId !== '' ? $branches->firstWhere('id', (int) $selectedBranchId) : null;
         $selectedReport = $request->string('report')->toString();
 
         if (! array_key_exists($selectedReport, self::REPORTS)) {
@@ -78,6 +86,7 @@ final class FinanceReportController extends Controller
         $orders = SalesOrder::query()
             ->with(['branch', 'customer', 'items.variant.product'])
             ->where('tenant_id', $tenant->id)
+            ->when($selectedBranchId !== '', fn ($query) => $query->where('branch_id', $selectedBranchId))
             ->where('order_status', '!=', SalesOrderStatus::Cancelled->value)
             ->whereBetween('order_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
             ->latest('order_date')
@@ -94,6 +103,7 @@ final class FinanceReportController extends Controller
         $salesPayments = SalesOrderPayment::query()
             ->with('order.customer')
             ->where('tenant_id', $tenant->id)
+            ->when($selectedBranchId !== '', fn ($query) => $query->whereHas('order', fn ($orderQuery) => $orderQuery->where('branch_id', $selectedBranchId)))
             ->whereBetween('payment_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
             ->latest('payment_date')
             ->get();
@@ -107,6 +117,7 @@ final class FinanceReportController extends Controller
 
         $salesToDate = SalesOrder::query()
             ->where('tenant_id', $tenant->id)
+            ->when($selectedBranchId !== '', fn ($query) => $query->where('branch_id', $selectedBranchId))
             ->where('order_status', '!=', SalesOrderStatus::Cancelled->value)
             ->whereDate('order_date', '<=', $dateTo->toDateString())
             ->get();
@@ -121,6 +132,7 @@ final class FinanceReportController extends Controller
             ->with(['order.branch', 'variant.product'])
             ->where('tenant_id', $tenant->id)
             ->whereHas('order', fn ($query) => $query
+                ->when($selectedBranchId !== '', fn ($orderQuery) => $orderQuery->where('branch_id', $selectedBranchId))
                 ->where('order_status', '!=', SalesOrderStatus::Cancelled->value)
                 ->whereBetween('order_date', [$dateFrom->toDateString(), $dateTo->toDateString()]))
             ->get();
@@ -171,6 +183,9 @@ final class FinanceReportController extends Controller
             'selectedReport' => $selectedReport,
             'dateFrom' => $dateFrom->toDateString(),
             'dateTo' => $dateTo->toDateString(),
+            'branches' => $branches,
+            'selectedBranchId' => $selectedBranchId,
+            'selectedBranch' => $selectedBranch,
             'summary' => [
                 'revenue_minor' => $revenueMinor,
                 'refund_minor' => $refundMinor,
@@ -203,6 +218,7 @@ final class FinanceReportController extends Controller
             'journalEntries' => $journalEntries,
             'customerBalances' => $this->customerBalances($tenant->id),
             'vendorBalances' => $this->vendorBalances($tenant->id),
+            'branchLedgerSummary' => $this->branchLedgerSummary($tenant->id, $dateFrom->toDateString(), $dateTo->toDateString(), $selectedBranchId),
         ]);
     }
 
@@ -224,6 +240,78 @@ final class FinanceReportController extends Controller
         ]);
     }
 
+    public function journals(Request $request): View
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenants = $this->visibleTenantsFor($user);
+        $tenant = $this->resolveTenant($request, $tenants);
+
+        abort_if(! $tenant, 403);
+        app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
+
+        $accounts = FinanceAccount::query()
+            ->where('tenant_id', $tenant->id)
+            ->orderBy('code')
+            ->get();
+        $expenseCategories = FinanceExpenseCategory::query()
+            ->with('account')
+            ->where('tenant_id', $tenant->id)
+            ->orderBy('name')
+            ->get();
+        $journalFilters = $this->journalFilters($request);
+        $journalEntries = $this->journalEntriesQuery($tenant->id, $journalFilters)
+            ->paginate(25, ['*'], 'journals_page')
+            ->withQueryString()
+            ->fragment('journal-entries');
+        $bankMovementSources = collect([
+            '1030' => ['label' => 'Bank Cash from Vault', 'description' => 'Move physical cash already handed over from tills into an actual bank account.'],
+            '1040' => ['label' => 'Reconcile Bank Transfer', 'description' => 'Move confirmed customer transfer receipts from clearing into the receiving bank account.'],
+            '1050' => ['label' => 'Settle POS/Card', 'description' => 'Move POS or card settlement from clearing into the bank account, with optional charges.'],
+            '1060' => ['label' => 'Settle Online Payment', 'description' => 'Move gateway settlement from clearing into the bank account, with optional charges.'],
+        ])->map(function (array $source, string $code) use ($tenant): array {
+            $account = FinanceAccount::query()->where('tenant_id', $tenant->id)->where('code', $code)->first();
+
+            return [
+                ...$source,
+                'code' => $code,
+                'account' => $account,
+                'balance_minor' => $this->accountBalance($tenant->id, $code),
+            ];
+        });
+        $bankAccounts = FinanceAccount::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('type', 'asset')
+            ->where('code', 'like', 'BANK-%')
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+        $bankMovements = FinanceBankMovement::query()
+            ->with(['branch', 'sourceAccount', 'destinationAccount', 'feeAccount', 'postedBy'])
+            ->where('tenant_id', $tenant->id)
+            ->when($journalFilters['branch'] !== '', fn ($query) => $query->where('branch_id', $journalFilters['branch']))
+            ->latest('movement_date')
+            ->latest('id')
+            ->limit(20)
+            ->get();
+
+        return view('finance::admin.journals', [
+            'tenant' => $tenant,
+            'tenants' => $tenants,
+            'isPlatformAdmin' => $user->is_platform_admin,
+            'accounts' => $accounts,
+            'expenseCategories' => $expenseCategories,
+            'journalEntries' => $journalEntries,
+            'journalFilters' => $journalFilters,
+            'journalAccountCategories' => $accounts->pluck('category')->filter()->unique()->sort()->values(),
+            'journalAccountTypes' => $accounts->pluck('type')->filter()->unique()->sort()->values(),
+            'branches' => Branch::query()->where('tenant_id', $tenant->id)->orderBy('name')->get(),
+            'bankMovementSources' => $bankMovementSources,
+            'bankAccounts' => $bankAccounts,
+            'bankMovements' => $bankMovements,
+        ]);
+    }
+
     public function expenses(Request $request): View
     {
         /** @var User $user */
@@ -234,27 +322,16 @@ final class FinanceReportController extends Controller
         abort_if(! $tenant, 403);
         app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
 
+        $expenseFilters = $this->expenseFilters($request);
         $expenseCategories = FinanceExpenseCategory::query()
             ->with('account')
             ->where('tenant_id', $tenant->id)
             ->orderBy('name')
             ->get();
-        $operationalExpenses = FinanceExpense::query()
-            ->with(['category', 'expenseAccount', 'paymentAccount'])
-            ->where('tenant_id', $tenant->id)
-            ->latest('expense_date')
-            ->limit(100)
-            ->get();
-        $accounts = FinanceAccount::query()
-            ->where('tenant_id', $tenant->id)
-            ->where('is_active', true)
-            ->orderBy('code')
-            ->get();
-        $journalFilters = $this->journalFilters($request);
-        $journalEntries = $this->journalEntriesQuery($tenant->id, $journalFilters)
-            ->paginate(25, ['*'], 'journals_page')
+        $operationalExpenses = $this->expensesQuery($tenant->id, $expenseFilters)
+            ->paginate(25, ['*'], 'expenses_page')
             ->withQueryString()
-            ->fragment('journals');
+            ->fragment('expense-list');
         $expenseAccounts = FinanceAccount::query()
             ->where('tenant_id', $tenant->id)
             ->where('type', 'expense')
@@ -281,11 +358,7 @@ final class FinanceReportController extends Controller
             'isPlatformAdmin' => $user->is_platform_admin,
             'expenseCategories' => $expenseCategories,
             'operationalExpenses' => $operationalExpenses,
-            'journalEntries' => $journalEntries,
-            'accounts' => $accounts,
-            'journalFilters' => $journalFilters,
-            'journalAccountCategories' => $accounts->pluck('category')->filter()->unique()->sort()->values(),
-            'journalAccountTypes' => $accounts->pluck('type')->filter()->unique()->sort()->values(),
+            'expenseFilters' => $expenseFilters,
             'expenseAccounts' => $expenseAccounts,
             'expenseAccountCategories' => $expenseAccountCategories,
             'assetAccounts' => $assetAccounts,
@@ -359,7 +432,7 @@ final class FinanceReportController extends Controller
             'is_active' => (bool) ($data['is_active'] ?? true),
         ]);
 
-        return redirect()->to(route('admin.finance.expenses', ['tenant' => $category->tenant_id]).'#categories')->with('status', 'Expense category created.');
+        return redirect()->to(route('admin.finance.journals', ['tenant' => $category->tenant_id]).'#expense-categories')->with('status', 'Expense category created.');
     }
 
     public function updateExpenseCategory(ExpenseCategoryRequest $request, FinanceExpenseCategory $category): RedirectResponse
@@ -376,7 +449,7 @@ final class FinanceReportController extends Controller
         ]);
         $category->account?->update(['name' => $data['name'].' Expense', 'is_active' => (bool) ($data['is_active'] ?? false)]);
 
-        return redirect()->to(route('admin.finance.expenses', ['tenant' => $category->tenant_id]).'#categories')->with('status', 'Expense category updated.');
+        return redirect()->to(route('admin.finance.journals', ['tenant' => $category->tenant_id]).'#expense-categories')->with('status', 'Expense category updated.');
     }
 
     public function storeExpense(ExpenseRequest $request, PostJournalEntryAction $postJournalEntry): RedirectResponse
@@ -461,7 +534,68 @@ final class FinanceReportController extends Controller
             null,
         );
 
-        return redirect()->to(route('admin.finance.expenses', ['tenant' => $data['tenant_id']]).'#journals')->with('status', 'Journal entry posted.');
+        return redirect()->to(route('admin.finance.journals', ['tenant' => $data['tenant_id']]).'#journal-entries')->with('status', 'Journal entry posted.');
+    }
+
+    public function storeBankMovement(BankMovementRequest $request, PostJournalEntryAction $postJournalEntry): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
+        app(EnsureDefaultChartOfAccountsAction::class)->execute($request->string('tenant_id')->toString());
+
+        $data = $request->validated();
+        $grossMinor = $this->moneyToMinor($data['gross_amount']);
+        $feeMinor = $this->moneyToMinor($data['fee_amount'] ?? 0);
+        $netMinor = $grossMinor - $feeMinor;
+        $sourceAccount = FinanceAccount::query()->where('tenant_id', $data['tenant_id'])->where('code', $data['source_account_code'])->firstOrFail();
+        $destinationAccount = FinanceAccount::query()->where('tenant_id', $data['tenant_id'])->where('code', $data['destination_account_code'])->firstOrFail();
+        $feeAccount = $feeMinor > 0
+            ? FinanceAccount::query()->where('tenant_id', $data['tenant_id'])->where('code', 'EXP-6350')->firstOrFail()
+            : null;
+        $memo = $this->bankMovementLabel($data['movement_type']).' '.$sourceAccount->code.' to '.$destinationAccount->code;
+
+        $movement = DB::transaction(function () use ($data, $grossMinor, $feeMinor, $netMinor, $sourceAccount, $destinationAccount, $feeAccount, $memo, $postJournalEntry): FinanceBankMovement {
+            $movement = FinanceBankMovement::query()->create([
+                'tenant_id' => $data['tenant_id'],
+                'branch_id' => $data['branch_id'] ?? null,
+                'source_finance_account_id' => $sourceAccount->id,
+                'destination_finance_account_id' => $destinationAccount->id,
+                'fee_finance_account_id' => $feeAccount?->id,
+                'movement_number' => $this->number('BNK', $data['tenant_id'], FinanceBankMovement::class, 'movement_number'),
+                'movement_type' => $data['movement_type'],
+                'movement_date' => $data['movement_date'],
+                'gross_amount_minor' => $grossMinor,
+                'fee_amount_minor' => $feeMinor,
+                'net_amount_minor' => $netMinor,
+                'reference_number' => $data['reference_number'] ?? null,
+                'notes' => $data['notes'] ?? null,
+                'posted_by' => auth()->id(),
+            ]);
+
+            $lines = [
+                ['account_code' => $destinationAccount->code, 'branch_id' => $data['branch_id'] ?? null, 'debit_minor' => $netMinor, 'memo' => 'Net amount received into bank.'],
+                ['account_code' => $sourceAccount->code, 'branch_id' => $data['branch_id'] ?? null, 'credit_minor' => $grossMinor, 'memo' => 'Amount cleared from '.$sourceAccount->name.'.'],
+            ];
+
+            if ($feeMinor > 0 && $feeAccount) {
+                $lines[] = ['account_code' => $feeAccount->code, 'branch_id' => $data['branch_id'] ?? null, 'debit_minor' => $feeMinor, 'memo' => 'Settlement charges.'];
+            }
+
+            $journal = $postJournalEntry->execute(
+                $data['tenant_id'],
+                $data['movement_date'],
+                $memo,
+                $lines,
+                'finance_bank_movement',
+                $movement->id,
+                'posted',
+            );
+
+            $movement->update(['finance_journal_entry_id' => $journal?->id]);
+
+            return $movement;
+        });
+
+        return redirect()->to(route('admin.finance.journals', ['tenant' => $movement->tenant_id]).'#banking')->with('status', 'Banking movement posted.');
     }
 
     private function visibleTenantsFor(User $user): EloquentCollection
@@ -488,7 +622,52 @@ final class FinanceReportController extends Controller
     }
 
     /**
-     * @return array{date_from: string, date_to: string, category: string, type: string, account: string}
+     * @return array{date_from: string, date_to: string, category: string, status: string, expense_account: string, payment_account: string, payee: string, reference: string}
+     */
+    private function expenseFilters(Request $request): array
+    {
+        return [
+            'date_from' => $request->string('expense_date_from')->toString(),
+            'date_to' => $request->string('expense_date_to')->toString(),
+            'category' => $request->string('expense_category_id')->toString(),
+            'status' => $request->string('expense_payment_status')->toString(),
+            'expense_account' => $request->string('expense_account_code')->toString(),
+            'payment_account' => $request->string('expense_payment_account_code')->toString(),
+            'payee' => $request->string('expense_payee')->toString(),
+            'reference' => $request->string('expense_reference')->toString(),
+        ];
+    }
+
+    /**
+     * @param  array{date_from: string, date_to: string, category: string, status: string, expense_account: string, payment_account: string, payee: string, reference: string}  $expenseFilters
+     */
+    private function expensesQuery(string $tenantId, array $expenseFilters)
+    {
+        return FinanceExpense::query()
+            ->with(['category', 'expenseAccount', 'paymentAccount'])
+            ->where('tenant_id', $tenantId)
+            ->when($expenseFilters['date_from'] !== '', fn ($query) => $query->whereDate('expense_date', '>=', $expenseFilters['date_from']))
+            ->when($expenseFilters['date_to'] !== '', fn ($query) => $query->whereDate('expense_date', '<=', $expenseFilters['date_to']))
+            ->when($expenseFilters['category'] !== '', fn ($query) => $query->where('finance_expense_category_id', $expenseFilters['category']))
+            ->when($expenseFilters['status'] !== '', fn ($query) => $query->where('payment_status', $expenseFilters['status']))
+            ->when($expenseFilters['expense_account'] !== '', fn ($query) => $query->whereHas('expenseAccount', fn ($accountQuery) => $accountQuery->where('code', $expenseFilters['expense_account'])))
+            ->when($expenseFilters['payment_account'] !== '', fn ($query) => $query->whereHas('paymentAccount', fn ($accountQuery) => $accountQuery->where('code', $expenseFilters['payment_account'])))
+            ->when($expenseFilters['payee'] !== '', fn ($query) => $query->where('payee_name', 'like', '%'.$expenseFilters['payee'].'%'))
+            ->when($expenseFilters['reference'] !== '', function ($query) use ($expenseFilters): void {
+                $search = '%'.$expenseFilters['reference'].'%';
+
+                $query->where(function ($inner) use ($search): void {
+                    $inner->where('reference_number', 'like', $search)
+                        ->orWhere('expense_number', 'like', $search)
+                        ->orWhere('description', 'like', $search);
+                });
+            })
+            ->latest('expense_date')
+            ->latest('id');
+    }
+
+    /**
+     * @return array{date_from: string, date_to: string, category: string, type: string, account: string, branch: string}
      */
     private function journalFilters(Request $request): array
     {
@@ -498,11 +677,12 @@ final class FinanceReportController extends Controller
             'category' => $request->string('journal_category')->toString(),
             'type' => $request->string('journal_type')->toString(),
             'account' => $request->string('journal_account')->toString(),
+            'branch' => $request->string('journal_branch_id')->toString(),
         ];
     }
 
     /**
-     * @param  array{date_from: string, date_to: string, category: string, type: string, account: string}  $journalFilters
+     * @param  array{date_from: string, date_to: string, category: string, type: string, account: string, branch: string}  $journalFilters
      */
     private function journalEntriesQuery(string $tenantId, array $journalFilters)
     {
@@ -511,6 +691,7 @@ final class FinanceReportController extends Controller
             ->where('tenant_id', $tenantId)
             ->when($journalFilters['date_from'] !== '', fn ($query) => $query->whereDate('entry_date', '>=', $journalFilters['date_from']))
             ->when($journalFilters['date_to'] !== '', fn ($query) => $query->whereDate('entry_date', '<=', $journalFilters['date_to']))
+            ->when($journalFilters['branch'] !== '', fn ($query) => $query->whereHas('lines', fn ($lineQuery) => $lineQuery->where('branch_id', $journalFilters['branch'])))
             ->when($journalFilters['category'] !== '', fn ($query) => $query->whereHas('lines.account', fn ($accountQuery) => $accountQuery->where('category', $journalFilters['category'])))
             ->when($journalFilters['type'] !== '', fn ($query) => $query->whereHas('lines.account', fn ($accountQuery) => $accountQuery->where('type', $journalFilters['type'])))
             ->when($journalFilters['account'] !== '', function ($query) use ($journalFilters): void {
@@ -536,9 +717,21 @@ final class FinanceReportController extends Controller
             'sales_return' => 'Sales return posting',
             'inventory_movement' => 'Inventory posting',
             'till_movement' => 'Till posting',
+            'finance_bank_movement' => 'Banking movement',
             'manual_journal' => 'Manual journal',
             null => 'Manual journal',
             default => Str::headline($sourceType),
+        };
+    }
+
+    private function bankMovementLabel(string $movementType): string
+    {
+        return match ($movementType) {
+            'bank_cash' => 'Bank cash from vault',
+            'reconcile_transfer' => 'Reconcile bank transfer',
+            'settle_pos' => 'Settle POS/Card',
+            'settle_online' => 'Settle online payment',
+            default => Str::headline($movementType),
         };
     }
 
@@ -609,6 +802,37 @@ final class FinanceReportController extends Controller
                 ];
             })
             ->sortByDesc('profit_minor')
+            ->values();
+    }
+
+    private function branchLedgerSummary(string $tenantId, string $dateFrom, string $dateTo, string $branchId): Collection
+    {
+        return FinanceJournalLine::query()
+            ->with('account')
+            ->where('tenant_id', $tenantId)
+            ->when($branchId !== '', fn ($query) => $query->where('branch_id', $branchId))
+            ->whereHas('entry', fn ($entryQuery) => $entryQuery
+                ->whereDate('entry_date', '>=', $dateFrom)
+                ->whereDate('entry_date', '<=', $dateTo))
+            ->get()
+            ->groupBy('finance_account_id')
+            ->map(function (Collection $lines): array {
+                $account = $lines->first()?->account;
+                $debitMinor = (int) $lines->sum('debit_minor');
+                $creditMinor = (int) $lines->sum('credit_minor');
+                $netMinor = $account?->normal_balance === 'credit'
+                    ? $creditMinor - $debitMinor
+                    : $debitMinor - $creditMinor;
+
+                return [
+                    'account' => $account,
+                    'debit_minor' => $debitMinor,
+                    'credit_minor' => $creditMinor,
+                    'net_minor' => $netMinor,
+                ];
+            })
+            ->filter(fn (array $row): bool => $row['account'] !== null)
+            ->sortBy(fn (array $row): string => $row['account']->code)
             ->values();
     }
 

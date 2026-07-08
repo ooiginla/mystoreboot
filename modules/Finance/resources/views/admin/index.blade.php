@@ -6,7 +6,7 @@
 
 <x-layouts.admin title="Report">
     <style>
-        .report-filter { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 10px; align-items: end; margin-bottom: 18px; }
+        .report-filter { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 10px; align-items: end; margin-bottom: 18px; }
         .report-menu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
         .report-card-link { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 14px; display: flex; justify-content: space-between; gap: 12px; align-items: center; font-weight: 850; color: #344054; }
         .report-card-link:hover, .report-card-link.active { border-color: var(--brand); color: var(--brand-dark); box-shadow: 0 0 0 3px rgba(15,118,110,.12); }
@@ -34,6 +34,7 @@
                 <input type="hidden" name="report" value="{{ $selectedReport }}">
                 <input type="hidden" name="date_from" value="{{ $dateFrom }}">
                 <input type="hidden" name="date_to" value="{{ $dateTo }}">
+                <input type="hidden" name="branch_id" value="{{ $selectedBranchId }}">
                 <select name="tenant" onchange="this.form.submit()">
                     @foreach ($tenants as $visibleTenant)
                         <option value="{{ $visibleTenant->id }}" @selected($visibleTenant->id === $tenant->id)>{{ $visibleTenant->name }}</option>
@@ -54,10 +55,37 @@
         <div class="stat"><span class="subtle">Revenue</span><strong>{{ $money($summary['revenue_minor']) }}</strong></div>
         <div class="stat"><span class="subtle">Expenses</span><strong>{{ $money($summary['expense_minor']) }}</strong></div>
         <div class="stat"><span class="subtle">Gross profit</span><strong>{{ $money($summary['gross_profit_minor']) }}</strong></div>
-        <div class="stat"><span class="subtle">Net cash flow</span><strong>{{ $money($summary['net_cash_flow_minor']) }}</strong></div>
+        <div class="stat"><span class="subtle">{{ $selectedBranch ? 'Branch' : 'Branch scope' }}</span><strong>{{ $selectedBranch?->name ?? 'All branches' }}</strong></div>
     </div>
 
     <div class="stack">
+        <section class="panel" id="branch-ledger">
+            <div class="panel-header">
+                <div>
+                    <h2 class="panel-title">Branch ledger snapshot</h2>
+                    <p class="subtle">{{ $selectedBranch?->name ?? 'All branches' }} · {{ \Carbon\CarbonImmutable::parse($dateFrom)->format('M j, Y') }} to {{ \Carbon\CarbonImmutable::parse($dateTo)->format('M j, Y') }}</p>
+                </div>
+            </div>
+            <div class="panel-body report-table-wrap">
+                <table class="table">
+                    <thead><tr><th>Account</th><th>Type</th><th>Debit</th><th>Credit</th><th>Net movement</th></tr></thead>
+                    <tbody>
+                        @forelse ($branchLedgerSummary as $row)
+                            <tr>
+                                <td>{{ $row['account']->code }} · {{ $row['account']->name }}<br><span class="subtle">{{ $row['account']->category ?: 'Not set' }}</span></td>
+                                <td>{{ $headline($row['account']->type) }}</td>
+                                <td>{{ $money($row['debit_minor']) }}</td>
+                                <td>{{ $money($row['credit_minor']) }}</td>
+                                <td><strong>{{ $money($row['net_minor']) }}</strong></td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="5"><div class="empty">No posted ledger activity for this branch and period.</div></td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
         <section class="panel" id="receivables-payables">
             <div class="panel-header"><div><h2 class="panel-title">Receivables, payables & party balances</h2><p class="subtle">Customer debt/credit and vendor payable/prepaid balances from posted journal entries.</p></div></div>
             <div class="panel-body summary-grid">
@@ -88,13 +116,22 @@
                     <input type="hidden" name="report" value="{{ $selectedReport }}">
                     <div class="field"><label>From</label><input name="date_from" type="date" value="{{ $dateFrom }}"></div>
                     <div class="field"><label>To</label><input name="date_to" type="date" value="{{ $dateTo }}"></div>
+                    <div class="field">
+                        <label>Branch</label>
+                        <select name="branch_id">
+                            <option value="">All branches</option>
+                            @foreach ($branches as $branch)
+                                <option value="{{ $branch->id }}" @selected((string) $branch->id === $selectedBranchId)>{{ $branch->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                     <div class="field"><label>Generated report</label><select name="report">@foreach ($reports as $key => $label)<option value="{{ $key }}" @selected($key === $selectedReport)>{{ $label }}</option>@endforeach</select></div>
                     <div class="button-row" style="margin-top: 0; justify-content: flex-start;"><button class="btn secondary" type="submit">Generate</button></div>
                 </form>
 
                 <div class="report-menu">
                     @foreach ($reports as $key => $label)
-                        <a class="report-card-link {{ $key === $selectedReport ? 'active' : '' }}" href="{{ route('admin.finance.index', ['tenant' => $tenant->id, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'report' => $key]) }}">
+                        <a class="report-card-link {{ $key === $selectedReport ? 'active' : '' }}" href="{{ route('admin.finance.index', ['tenant' => $tenant->id, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'branch_id' => $selectedBranchId, 'report' => $key]) }}">
                             <span>{{ $label }}</span>
                             <span class="report-arrow">›</span>
                         </a>

@@ -24,7 +24,7 @@
                     <select name="branch_id">
                         <option value="">Standalone location</option>
                         @foreach ($branches as $branch)
-                            <option value="{{ $branch->id }}">{{ $branch->name }}</option>
+                            <option value="{{ $branch->id }}" @selected((int) old('branch_id', $activeBranchForView?->id) === $branch->id)>{{ $branch->name }}</option>
                         @endforeach
                     </select>
                 </div>

@@ -1,6 +1,7 @@
 @php
     $money = fn (?int $minor): string => number_format(($minor ?? 0) / 100, 2);
     $signedMoney = fn (int $minor): string => ($minor < 0 ? '-' : '').$tenant->currency_code.' '.number_format(abs($minor) / 100, 2);
+    $activeBranchForView = app(\App\Support\ActiveBranchManager::class)->stateForRequest(request(), auth()->user())['activeBranch'];
     $posLocations = $activeTill
         ? $locations->filter(fn ($location) => $location->branch_id === null || $location->branch_id === $activeTill->branch_id)
         : collect();
@@ -8,7 +9,7 @@
         'cash_in' => 'Cash In',
         'cash_out' => 'Cash Out',
         'petty_cash_withdrawal' => 'Petty Cash Withdrawal',
-        'cash_deposit' => 'Cash Deposit / Remittance',
+        'cash_deposit' => 'Move to Vault',
     ];
     $variantLabel = fn ($variant): string => $variant->product?->name.' / '.$variant->variant_name.' ('.$variant->sku.')';
     $statusClass = fn (string $status): string => match ($status) {
@@ -59,8 +60,8 @@
         .sales-metric-label { color: #526177; font-size: 13px; font-weight: 850; text-transform: uppercase; letter-spacing: .04em; }
         .sales-metric-value { display: block; margin-top: 18px; color: #111827; font-size: 22px; line-height: 1.1; font-weight: 900; }
         .sales-metric-card.danger .sales-metric-value { color: #b42318; }
-        .sales-metric-icon { width: 54px; height: 54px; border-radius: 8px; display: grid; place-items: center; color: #fff; background: #147b66; font-size: 22px; font-weight: 900; flex: 0 0 auto; }
-        .sales-metric-icon.soft { color: #334155; background: #dbe7fb; }
+        .sales-metric-icon { width: 54px; height: 54px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: linear-gradient(140deg, #22dd85, #009a53); font-size: 20px; font-weight: 800; flex: 0 0 auto; }
+        .sales-metric-icon.soft { color: #027a45; background: #d1fadf; }
         .sales-metric-icon.danger { color: #b42318; background: #ffe2df; }
         .sales-meta-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
         .sales-header-context { margin-top: 6px; color: #475467; font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; }
@@ -69,18 +70,18 @@
         .sales-customer-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
         .sales-card { border: 1px solid #cfd8d3; border-radius: 8px; background: #fff; padding: 22px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
         .sales-card-title { margin: 0 0 18px; color: #111827; font-size: 18px; font-weight: 900; display: flex; align-items: center; gap: 10px; }
-        .sales-card-icon { color: #006554; font-weight: 950; font-size: 22px; }
-        .sales-primary-button { width: 100%; border: 0; border-radius: 7px; background: #006554; color: #fff; padding: 15px 18px; cursor: pointer; font-size: 18px; font-weight: 900; box-shadow: 0 8px 18px rgba(0, 101, 84, .18); }
-        .sales-primary-button:hover { background: #005245; }
+        .sales-card-icon { color: #009a53; font-weight: 950; font-size: 22px; }
+        .sales-primary-button { width: 100%; border: 0; border-radius: 10px; background: #009a53; color: #fff; padding: 14px 18px; cursor: pointer; font-size: 17px; font-weight: 800; box-shadow: 0 10px 22px -6px rgba(6, 193, 104, .45); transition: background .15s; }
+        .sales-primary-button:hover { background: #027a45; }
         .sales-summary-card { border: 1px solid #cfd8d3; border-radius: 8px; background: #fff; overflow: hidden; position: sticky; top: 24px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
-        .sales-summary-header { background: #f0f2ff; border-bottom: 1px solid #cfd8d3; padding: 28px 30px; }
-        .sales-summary-header h3 { margin: 0; color: #005245; font-size: 26px; font-weight: 950; }
-        .sales-summary-body { padding: 28px 30px; }
-        .sales-summary-discount { margin: 18px 0; border-radius: 8px; background: #f1f3ff; padding: 18px; display: grid; gap: 14px; }
-        .sales-total-band { margin: 18px 0; border-radius: 8px; background: #137c68; color: #bcf7e7; padding: 28px 30px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
-        .sales-total-band span { font-size: 16px; font-weight: 850; }
-        .sales-total-band strong { font-size: 22px; line-height: 1.1; font-weight: 950; }
-        .sales-change-box { border-radius: 8px; background: #dce8ff; color: #005245; min-height: 68px; display: grid; place-items: center; font-size: 22px; font-weight: 950; }
+        .sales-summary-header { background: linear-gradient(120deg, #ecfdf3, #f4fbf7); border-bottom: 1px solid #cfe3da; padding: 24px 28px; }
+        .sales-summary-header h3 { margin: 0; color: #027a45; font-size: 24px; font-weight: 850; letter-spacing: -.01em; }
+        .sales-summary-body { padding: 24px 28px; }
+        .sales-summary-discount { margin: 18px 0; border-radius: 10px; background: #f4faf7; border: 1px solid #e4efe9; padding: 18px; display: grid; gap: 14px; }
+        .sales-total-band { margin: 18px 0; border-radius: 12px; background: linear-gradient(120deg, #009a53, #027a45); color: #e9fff4; padding: 24px 28px; display: flex; justify-content: space-between; align-items: center; gap: 16px; box-shadow: 0 10px 22px -8px rgba(6,193,104,.5); }
+        .sales-total-band span { font-size: 16px; font-weight: 700; }
+        .sales-total-band strong { font-size: 24px; line-height: 1.1; font-weight: 850; }
+        .sales-change-box { border-radius: 10px; background: #ecfdf3; color: #027a45; min-height: 68px; display: grid; place-items: center; font-size: 22px; font-weight: 850; border: 1px solid #d1fadf; }
         .sales-note-card textarea { min-height: 70px; line-height: 22px; resize: vertical; }
         .sales-delivery-note { margin-top: 14px; padding-top: 14px; border-top: 1px solid #e4e7ec; }
         .sales-tag { display: inline-flex; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 800; }
@@ -204,7 +205,7 @@
                                 @csrf
                                 <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
                                 <div class="form-grid">
-                                    <div class="field"><label>Branch</label><select name="branch_id" required>@foreach ($branches as $branch)<option value="{{ $branch->id }}">{{ $branch->name }}</option>@endforeach</select></div>
+                                    <div class="field"><label>Branch</label><select name="branch_id" required>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((int) old('branch_id', $activeBranchForView?->id) === $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
                                     <div class="field"><label>Opening cash float</label><input name="opening_float" type="text" inputmode="decimal" data-money-input value="0.00"></div>
                                     <div class="field full"><label>Opening note</label><textarea name="opening_note" rows="2"></textarea></div>
                                 </div>

@@ -21,6 +21,7 @@
                     <a href="#showcase" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Product</a>
                     <a href="#pricing" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Pricing</a>
                     <a href="#faq" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">FAQ</a>
+                    <a href="{{ route('about') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">About</a>
                     <a href="{{ route('contact') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Contact</a>
                 </div>
 
@@ -55,6 +56,7 @@
                     <a href="#showcase" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Product</a>
                     <a href="#pricing" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Pricing</a>
                     <a href="#faq" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">FAQ</a>
+                    <a href="{{ route('about') }}" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">About</a>
                     <a href="{{ route('contact') }}" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Contact</a>
                     <div class="grid grid-cols-2 gap-2 pt-2">
                         <a href="{{ route('login') }}" class="sb-btn sb-btn-ghost">Sign in</a>
@@ -90,7 +92,7 @@
                 @php $waGroup = 'https://chat.whatsapp.com/Iy1epwuwKIC2SAIEVMjAKa?mode=gi_t'; @endphp
                 @foreach ([
                     'Product' => ['Features' => '#features', 'Point of Sale' => '#solutions', 'Product showcase' => '#showcase', 'Pricing' => '#pricing'],
-                    'Company' => ['About us' => route('contact'), 'Contact' => route('contact'), 'Privacy' => route('legal.privacy'), 'Terms' => route('legal.terms')],
+                    'Company' => ['About us' => route('about'), 'Contact' => route('contact'), 'Privacy' => route('legal.privacy'), 'Terms' => route('legal.terms')],
                     'Resources' => ['Help center' => route('contact'), 'FAQ' => '#faq', 'Community' => $waGroup, 'Security' => route('legal.security')],
                 ] as $heading => $links)
                     <div>

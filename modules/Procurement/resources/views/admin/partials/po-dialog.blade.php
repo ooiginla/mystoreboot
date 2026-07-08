@@ -33,7 +33,7 @@
                             </div>
                             <div class="form-grid">
                                 <x-variant-picker name="items[{{ $i }}][product_variant_id]" label="Variant" :selected-variant="$poItem?->variant" />
-                                <div class="field"><label>Destination</label><select name="items[{{ $i }}][inventory_location_id]" required>@foreach ($locations as $location)<option value="{{ $location->id }}" @selected($poItem?->inventory_location_id === $location->id)>{{ $location->name }}</option>@endforeach</select></div>
+                                <div class="field"><label>Destination</label><select name="items[{{ $i }}][inventory_location_id]" required>@foreach ($locations as $location)<option value="{{ $location->id }}" @selected($poItem?->inventory_location_id === $location->id || (! $poItem?->inventory_location_id && $i === 0 && $activeBranchLocationId === $location->id))>{{ $location->name }}</option>@endforeach</select></div>
                                 <div class="field"><label>Quantity</label><input name="items[{{ $i }}][quantity_ordered]" type="number" min="1" step="1" value="{{ $poItem?->quantity_ordered }}" @if ($i === 0) required @endif></div>
                                 <div class="field"><label>Unit cost</label><input name="items[{{ $i }}][unit_cost]" type="text" inputmode="decimal" data-money-input value="{{ $poItem ? $money($poItem->unit_cost_minor) : '' }}" @if ($i === 0) required @endif></div>
                                 <div class="field"><label>Vendor SKU</label><input name="items[{{ $i }}][vendor_sku]" value="{{ $poItem?->vendor_sku }}"></div>

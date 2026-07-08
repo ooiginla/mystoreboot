@@ -198,7 +198,7 @@ final class PostInventoryMovementAction
         $lines = $delta > 0
             ? [
                 ['account_code' => '1200', 'branch_id' => $stockLevel->loadMissing('location')->location?->branch_id, 'debit_minor' => $valueMinor],
-                ['account_code' => 'EXP-6050', 'branch_id' => $stockLevel->location?->branch_id, 'credit_minor' => $valueMinor],
+                ['account_code' => '4120', 'branch_id' => $stockLevel->location?->branch_id, 'credit_minor' => $valueMinor],
             ]
             : [
                 ['account_code' => 'EXP-6050', 'branch_id' => $stockLevel->loadMissing('location')->location?->branch_id, 'debit_minor' => $valueMinor],

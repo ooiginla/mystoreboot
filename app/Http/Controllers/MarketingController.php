@@ -19,6 +19,11 @@ final class MarketingController extends Controller
         ]);
     }
 
+    public function about(): View
+    {
+        return view('marketing.about');
+    }
+
     /** @return list<array{label: string, icon: string}> */
     private function businessTypes(): array
     {

@@ -195,12 +195,14 @@ class SalesCostingTest extends TestCase
         $this->assertSame(15000, $tillSession->actual_total_minor);
         $this->assertSame(0, $tillSession->variance_total_minor);
 
-        $vaultAccount = FinanceAccount::query()->where('tenant_id', $tenant->id)->where('code', 'BV-'.$branch->id)->firstOrFail();
-        $tillAccount = FinanceAccount::query()->where('tenant_id', $tenant->id)->where('code', 'CT-'.$tillSession->id)->firstOrFail();
+        $vaultAccount = FinanceAccount::query()->where('tenant_id', $tenant->id)->where('code', '1030')->firstOrFail();
+        $tillAccount = FinanceAccount::query()->where('tenant_id', $tenant->id)->where('code', '1020')->firstOrFail();
+        $this->assertFalse(FinanceAccount::query()->where('tenant_id', $tenant->id)->where('code', 'BV-'.$branch->id)->exists());
+        $this->assertFalse(FinanceAccount::query()->where('tenant_id', $tenant->id)->where('code', 'CT-'.$tillSession->id)->exists());
         $this->assertSame('Current Assets', $vaultAccount->category);
-        $this->assertSame('Cash held in a branch safe vault.', $vaultAccount->description);
+        $this->assertSame('Cash held in branch safes or vaults before banking.', $vaultAccount->description);
         $this->assertSame('Current Assets', $tillAccount->category);
-        $this->assertSame('Cash held in a cashier till for point-of-sale transactions.', $tillAccount->description);
+        $this->assertSame('Cash currently held by cashier tills and registers.', $tillAccount->description);
         $handoverJournal = FinanceJournalEntry::query()
             ->with('lines.account')
             ->where('tenant_id', $tenant->id)
@@ -307,7 +309,7 @@ class SalesCostingTest extends TestCase
         $this->assertTrue($journals[0]->lines->contains(fn ($line): bool => $line->account->code === 'EXP-6050' && $line->debit_minor === 40000));
         $this->assertTrue($journals[0]->lines->contains(fn ($line): bool => $line->account->code === '1200' && $line->credit_minor === 40000));
         $this->assertTrue($journals[1]->lines->contains(fn ($line): bool => $line->account->code === '1200' && $line->debit_minor === 40000));
-        $this->assertTrue($journals[1]->lines->contains(fn ($line): bool => $line->account->code === 'EXP-6050' && $line->credit_minor === 40000));
+        $this->assertTrue($journals[1]->lines->contains(fn ($line): bool => $line->account->code === '4120' && $line->credit_minor === 40000));
     }
 
     public function test_estimated_cost_only_posts_cogs_when_business_setting_is_enabled(): void

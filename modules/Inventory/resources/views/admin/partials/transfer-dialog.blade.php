@@ -18,7 +18,7 @@
                     <label>From location</label>
                     <select name="inventory_location_id" required>
                         @foreach ($locations as $location)
-                            <option value="{{ $location->id }}">{{ $location->name }}</option>
+                            <option value="{{ $location->id }}" @selected((int) old('inventory_location_id') === $location->id || (! old('inventory_location_id') && $activeBranchLocationId === $location->id))>{{ $location->name }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -26,7 +26,7 @@
                     <label>To location</label>
                     <select name="destination_inventory_location_id" required>
                         @foreach ($locations as $location)
-                            <option value="{{ $location->id }}">{{ $location->name }}</option>
+                            <option value="{{ $location->id }}" @selected((int) old('destination_inventory_location_id') === $location->id)>{{ $location->name }}</option>
                         @endforeach
                     </select>
                 </div>
