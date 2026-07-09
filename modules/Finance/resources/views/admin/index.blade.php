@@ -59,50 +59,6 @@
     </div>
 
     <div class="stack">
-        <section class="panel" id="branch-ledger">
-            <div class="panel-header">
-                <div>
-                    <h2 class="panel-title">Branch ledger snapshot</h2>
-                    <p class="subtle">{{ $selectedBranch?->name ?? 'All branches' }} · {{ \Carbon\CarbonImmutable::parse($dateFrom)->format('M j, Y') }} to {{ \Carbon\CarbonImmutable::parse($dateTo)->format('M j, Y') }}</p>
-                </div>
-            </div>
-            <div class="panel-body report-table-wrap">
-                <table class="table">
-                    <thead><tr><th>Account</th><th>Type</th><th>Debit</th><th>Credit</th><th>Net movement</th></tr></thead>
-                    <tbody>
-                        @forelse ($branchLedgerSummary as $row)
-                            <tr>
-                                <td>{{ $row['account']->code }} · {{ $row['account']->name }}<br><span class="subtle">{{ $row['account']->category ?: 'Not set' }}</span></td>
-                                <td>{{ $headline($row['account']->type) }}</td>
-                                <td>{{ $money($row['debit_minor']) }}</td>
-                                <td>{{ $money($row['credit_minor']) }}</td>
-                                <td><strong>{{ $money($row['net_minor']) }}</strong></td>
-                            </tr>
-                        @empty
-                            <tr><td colspan="5"><div class="empty">No posted ledger activity for this branch and period.</div></td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <section class="panel" id="receivables-payables">
-            <div class="panel-header"><div><h2 class="panel-title">Receivables, payables & party balances</h2><p class="subtle">Customer debt/credit and vendor payable/prepaid balances from posted journal entries.</p></div></div>
-            <div class="panel-body summary-grid">
-                <div class="summary-item"><span>Accounts receivable</span><strong>{{ $money($summary['accounts_receivable_minor']) }}</strong></div>
-                <div class="summary-item"><span>Accounts payable</span><strong>{{ $money($summary['accounts_payable_minor']) }}</strong></div>
-                <div class="summary-item"><span>Petty cash</span><strong>{{ $money($summary['petty_cash_minor']) }}</strong></div>
-            </div>
-            <div class="panel-body" style="display: grid; gap: 18px;">
-                <div class="report-table-wrap">
-                    <table class="table"><thead><tr><th>Customer</th><th>Debt</th><th>Credit</th></tr></thead><tbody>@forelse ($customerBalances as $row)<tr><td>{{ $row['customer']->name }}</td><td>{{ $money($row['debt_minor']) }}</td><td>{{ $money($row['credit_minor']) }}</td></tr>@empty<tr><td colspan="3"><div class="empty">No customer receivable or credit balances yet.</div></td></tr>@endforelse</tbody></table>
-                </div>
-                <div class="report-table-wrap">
-                    <table class="table"><thead><tr><th>Vendor</th><th>Payable</th><th>Prepaid</th></tr></thead><tbody>@forelse ($vendorBalances as $row)<tr><td>{{ $row['vendor']->name }}</td><td>{{ $money($row['payable_minor']) }}</td><td>{{ $money($row['prepaid_minor']) }}</td></tr>@empty<tr><td colspan="3"><div class="empty">No vendor payable balances yet.</div></td></tr>@endforelse</tbody></table>
-                </div>
-            </div>
-        </section>
-
         <section class="panel">
             <div class="panel-header">
                 <div>

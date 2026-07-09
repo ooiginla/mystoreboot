@@ -216,9 +216,6 @@ final class FinanceReportController extends Controller
             'expenseCategories' => $expenseCategories,
             'operationalExpenses' => $operationalExpenses,
             'journalEntries' => $journalEntries,
-            'customerBalances' => $this->customerBalances($tenant->id),
-            'vendorBalances' => $this->vendorBalances($tenant->id),
-            'branchLedgerSummary' => $this->branchLedgerSummary($tenant->id, $dateFrom->toDateString(), $dateTo->toDateString(), $selectedBranchId),
         ]);
     }
 
@@ -295,6 +292,14 @@ final class FinanceReportController extends Controller
             ->limit(20)
             ->get();
 
+        // Branch ledger snapshot + party balances (moved here from the Report page).
+        $ledgerDateFrom = CarbonImmutable::parse($journalFilters['date_from'] ?: now()->startOfMonth()->toDateString())->startOfDay();
+        $ledgerDateTo = CarbonImmutable::parse($journalFilters['date_to'] ?: now()->toDateString())->endOfDay();
+        $ledgerBranchId = $journalFilters['branch'];
+        $ledgerBranch = $ledgerBranchId !== ''
+            ? Branch::query()->where('tenant_id', $tenant->id)->find((int) $ledgerBranchId)
+            : null;
+
         return view('finance::admin.journals', [
             'tenant' => $tenant,
             'tenants' => $tenants,
@@ -309,6 +314,13 @@ final class FinanceReportController extends Controller
             'bankMovementSources' => $bankMovementSources,
             'bankAccounts' => $bankAccounts,
             'bankMovements' => $bankMovements,
+            'ledgerDateFrom' => $ledgerDateFrom->toDateString(),
+            'ledgerDateTo' => $ledgerDateTo->toDateString(),
+            'selectedBranch' => $ledgerBranch,
+            'branchLedgerSummary' => $this->branchLedgerSummary($tenant->id, $ledgerDateFrom->toDateString(), $ledgerDateTo->toDateString(), $ledgerBranchId),
+            'customerBalances' => $this->customerBalances($tenant->id),
+            'vendorBalances' => $this->vendorBalances($tenant->id),
+            'partySummary' => $this->partyBalanceSummary($tenant->id, $ledgerBranchId, $ledgerDateTo->toDateString()),
         ]);
     }
 
@@ -803,6 +815,38 @@ final class FinanceReportController extends Controller
             })
             ->sortByDesc('profit_minor')
             ->values();
+    }
+
+    /**
+     * @return array{accounts_receivable_minor: int, accounts_payable_minor: int, petty_cash_minor: int}
+     */
+    private function partyBalanceSummary(string $tenantId, string $branchId, string $dateTo): array
+    {
+        $accountsReceivableMinor = (int) SalesOrder::query()
+            ->where('tenant_id', $tenantId)
+            ->when($branchId !== '', fn ($query) => $query->where('branch_id', $branchId))
+            ->where('order_status', '!=', SalesOrderStatus::Cancelled->value)
+            ->whereDate('order_date', '<=', $dateTo)
+            ->get()
+            ->sum(fn (SalesOrder $order): int => $order->balance_minor);
+
+        $accountsPayableMinor = (int) PurchaseOrder::query()
+            ->where('tenant_id', $tenantId)
+            ->where('status', '!=', PurchaseOrderStatus::Cancelled->value)
+            ->whereDate('order_date', '<=', $dateTo)
+            ->get()
+            ->sum(fn (PurchaseOrder $order): int => $order->balance_minor)
+            + (int) FinanceExpense::query()
+                ->where('tenant_id', $tenantId)
+                ->whereDate('expense_date', '<=', $dateTo)
+                ->get()
+                ->sum(fn (FinanceExpense $expense): int => max(0, $expense->amount_minor - $expense->paid_minor));
+
+        return [
+            'accounts_receivable_minor' => $accountsReceivableMinor,
+            'accounts_payable_minor' => $accountsPayableMinor,
+            'petty_cash_minor' => $this->accountBalance($tenantId, '1010'),
+        ];
     }
 
     private function branchLedgerSummary(string $tenantId, string $dateFrom, string $dateTo, string $branchId): Collection

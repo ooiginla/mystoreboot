@@ -84,6 +84,8 @@
             <a href="#banking" role="tab" data-tab-target="banking">Banking <span class="badge neutral">{{ $bankMovements->count() }}</span></a>
             <a href="#expense-categories" role="tab" data-tab-target="expense-categories">Expense Categories <span class="badge neutral">{{ $expenseCategories->count() }}</span></a>
             <a href="#journal-entries" role="tab" data-tab-target="journal-entries">Journal Entries <span class="badge neutral">{{ $journalEntries->total() }}</span></a>
+            <a href="#branch-ledger" role="tab" data-tab-target="branch-ledger">Branch Ledger</a>
+            <a href="#receivables-payables" role="tab" data-tab-target="receivables-payables">Receivables &amp; Payables</a>
         </nav>
 
         <div class="content-stack">
@@ -303,6 +305,50 @@
                         </tbody>
                     </table>
                     <div style="margin-top: 14px;">{{ $journalEntries->links() }}</div>
+                </div>
+            </section>
+
+            <section class="panel tab-panel" id="branch-ledger" role="tabpanel" data-tab-panel hidden>
+                <div class="panel-header">
+                    <div>
+                        <h2 class="panel-title">Branch ledger snapshot</h2>
+                        <p class="subtle">{{ $selectedBranch?->name ?? 'All branches' }} · {{ \Carbon\CarbonImmutable::parse($ledgerDateFrom)->format('M j, Y') }} to {{ \Carbon\CarbonImmutable::parse($ledgerDateTo)->format('M j, Y') }}. Use the branch &amp; date filters above to change the scope.</p>
+                    </div>
+                </div>
+                <div class="panel-body" style="overflow-x: auto;">
+                    <table class="table">
+                        <thead><tr><th>Account</th><th>Type</th><th>Debit</th><th>Credit</th><th>Net movement</th></tr></thead>
+                        <tbody>
+                            @forelse ($branchLedgerSummary as $row)
+                                <tr>
+                                    <td>{{ $row['account']->code }} · {{ $row['account']->name }}<br><span class="subtle">{{ $row['account']->category ?: 'Not set' }}</span></td>
+                                    <td>{{ $headline($row['account']->type) }}</td>
+                                    <td>{{ $money($row['debit_minor']) }}</td>
+                                    <td>{{ $money($row['credit_minor']) }}</td>
+                                    <td><strong>{{ $money($row['net_minor']) }}</strong></td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="5"><div class="empty">No posted ledger activity for this branch and period.</div></td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel tab-panel" id="receivables-payables" role="tabpanel" data-tab-panel hidden>
+                <div class="panel-header"><div><h2 class="panel-title">Receivables, payables &amp; party balances</h2><p class="subtle">Customer debt/credit and vendor payable/prepaid balances from posted journal entries.</p></div></div>
+                <div class="panel-body summary-grid">
+                    <div class="summary-item"><span>Accounts receivable</span><strong>{{ $money($partySummary['accounts_receivable_minor']) }}</strong></div>
+                    <div class="summary-item"><span>Accounts payable</span><strong>{{ $money($partySummary['accounts_payable_minor']) }}</strong></div>
+                    <div class="summary-item"><span>Petty cash</span><strong>{{ $money($partySummary['petty_cash_minor']) }}</strong></div>
+                </div>
+                <div class="panel-body" style="display: grid; gap: 18px;">
+                    <div style="overflow-x: auto;">
+                        <table class="table"><thead><tr><th>Customer</th><th>Debt</th><th>Credit</th></tr></thead><tbody>@forelse ($customerBalances as $row)<tr><td>{{ $row['customer']->name }}</td><td>{{ $money($row['debt_minor']) }}</td><td>{{ $money($row['credit_minor']) }}</td></tr>@empty<tr><td colspan="3"><div class="empty">No customer receivable or credit balances yet.</div></td></tr>@endforelse</tbody></table>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table class="table"><thead><tr><th>Vendor</th><th>Payable</th><th>Prepaid</th></tr></thead><tbody>@forelse ($vendorBalances as $row)<tr><td>{{ $row['vendor']->name }}</td><td>{{ $money($row['payable_minor']) }}</td><td>{{ $money($row['prepaid_minor']) }}</td></tr>@empty<tr><td colspan="3"><div class="empty">No vendor payable balances yet.</div></td></tr>@endforelse</tbody></table>
+                    </div>
                 </div>
             </section>
         </div>
