@@ -1,6 +1,8 @@
 @php
     $money = fn (?int $minor): string => number_format(($minor ?? 0) / 100, 2);
     $signedMoney = fn (int $minor): string => ($minor < 0 ? '-' : '').$tenant->currency_code.' '.number_format(abs($minor) / 100, 2);
+    $currencySymbols = ['NGN' => '₦', 'USD' => '$', 'GHS' => '₵', 'KES' => 'KSh', 'ZAR' => 'R', 'GBP' => '£', 'EUR' => '€', 'GHc' => '₵'];
+    $currencySymbol = $currencySymbols[$tenant->currency_code] ?? $tenant->currency_code;
     $activeBranchForView = app(\App\Support\ActiveBranchManager::class)->stateForRequest(request(), auth()->user())['activeBranch'];
     $posLocations = $activeTill
         ? $locations->filter(fn ($location) => $location->branch_id === null || $location->branch_id === $activeTill->branch_id)
@@ -55,71 +57,63 @@
 
     <style>
         .sales-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 18px; }
-        .sales-metric-card { border: 1px solid #cfd8d3; border-radius: 8px; background: #fff; padding: 20px 22px; min-height: 112px; display: flex; justify-content: space-between; align-items: center; gap: 18px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
-        .sales-metric-card.danger { border-left: 5px solid #b42318; }
-        .sales-metric-label { color: #526177; font-size: 13px; font-weight: 850; text-transform: uppercase; letter-spacing: .04em; }
-        .sales-metric-value { display: block; margin-top: 18px; color: #111827; font-size: 22px; line-height: 1.1; font-weight: 900; }
-        .sales-metric-card.danger .sales-metric-value { color: #b42318; }
-        .sales-metric-icon { width: 54px; height: 54px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: linear-gradient(140deg, #22dd85, #009a53); font-size: 20px; font-weight: 800; flex: 0 0 auto; }
-        .sales-metric-icon.soft { color: #027a45; background: #d1fadf; }
-        .sales-metric-icon.danger { color: #b42318; background: #ffe2df; }
-        .sales-meta-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-        .sales-header-context { margin-top: 6px; color: #475467; font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; }
-        .sales-header-context strong { color: #111827; font-weight: 900; }
+        .sales-metric-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 18px 20px; min-height: 104px; display: flex; justify-content: space-between; align-items: center; gap: 16px; box-shadow: var(--shadow-sm); }
+        .sales-metric-card.danger { border-left: 4px solid var(--danger); }
+        .sales-metric-label { color: var(--muted); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+        .sales-metric-value { display: block; margin-top: 10px; color: var(--ink); font-size: 20px; line-height: 1.15; font-weight: 750; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .sales-metric-card > div { min-width: 0; }
+        .sales-metric-card.danger .sales-metric-value { color: var(--danger); }
+        .sales-metric-icon { width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: linear-gradient(140deg, #22dd85, var(--brand)); font-size: 17px; font-weight: 750; flex: 0 0 auto; }
+        .sales-metric-icon.soft { color: var(--brand-strong); background: var(--brand-100); }
+        .sales-metric-icon.danger { color: var(--danger); background: var(--danger-bg); }
+        .sales-header-context { margin-top: 8px; color: var(--muted); font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; }
+        .sales-header-context strong { color: var(--ink); font-weight: 700; }
         .sales-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); gap: 18px; align-items: start; }
         .sales-customer-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
-        .sales-card { border: 1px solid #cfd8d3; border-radius: 8px; background: #fff; padding: 22px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
-        .sales-card-title { margin: 0 0 18px; color: #111827; font-size: 18px; font-weight: 900; display: flex; align-items: center; gap: 10px; }
-        .sales-card-icon { color: #009a53; font-weight: 950; font-size: 22px; }
-        .sales-primary-button { width: 100%; border: 0; border-radius: 10px; background: #009a53; color: #fff; padding: 14px 18px; cursor: pointer; font-size: 17px; font-weight: 800; box-shadow: 0 10px 22px -6px rgba(6, 193, 104, .45); transition: background .15s; }
-        .sales-primary-button:hover { background: #027a45; }
-        .sales-summary-card { border: 1px solid #cfd8d3; border-radius: 8px; background: #fff; overflow: hidden; position: sticky; top: 24px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
-        .sales-summary-header { background: linear-gradient(120deg, #ecfdf3, #f4fbf7); border-bottom: 1px solid #cfe3da; padding: 24px 28px; }
-        .sales-summary-header h3 { margin: 0; color: #027a45; font-size: 24px; font-weight: 850; letter-spacing: -.01em; }
-        .sales-summary-body { padding: 24px 28px; }
-        .sales-summary-discount { margin: 18px 0; border-radius: 10px; background: #f4faf7; border: 1px solid #e4efe9; padding: 18px; display: grid; gap: 14px; }
-        .sales-total-band { margin: 18px 0; border-radius: 12px; background: linear-gradient(120deg, #009a53, #027a45); color: #e9fff4; padding: 24px 28px; display: flex; justify-content: space-between; align-items: center; gap: 16px; box-shadow: 0 10px 22px -8px rgba(6,193,104,.5); }
-        .sales-total-band span { font-size: 16px; font-weight: 700; }
-        .sales-total-band strong { font-size: 24px; line-height: 1.1; font-weight: 850; }
-        .sales-change-box { border-radius: 10px; background: #ecfdf3; color: #027a45; min-height: 68px; display: grid; place-items: center; font-size: 22px; font-weight: 850; border: 1px solid #d1fadf; }
+        .sales-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 20px; box-shadow: var(--shadow-sm); }
+        .sales-card-title { margin: 0 0 16px; color: var(--ink); font-size: 15px; font-weight: 750; letter-spacing: -.01em; display: flex; align-items: center; gap: 9px; }
+        .sales-card-icon { color: var(--brand); font-weight: 800; font-size: 20px; }
+        .sales-primary-button { width: 100%; border: 0; border-radius: var(--radius-sm); background: var(--brand); color: #fff; padding: 13px 18px; cursor: pointer; font-size: 15px; font-weight: 700; box-shadow: 0 8px 18px -6px rgba(6,193,104,.4); transition: background .15s, transform .05s; }
+        .sales-primary-button:hover { background: var(--brand-strong); }
+        .sales-primary-button:active { transform: translateY(.5px); }
+        .sales-summary-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; position: sticky; top: 24px; box-shadow: var(--shadow-sm); }
+        .sales-summary-header { background: linear-gradient(120deg, var(--brand-050), #f4fbf7); border-bottom: 1px solid var(--line); padding: 18px 22px; }
+        .sales-summary-header h3 { margin: 0; color: var(--brand-strong); font-size: 17px; font-weight: 750; letter-spacing: -.01em; }
+        .sales-summary-body { padding: 20px 22px; }
+        .sales-summary-discount { margin: 16px 0; border-radius: var(--radius-sm); background: var(--panel-soft); border: 1px solid var(--line); padding: 16px; display: grid; gap: 14px; }
+        .sales-total-band { margin: 16px 0; border-radius: var(--radius); background: linear-gradient(120deg, var(--brand), var(--brand-strong)); color: #eafff5; padding: 18px 22px; display: flex; justify-content: space-between; align-items: center; gap: 16px; box-shadow: 0 10px 22px -10px rgba(6,193,104,.5); }
+        .sales-total-band span { font-size: 15px; font-weight: 650; }
+        .sales-total-band strong { font-size: 24px; line-height: 1.1; font-weight: 800; font-variant-numeric: tabular-nums; }
+        .sales-change-box { border-radius: var(--radius-sm); background: var(--brand-050); color: var(--brand-strong); min-height: 56px; display: grid; place-items: center; font-size: 20px; font-weight: 750; border: 1px solid var(--brand-100); font-variant-numeric: tabular-nums; }
+        .sales-change-box.due { background: var(--warn-bg); color: var(--warn); border-color: #fde3a7; }
         .sales-note-card textarea { min-height: 70px; line-height: 22px; resize: vertical; }
-        .sales-delivery-note { margin-top: 14px; padding-top: 14px; border-top: 1px solid #e4e7ec; }
-        .sales-tag { display: inline-flex; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 800; }
-        .sales-tag.neutral { background: #eef2f6; color: #475467; }
-        .sales-tag.success { background: #ecfdf3; color: #067647; }
-        .sales-tag.warning { background: #fffaeb; color: #b54708; }
-        .sales-tag.danger { background: #fef3f2; color: #b42318; }
-        .link-button { border: 0; background: transparent; padding: 0; color: var(--accent); cursor: pointer; font-weight: 800; text-align: left; }
-        .cart-row { border: 1px solid #b7d8ce; border-left: 5px solid #006554; border-radius: 8px; padding: 12px; display: grid; grid-template-columns: 1fr 80px 120px 34px; gap: 10px; align-items: center; background: #f1fbf7; }
-        .cart-remove-button { border-color: #f6c7c2; background: #fff1f0; color: #b42318; font-weight: 950; }
-        .cart-remove-button:hover { border-color: #b42318; background: #fee4e2; color: #912018; }
+        .sales-delivery-note { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+        .sales-tag { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 650; border: 1px solid transparent; white-space: nowrap; }
+        .sales-tag.neutral { background: #eef2f6; color: #475467; border-color: #e3e8ef; }
+        .sales-tag.success { background: var(--brand-050); color: #067647; border-color: #a6f4c5; }
+        .sales-tag.warning { background: var(--warn-bg); color: var(--warn); border-color: #fde3a7; }
+        .sales-tag.danger { background: var(--danger-bg); color: var(--danger-strong); border-color: var(--danger-border); }
+        .link-button { border: 0; background: transparent; padding: 0; color: var(--accent); cursor: pointer; font-weight: 700; text-align: left; }
+        .cart-row { border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: var(--radius-sm); padding: 11px 12px; display: grid; grid-template-columns: 1fr 84px 120px 36px; gap: 10px; align-items: center; background: var(--brand-050); }
+        .cart-row strong { font-weight: 700; color: var(--ink); font-size: 14px; }
+        .cart-row > span { font-weight: 750; color: var(--brand-strong); text-align: right; font-variant-numeric: tabular-nums; }
+        .cart-remove-button { border-color: var(--danger-border); background: var(--danger-bg); color: var(--danger); font-weight: 800; }
+        .cart-remove-button:hover { border-color: var(--danger); background: #fee4e2; color: var(--danger-strong); }
         .summary-cart-items { display: grid; gap: 8px; margin-bottom: 12px; }
-        .summary-cart-item { display: grid; grid-template-columns: 1fr auto; gap: 10px; border: 1px solid #d6eee5; border-radius: 8px; background: #f7fdfb; padding: 10px 12px; font-size: 14px; color: #344054; }
-        .summary-cart-item strong { color: #111827; font-weight: 850; }
-        .summary-cart-item span { color: #006554; font-weight: 900; white-space: nowrap; }
-        .summary-line { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; color: #526177; font-size: 17px; }
-        .summary-line strong { color: #526177; font-weight: 900; }
-        .summary-line.discount strong { color: #b42318; }
-        .summary-divider { border-top: 1px solid #cfd8d3; margin: 16px 0; }
-        .success-text { color: #067647; font-weight: 900; }
-        .danger-text { color: #b42318; font-weight: 900; }
-        .sales-inline-check { margin-top: 14px; display: inline-flex; align-items: center; gap: 9px; color: #344054; font-size: 14px; font-weight: 800; cursor: pointer; }
-        .sales-inline-check input { width: auto; min-width: 16px; height: 16px; margin: 0; flex: 0 0 auto; accent-color: #006554; }
-        .till-status-band { border: 1px solid #b7d8ce; border-left: 5px solid #006554; border-radius: 8px; background: #f1fbf7; padding: 14px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: center; }
-        .till-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-        .till-action-button { border: 0; border-radius: 8px; color: #fff; padding: 10px 13px; cursor: pointer; font-weight: 900; box-shadow: 0 8px 18px rgba(16,24,40,.12); }
-        .till-action-button.cash-in { background: #0f766e; }
-        .till-action-button.cash-out { background: #b42318; }
-        .till-action-button.petty-cash-withdrawal { background: #9a3412; }
-        .till-action-button.cash-deposit { background: #1d4ed8; }
-        .till-action-button:hover { filter: brightness(.94); }
-        .till-variance { font-weight: 900; }
-        .till-variance.ok { color: #067647; }
-        .till-variance.bad { color: #b42318; }
-        .till-close-warning { border: 1px solid #fecdca; border-radius: 8px; background: #fef3f2; color: #b42318; padding: 10px 12px; font-weight: 850; }
-        .till-breakdown-header { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 16px; }
-        .till-breakdown-header h3 { margin: 0; font-size: 16px; font-weight: 900; color: #111827; }
-        .till-locked-pos { border: 1px dashed #cfd8d3; border-radius: 8px; padding: 22px; text-align: center; background: #f8fafc; }
+        .summary-cart-item { display: grid; grid-template-columns: 1fr auto; gap: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-soft); padding: 9px 12px; font-size: 13.5px; color: var(--ink-soft); }
+        .summary-cart-item strong { color: var(--ink); font-weight: 700; }
+        .summary-cart-item span { color: var(--brand-strong); font-weight: 750; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .summary-line { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; color: var(--muted); font-size: 14px; }
+        .summary-line strong { color: var(--ink-soft); font-weight: 700; font-variant-numeric: tabular-nums; }
+        .summary-line.discount strong { color: var(--danger); }
+        .summary-divider { border-top: 1px solid var(--line); margin: 14px 0; }
+        .success-text { color: #067647; font-weight: 750; }
+        .danger-text { color: var(--danger); font-weight: 750; }
+        .sales-inline-check { margin-top: 14px; display: inline-flex; align-items: center; gap: 10px; color: var(--ink-soft); font-size: 14px; font-weight: 700; cursor: pointer; }
+        .sales-input-error { border-color: var(--danger) !important; box-shadow: 0 0 0 3.5px rgba(220,38,38,.15) !important; }
+        .sales-pos-error { margin-top: 14px; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger-strong); font-weight: 700; font-size: 13.5px; display: flex; gap: 8px; align-items: flex-start; }
+        .sales-pos-error[hidden] { display: none; }
+        .till-locked-pos { border: 1px dashed var(--line); border-radius: var(--radius); padding: 24px; text-align: center; background: var(--panel-soft); display: grid; gap: 6px; justify-items: center; }
         .thermal-receipt-dialog { width: min(430px, calc(100vw - 24px)); }
         .thermal-receipt-dialog .dialog-body { background: #f3f4f6; }
         .thermal-receipt-paper { width: 80mm; max-width: 100%; margin: 0 auto; background: #fff; color: #111; padding: 12px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 11px; line-height: 1.35; box-shadow: 0 1px 4px rgba(16,24,40,.12); }
@@ -153,7 +147,7 @@
             dialog[open].thermal-receipt-dialog .thermal-receipt-paper { width: 80mm; max-width: 80mm; padding: 4mm 3mm; box-shadow: none; }
         }
         @media (max-width: 1200px) { .sales-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sales-grid { grid-template-columns: 1fr; } .sales-summary-card { position: static; } }
-        @media (max-width: 700px) { .sales-metrics, .sales-meta-grid { grid-template-columns: 1fr; } .cart-row { grid-template-columns: 1fr; } }
+        @media (max-width: 700px) { .sales-metrics { grid-template-columns: 1fr; } .cart-row { grid-template-columns: 1fr 70px 1fr 36px; } }
     </style>
 
     <div class="topbar">
@@ -223,7 +217,7 @@
                         <input type="hidden" name="order_date" value="{{ now()->toDateString() }}">
                         <div class="sales-metrics">
                             <div class="sales-metric-card"><div><span class="sales-metric-label">Orders</span><strong class="sales-metric-value">{{ $stats['orders'] }}</strong></div><span class="sales-metric-icon">SO</span></div>
-                            <div class="sales-metric-card"><div><span class="sales-metric-label">Revenue</span><strong class="sales-metric-value">{{ $tenant->currency_code }} {{ $money($stats['revenue_minor']) }}</strong></div><span class="sales-metric-icon">₦</span></div>
+                            <div class="sales-metric-card"><div><span class="sales-metric-label">Revenue</span><strong class="sales-metric-value">{{ $tenant->currency_code }} {{ $money($stats['revenue_minor']) }}</strong></div><span class="sales-metric-icon">{{ $currencySymbol }}</span></div>
                             <div class="sales-metric-card"><div><span class="sales-metric-label">Credit balance</span><strong class="sales-metric-value">{{ $tenant->currency_code }} {{ $money($stats['credit_minor']) }}</strong></div><span class="sales-metric-icon soft">CR</span></div>
                             <div class="sales-metric-card danger"><div><span class="sales-metric-label">Returns</span><strong class="sales-metric-value">{{ $tenant->currency_code }} {{ $money($stats['returns_minor']) }}</strong></div><span class="sales-metric-icon danger">RT</span></div>
                         </div>
@@ -268,7 +262,7 @@
                                     <div class="sales-summary-discount">
                                         <div class="field"><label>Coupon Code</label><input name="coupon_code" data-sales-coupon-code placeholder="Enter code">@foreach ($coupons as $coupon)<span hidden data-sales-coupon data-code="{{ $coupon->code }}" data-type="{{ $coupon->discount_type->value }}" data-amount="{{ $coupon->discount_value_minor / 100 }}" data-percent="{{ $coupon->discount_percent }}"></span>@endforeach</div>
                                         <div class="form-grid">
-                                            <div class="field"><label>Admin Discount</label><select name="admin_discount_type" data-sales-admin-discount-type><option value="amount">Amount (₦)</option><option value="percentage">Percentage (%)</option></select></div>
+                                            <div class="field"><label>Admin Discount</label><select name="admin_discount_type" data-sales-admin-discount-type><option value="amount">Amount ({{ $currencySymbol }})</option><option value="percentage">Percentage (%)</option></select></div>
                                             <div class="field"><label>Value</label><input name="admin_discount_value" type="text" inputmode="decimal" data-money-input data-sales-admin-discount value="0"></div>
                                         </div>
                                     </div>
@@ -276,12 +270,26 @@
                                     <div class="summary-line discount"><span>Admin Discount</span><strong data-sales-admin-discount-label>-{{ $tenant->currency_code }} 0.00</strong></div>
                                     <div class="sales-total-band"><span>Total</span><strong data-sales-total>{{ $tenant->currency_code }} 0.00</strong></div>
                                     <div class="summary-divider"></div>
-                                    <div class="field"><label>Payment Method</label><select name="payment_method">@foreach ($paymentMethods as $method)<option value="{{ $method }}">{{ $method }}</option>@endforeach</select></div>
-                                    <label class="sales-inline-check"><input type="checkbox" name="is_credit_sale" value="1"> <span>Mark as Credit Sale</span></label>
+                                    <div class="field"><label>Payment Method</label><select name="payment_method" data-payment-method-selector>@foreach ($paymentMethods as $method)<option value="{{ $method }}">{{ strtoupper($method) }}</option>@endforeach</select></div>
+                                    <div class="field" data-payment-account-wrapper hidden>
+                                        <label>Receiving account</label>
+                                        <select name="business_payment_account_id" data-payment-account-selector disabled>
+                                            <option value="">Select receiving account</option>
+                                            @foreach ($paymentAccounts as $account)
+                                                @foreach ((array) $account->supported_payment_methods as $method)
+                                                    <option value="{{ $account->id }}" data-account-method="{{ $method }}">{{ $account->identifier }}</option>
+                                                @endforeach
+                                            @endforeach
+                                        </select>
+                                        <span class="subtle" data-payment-account-empty hidden>No active account supports this payment method for this branch.</span>
+                                    </div>
+                                    <label class="sales-inline-check"><input type="checkbox" name="is_credit_sale" value="1" data-sales-credit> <span>Mark as Credit Sale</span></label>
+                                    <p class="subtle" data-sales-credit-hint hidden style="margin: 6px 0 0;">Collect a deposit (part payment) or nothing now — the balance is recorded as the customer's outstanding credit.</p>
                                     <div class="form-grid" style="margin-top: 16px;">
                                         <div class="field"><label>Amount Paid</label><input name="amount_paid" type="text" inputmode="decimal" data-money-input data-sales-paid value="0.00" style="font-size: 22px; font-weight: 900;"></div>
-                                        <div class="field"><label>Change</label><div class="sales-change-box" data-sales-change>{{ $tenant->currency_code }} 0.00</div></div>
+                                        <div class="field"><label data-sales-change-label>Change</label><div class="sales-change-box" data-sales-change>{{ $tenant->currency_code }} 0.00</div></div>
                                     </div>
+                                    <div class="sales-pos-error" data-pos-error hidden></div>
                                     <button class="sales-primary-button sales-submit-action" type="submit">Create sales order</button>
                                 </div>
                             </div>
@@ -365,90 +373,196 @@
         const clean = (value) => Number(String(value || '0').replace(/,/g, '')) || 0;
         const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
         const cart = [];
+        // Walk-in id is the server-rendered default customer, captured before any
+        // restore overwrites the field — used to block walk-in credit sales.
+        const walkInCustomerId = document.querySelector('[data-pos-form] [data-sales-customer-value]')?.value ?? null;
 
-        function updateTillVariance(form) {
-            if (!form) return;
-            let hasVariance = false;
-            form.querySelectorAll('[data-till-actual]').forEach((input) => {
-                const expected = clean(input.dataset.expected);
-                const actual = clean(input.value);
-                const variance = actual - expected;
-                const output = input.closest('tr')?.querySelector('[data-till-variance]');
-                const label = input.closest('tr')?.querySelector('[data-till-variance-label]');
-                if (output) output.value = `${variance < 0 ? '-' : ''}${fmt(Math.abs(variance))}`;
-                if (label) {
-                    label.textContent = String(variance);
-                    label.classList.toggle('ok', variance === 0);
-                    label.classList.toggle('bad', variance !== 0);
-                }
-                if (Math.round(variance * 100) !== 0) hasVariance = true;
-            });
-            const closeButton = form.querySelector('[data-till-close-button]');
-            if (closeButton) closeButton.dataset.hasVariance = hasVariance ? '1' : '0';
-            const warning = form.querySelector('[data-till-close-warning]');
-            if (warning && !hasVariance) warning.hidden = true;
+        // The cart is client-side state only, so a server-side validation error that
+        // reloads the page would otherwise wipe it. Persist the whole in-progress sale
+        // to sessionStorage and restore it on load; clear it once a sale completes.
+        function posStateKey(form) {
+            const tenant = form.querySelector('[name="tenant_id"]')?.value || '';
+            const till = form.querySelector('[name="sales_till_session_id"]')?.value || '';
+            return `sb-sales-pos-${tenant}-${till}`;
+        }
+        function savePosState(form) {
+            if (!form || !form.matches('[data-pos-form]')) return;
+            try {
+                const val = (sel) => form.querySelector(sel)?.value ?? null;
+                sessionStorage.setItem(posStateKey(form), JSON.stringify({
+                    cart,
+                    customerId: val('[data-sales-customer-value]'),
+                    customerLabel: val('[data-sales-customer-search]'),
+                    coupon: val('[data-sales-coupon-code]'),
+                    adminType: val('[data-sales-admin-discount-type]'),
+                    adminValue: val('[data-sales-admin-discount]'),
+                    shipping: val('[data-sales-shipping]'),
+                    paid: val('[data-sales-paid]'),
+                    method: val('[data-payment-method-selector]'),
+                    account: val('[data-payment-account-selector]'),
+                    credit: !!form.querySelector('[name="is_credit_sale"]')?.checked,
+                    notes: val('[name="notes"]'),
+                    deliveryMethod: val('[data-sales-delivery-method]'),
+                    deliveryAddress: val('[name="delivery_address"]'),
+                    deliveryStatus: val('[name="delivery_status"]'),
+                }));
+            } catch (e) { /* storage unavailable — best effort only */ }
+        }
+        function clearPosState(form) {
+            try { sessionStorage.removeItem(posStateKey(form)); } catch (e) {}
+        }
+        function restorePosState(form) {
+            let saved;
+            try { saved = JSON.parse(sessionStorage.getItem(posStateKey(form)) || 'null'); } catch (e) { saved = null; }
+            if (!saved || !Array.isArray(saved.cart) || !saved.cart.length) return;
+            const set = (sel, v) => { const el = form.querySelector(sel); if (el && v != null) el.value = v; };
+            cart.length = 0;
+            saved.cart.forEach((item) => cart.push(item));
+            set('[data-sales-customer-search]', saved.customerLabel);
+            set('[data-sales-customer-value]', saved.customerId);
+            set('[data-sales-coupon-code]', saved.coupon);
+            set('[data-sales-admin-discount-type]', saved.adminType);
+            set('[data-sales-admin-discount]', saved.adminValue);
+            set('[data-sales-shipping]', saved.shipping);
+            set('[data-sales-paid]', saved.paid);
+            set('[data-payment-method-selector]', saved.method);
+            set('[name="notes"]', saved.notes);
+            set('[data-sales-delivery-method]', saved.deliveryMethod);
+            set('[name="delivery_address"]', saved.deliveryAddress);
+            set('[name="delivery_status"]', saved.deliveryStatus);
+            const creditBox = form.querySelector('[name="is_credit_sale"]');
+            if (creditBox) creditBox.checked = !!saved.credit;
+            const creditHint = form.querySelector('[data-sales-credit-hint]');
+            if (creditHint && creditBox) creditHint.hidden = !creditBox.checked;
+            renderCart(form);
+            syncPaymentAccountSelector(form);
+            if (saved.account) { const acc = form.querySelector('[data-payment-account-selector]'); if (acc && !acc.disabled) acc.value = saved.account; }
         }
 
-        function render(form) {
-            const rows = form.querySelector('[data-sales-cart]');
-            const hidden = form.querySelector('[data-sales-items]');
-            const summaryItems = form.querySelector('[data-sales-summary-items]');
-            rows.innerHTML = '';
-            hidden.innerHTML = '';
-            if (summaryItems) summaryItems.innerHTML = '';
+        function computeTotals(form) {
             let subtotal = 0;
             let tax = 0;
-            cart.forEach((item, index) => {
+            cart.forEach((item) => {
                 subtotal += item.quantity * item.price;
                 tax += item.quantity * item.price * (item.taxRate / 100);
-                rows.insertAdjacentHTML('beforeend', `<div class="cart-row"><strong>${escapeHtml(item.label)}</strong><input type="number" min="1" step="1" value="${item.quantity}" data-cart-qty="${index}"><span>${fmt(item.quantity * item.price)}</span><button class="icon-btn cart-remove-button" type="button" data-cart-remove="${index}">X</button></div>`);
-                if (summaryItems) summaryItems.insertAdjacentHTML('beforeend', `<div class="summary-cart-item"><strong>${escapeHtml(item.label)} x ${item.quantity}</strong><span>${fmt(item.quantity * item.price)}</span></div>`);
-                hidden.insertAdjacentHTML('beforeend', `<input type="hidden" name="items[${index}][product_variant_id]" value="${item.id}"><input type="hidden" name="items[${index}][quantity]" value="${item.quantity}"><input type="hidden" name="items[${index}][unit_price]" value="${item.price.toFixed(2)}">`);
             });
             const shipping = clean(form.querySelector('[data-sales-shipping]')?.value);
-            const couponCode = form.querySelector('[data-sales-coupon-code]')?.value.toUpperCase();
-            const coupon = Array.from(form.querySelectorAll('[data-sales-coupon]')).find((item) => item.dataset.code === couponCode);
+            const couponCode = (form.querySelector('[data-sales-coupon-code]')?.value || '').trim().toUpperCase();
+            const coupon = Array.from(form.querySelectorAll('[data-sales-coupon]')).find((item) => (item.dataset.code || '').toUpperCase() === couponCode);
             const couponDiscount = coupon ? Math.min(subtotal, coupon.dataset.type === 'percentage' ? subtotal * (clean(coupon.dataset.percent) / 100) : clean(coupon.dataset.amount)) : 0;
             const adminType = form.querySelector('[data-sales-admin-discount-type]')?.value;
             const adminValue = clean(form.querySelector('[data-sales-admin-discount]')?.value);
             const adminDiscount = Math.min(subtotal, adminType === 'percentage' ? subtotal * (adminValue / 100) : adminValue);
             const total = Math.max(0, subtotal + tax + shipping - couponDiscount - adminDiscount);
             const paid = clean(form.querySelector('[data-sales-paid]')?.value);
-            form.querySelector('[data-sales-subtotal]').textContent = fmt(subtotal);
-            form.querySelector('[data-sales-tax]').textContent = fmt(tax);
-            form.querySelector('[data-sales-coupon-discount]').textContent = `-${fmt(couponDiscount)}`;
-            form.querySelector('[data-sales-admin-discount-label]').textContent = `-${fmt(adminDiscount)}`;
-            form.querySelector('[data-sales-total]').textContent = fmt(total);
-            form.querySelector('[data-sales-change]').textContent = fmt(Math.max(0, paid - total));
+            return { subtotal, tax, couponDiscount, adminDiscount, total, paid };
+        }
+
+        // Recompute the summary panel + totals. Never rebuilds the editable cart
+        // rows, so it is safe to call while a cart quantity field has focus.
+        function renderSummary(form) {
+            const summaryItems = form.querySelector('[data-sales-summary-items]');
+            if (summaryItems) {
+                summaryItems.innerHTML = '';
+                cart.forEach((item) => {
+                    summaryItems.insertAdjacentHTML('beforeend', `<div class="summary-cart-item"><strong>${escapeHtml(item.label)} x ${item.quantity}</strong><span>${fmt(item.quantity * item.price)}</span></div>`);
+                });
+            }
+            const t = computeTotals(form);
+            form.querySelector('[data-sales-subtotal]').textContent = fmt(t.subtotal);
+            form.querySelector('[data-sales-tax]').textContent = fmt(t.tax);
+            form.querySelector('[data-sales-coupon-discount]').textContent = `-${fmt(t.couponDiscount)}`;
+            form.querySelector('[data-sales-admin-discount-label]').textContent = `-${fmt(t.adminDiscount)}`;
+            form.querySelector('[data-sales-total]').textContent = fmt(t.total);
+
+            // Reflect a part payment: show the outstanding balance when underpaid,
+            // otherwise the change to hand back.
+            const changeBox = form.querySelector('[data-sales-change]');
+            const changeLabel = form.querySelector('[data-sales-change-label]');
+            const shortfall = t.total - t.paid;
+            if (shortfall > 0.001) {
+                if (changeLabel) changeLabel.textContent = 'Balance due';
+                if (changeBox) { changeBox.textContent = fmt(shortfall); changeBox.classList.add('due'); }
+            } else {
+                if (changeLabel) changeLabel.textContent = 'Change';
+                if (changeBox) { changeBox.textContent = fmt(Math.max(0, -shortfall)); changeBox.classList.remove('due'); }
+            }
+            savePosState(form);
+        }
+
+        // Rebuild the editable cart rows + hidden submit inputs, then the summary.
+        // Call on add / remove / blur — not on every keystroke.
+        function renderCart(form) {
+            const rows = form.querySelector('[data-sales-cart]');
+            const hidden = form.querySelector('[data-sales-items]');
+            rows.innerHTML = '';
+            hidden.innerHTML = '';
+            cart.forEach((item, index) => {
+                rows.insertAdjacentHTML('beforeend', `<div class="cart-row"><strong>${escapeHtml(item.label)}</strong><input type="number" min="1" step="1" value="${item.quantity}" data-cart-qty="${index}"><span data-cart-line="${index}">${fmt(item.quantity * item.price)}</span><button class="icon-btn cart-remove-button" type="button" data-cart-remove="${index}" aria-label="Remove item">X</button></div>`);
+                hidden.insertAdjacentHTML('beforeend', `<input type="hidden" name="items[${index}][product_variant_id]" value="${item.id}"><input type="hidden" name="items[${index}][quantity]" data-cart-hidden-qty="${index}" value="${item.quantity}"><input type="hidden" name="items[${index}][unit_price]" value="${item.price.toFixed(2)}">`);
+            });
+            renderSummary(form);
         }
 
         function addSelectedProduct(form) {
             const search = form.querySelector('[data-sales-product-search]');
             const qty = Math.max(1, Number(form.querySelector('[data-sales-product-qty]')?.value || 1));
             const option = Array.from(search.list?.options || []).find((item) => item.value === search.value);
-            if (!option) return false;
+            if (!option) {
+                if (search.value.trim() !== '') {
+                    search.classList.add('sales-input-error');
+                    setTimeout(() => search.classList.remove('sales-input-error'), 1200);
+                }
+                search.focus();
+                return false;
+            }
             const existing = cart.find((item) => item.id === option.dataset.variantId);
             if (existing) existing.quantity += qty;
             else cart.push({ id: option.dataset.variantId, label: option.value, quantity: qty, price: clean(option.dataset.price), taxRate: clean(option.dataset.taxRate) });
             search.value = '';
             search.focus();
-            render(form);
+            renderCart(form);
 
             return true;
         }
 
         document.addEventListener('input', (event) => {
+            // Editing a cart quantity: update state + this row's figures in place,
+            // then only recompute the summary. Rebuilding the rows here would drop
+            // focus and reset the field mid-typing.
+            const cartQty = event.target.closest('[data-cart-qty]');
+            if (cartQty) {
+                const cartForm = cartQty.closest('[data-pos-form]');
+                const i = Number(cartQty.dataset.cartQty);
+                if (cart[i]) {
+                    const quantity = Math.max(1, parseInt(cartQty.value, 10) || 1);
+                    cart[i].quantity = quantity;
+                    const line = cartForm?.querySelector(`[data-cart-line="${i}"]`);
+                    if (line) line.textContent = fmt(quantity * cart[i].price);
+                    const hiddenQty = cartForm?.querySelector(`[data-cart-hidden-qty="${i}"]`);
+                    if (hiddenQty) hiddenQty.value = quantity;
+                    if (cartForm) renderSummary(cartForm);
+                }
+                return;
+            }
+
             const customer = event.target.closest('[data-sales-customer-search]');
             if (customer) {
                 const picker = customer.closest('[data-sales-customer-picker]');
                 const value = picker?.querySelector('[data-sales-customer-value]');
                 const option = Array.from(customer.list?.options || []).find((item) => item.value === customer.value);
                 if (value) value.value = option?.dataset.customerId || '';
+                // Free text that resolves to no customer would fail server validation
+                // with a confusing message — block submit with a clear one instead.
+                customer.setCustomValidity(option || customer.value.trim() === '' ? '' : 'Choose a customer from the list.');
             }
+
             const form = event.target.closest('[data-pos-form]');
-            if (form) render(form);
-            const tillForm = event.target.closest('[data-till-close-form]');
-            if (tillForm) updateTillVariance(tillForm);
+            if (form) {
+                renderSummary(form);
+                // Entering an amount can flip whether a receiving account is needed.
+                if (event.target.closest('[data-sales-paid]')) syncPaymentAccountSelector(form);
+            }
         });
 
         document.addEventListener('change', (event) => {
@@ -457,9 +571,73 @@
                 const form = delivery.closest('form');
                 const shipping = form?.querySelector('[data-sales-shipping]');
                 if (shipping) shipping.value = Number(delivery.selectedOptions[0]?.dataset.price || 0).toFixed(2);
-                if (form) render(form);
+                if (form) renderSummary(form);
+            }
+
+            const paymentMethod = event.target.closest('[data-payment-method-selector]');
+            if (paymentMethod) {
+                syncPaymentAccountSelector(paymentMethod.closest('form'));
+            }
+
+            const credit = event.target.closest('[data-sales-credit]');
+            if (credit) {
+                const form = credit.closest('[data-pos-form]');
+                const hint = form?.querySelector('[data-sales-credit-hint]');
+                if (hint) hint.hidden = !credit.checked;
+                if (form) renderSummary(form);
             }
         });
+
+        function canonicalPaymentMethod(method) {
+            method = String(method || '').toLowerCase();
+            if (method.includes('card') || method.includes('pos')) return 'card';
+            if (method.includes('cheque') || method.includes('check')) return 'cheque';
+            if (method.includes('transfer') || method.includes('bank')) return 'transfer';
+            return 'cash';
+        }
+
+        function syncPaymentAccountSelector(form) {
+            if (!form) return;
+            const method = canonicalPaymentMethod(form.querySelector('[data-payment-method-selector]')?.value);
+            const wrapper = form.querySelector('[data-payment-account-wrapper]');
+            const selector = form.querySelector('[data-payment-account-selector]');
+            const empty = form.querySelector('[data-payment-account-empty]');
+            if (!wrapper || !selector) return;
+
+            // Show the receiving account for any non-cash method — it determines the
+            // posting (GL) account for the accounting entry. It's only *required* when
+            // money is actually being collected now, so credit / unpaid sales (amount
+            // paid 0, which the server posts without an account) aren't blocked. Forms
+            // without an amount field (e.g. the add-payment dialog) always collect.
+            const paidField = form.querySelector('[data-sales-paid]');
+            const collecting = paidField ? clean(paidField.value) > 0 : true;
+            const showAccount = method !== 'cash';
+            wrapper.hidden = !showAccount;
+            selector.disabled = !showAccount;
+            selector.required = false;
+
+            let visibleOptions = 0;
+            Array.from(selector.options).forEach((option) => {
+                if (!option.value) {
+                    option.hidden = false;
+                    return;
+                }
+
+                const matches = canonicalPaymentMethod(option.dataset.accountMethod) === method;
+                option.hidden = !matches;
+                if (matches) visibleOptions++;
+            });
+
+            if (!showAccount) {
+                selector.value = '';
+            } else {
+                const selected = selector.selectedOptions[0];
+                if (!selected || selected.hidden) selector.value = '';
+                selector.required = collecting && visibleOptions > 0;
+            }
+
+            if (empty) empty.hidden = !showAccount || visibleOptions > 0;
+        }
 
         document.addEventListener('keydown', (event) => {
             const search = event.target.closest('[data-sales-product-search]');
@@ -481,32 +659,65 @@
             if (remove) {
                 const form = remove.closest('form');
                 cart.splice(Number(remove.dataset.cartRemove), 1);
-                render(form);
+                renderCart(form);
             }
         });
 
         document.addEventListener('change', (event) => {
             const qty = event.target.closest('[data-cart-qty]');
             if (!qty) return;
-            cart[Number(qty.dataset.cartQty)].quantity = Math.max(1, Number(qty.value || 1));
-            render(qty.closest('form'));
+            cart[Number(qty.dataset.cartQty)].quantity = Math.max(1, parseInt(qty.value, 10) || 1);
+            renderCart(qty.closest('form'));
         });
 
         document.addEventListener('submit', (event) => {
-            const form = event.target.closest('[data-till-close-form]');
-            if (!form) return;
-            updateTillVariance(form);
-            const closeButton = form.querySelector('[data-till-close-button]');
-            if (closeButton?.dataset.hasVariance !== '1') return;
-            event.preventDefault();
-            const warning = form.querySelector('[data-till-close-warning]');
-            if (warning) {
-                warning.hidden = false;
-                warning.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const paymentForm = event.target.closest('form');
+            if (paymentForm?.querySelector('[data-payment-method-selector]')) {
+                syncPaymentAccountSelector(paymentForm);
             }
+
+            // Validate the POS sale client-side so recoverable mistakes are shown inline
+            // instead of round-tripping to the server and reloading away the whole cart.
+            const posForm = event.target.closest('[data-pos-form]');
+            if (!posForm) return;
+
+            const errorBox = posForm.querySelector('[data-pos-error]');
+            const fail = (message, focusSel) => {
+                event.preventDefault();
+                if (errorBox) {
+                    errorBox.hidden = false;
+                    errorBox.textContent = message;
+                    errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+                if (focusSel) posForm.querySelector(focusSel)?.focus();
+            };
+
+            if (!cart.length) { fail('Add at least one item to the cart before creating the sale.'); return; }
+
+            const totals = computeTotals(posForm);
+            const isCredit = !!posForm.querySelector('[name="is_credit_sale"]')?.checked;
+            const customerValue = posForm.querySelector('[data-sales-customer-value]');
+
+            if (isCredit && customerValue && walkInCustomerId !== null && customerValue.value === walkInCustomerId) {
+                fail('Select or create a real customer before booking a credit sale — the walk-in customer cannot carry a balance.', '[data-sales-customer-search]');
+                return;
+            }
+            if (!isCredit && totals.paid + 0.001 < totals.total) {
+                fail(`Amount paid (${fmt(totals.paid)}) is less than the total (${fmt(totals.total)}). Collect the full amount, or tick “Mark as Credit Sale”.`, '[data-sales-paid]');
+                return;
+            }
+
+            if (errorBox) errorBox.hidden = true;
         });
 
-        document.querySelectorAll('[data-till-close-form]').forEach(updateTillVariance);
+        document.querySelectorAll('[data-payment-method-selector]').forEach((selector) => syncPaymentAccountSelector(selector.closest('form')));
+
+        // Restore an in-progress sale after a reload; clear it once a sale has completed.
+        const posForm = document.querySelector('[data-pos-form]');
+        if (posForm) {
+            if (autoReceiptOrderId) clearPosState(posForm);
+            else restorePosState(posForm);
+        }
     });
     </script>
 </x-layouts.admin>

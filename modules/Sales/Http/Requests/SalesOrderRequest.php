@@ -43,6 +43,7 @@ final class SalesOrderRequest extends FormRequest
             'order_date' => ['required', 'date'],
             'is_credit_sale' => ['boolean'],
             'payment_method' => ['nullable', 'string', 'max:80'],
+            'business_payment_account_id' => ['nullable', 'integer', Rule::exists('business_payment_accounts', 'id')->where('tenant_id', $tenantId)->where('status', 'active')],
             'amount_paid' => ['nullable', 'numeric', 'min:0', 'max:999999999'],
             'coupon_code' => ['nullable', 'string', 'max:80'],
             'admin_discount_type' => ['nullable', Rule::in(['amount', 'percentage'])],

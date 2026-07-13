@@ -57,6 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const name = box.getAttribute('name') || '';
         if (name.endsWith('[]')) return;            // multi-select group
         if (box.closest('.ts-wrapper')) return;      // inside a tom-select control
+        if (box.closest('.check-card')) return;      // styled selectable card, keep custom check
         box.classList.add('switch-input');
     });
 });

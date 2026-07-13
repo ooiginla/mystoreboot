@@ -6,6 +6,7 @@ namespace Modules\Sales\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Sales\Enums\SalesPaymentStatus;
@@ -38,6 +39,7 @@ final class RecordSalesPaymentAction
             }
 
             $amountMinor = $this->moneyToMinor($data['amount']);
+            $paymentAccount = $this->paymentAccountFor($order->tenant_id, $order->branch_id, $data['payment_method'], $data['business_payment_account_id'] ?? null, 'business_payment_account_id');
 
             if ($amountMinor > $order->balance_minor) {
                 throw ValidationException::withMessages([
@@ -48,6 +50,7 @@ final class RecordSalesPaymentAction
             $payment = $order->payments()->create([
                 'tenant_id' => $order->tenant_id,
                 'sales_till_session_id' => $tillSession->id,
+                'business_payment_account_id' => $paymentAccount?->id,
                 'payment_date' => $data['payment_date'],
                 'payment_method' => $data['payment_method'],
                 'amount_minor' => $amountMinor,
@@ -74,7 +77,7 @@ final class RecordSalesPaymentAction
                 (string) $data['payment_date'],
                 'Customer payment for '.$order->order_number,
                 [
-                    ['account_code' => $this->cashAccountFor($data['payment_method'], $tillSession), 'branch_id' => $order->branch_id, 'debit_minor' => $amountMinor, 'party_type' => 'customer', 'party_id' => $order->customer_id],
+                    ['account_code' => $this->cashAccountFor($data['payment_method'], $tillSession, $paymentAccount), 'branch_id' => $order->branch_id, 'debit_minor' => $amountMinor, 'party_type' => 'customer', 'party_id' => $order->customer_id],
                     ['account_code' => '1100', 'branch_id' => $order->branch_id, 'credit_minor' => $amountMinor, 'party_type' => 'customer', 'party_id' => $order->customer_id],
                 ],
                 'sales_order_payment',
@@ -95,10 +98,14 @@ final class RecordSalesPaymentAction
         return (int) round(((float) (is_string($value) ? str_replace(',', '', $value) : ($value ?: 0))) * 100);
     }
 
-    private function cashAccountFor(?string $paymentMethod, SalesTillSession $tillSession): string
+    private function cashAccountFor(?string $paymentMethod, SalesTillSession $tillSession, ?BusinessPaymentAccount $paymentAccount = null): string
     {
         if ($this->isCashMethod($paymentMethod)) {
             return $this->ensureTillCashLocation($tillSession)->financeAccount->code;
+        }
+
+        if ($paymentAccount?->financeAccount) {
+            return $paymentAccount->financeAccount->code;
         }
 
         return $this->nonCashAccountFor($paymentMethod);
@@ -118,6 +125,43 @@ final class RecordSalesPaymentAction
             str_contains($method, 'online'), str_contains($method, 'paystack'), str_contains($method, 'gateway') => '1060',
             default => '1040',
         };
+    }
+
+    private function paymentAccountFor(string $tenantId, int|string $branchId, ?string $paymentMethod, mixed $paymentAccountId, string $field): ?BusinessPaymentAccount
+    {
+        $branchId = (int) $branchId;
+
+        if ($this->isCashMethod($paymentMethod)) {
+            return null;
+        }
+
+        $accounts = BusinessPaymentAccount::query()
+            ->with('financeAccount')
+            ->where('tenant_id', $tenantId)
+            ->where('status', 'active')
+            ->where(fn ($query) => $query->whereNull('branch_id')->orWhere('branch_id', $branchId))
+            ->get()
+            ->filter(fn (BusinessPaymentAccount $account): bool => $account->supports((string) $paymentMethod));
+
+        if (! $paymentAccountId) {
+            if ($accounts->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    $field => 'Select a receiving account for this payment method.',
+                ]);
+            }
+
+            return null;
+        }
+
+        $account = $accounts->first(fn (BusinessPaymentAccount $account): bool => (string) $account->getKey() === (string) $paymentAccountId);
+
+        if (! $account) {
+            throw ValidationException::withMessages([
+                $field => 'Select an active receiving account that supports this payment method for the branch.',
+            ]);
+        }
+
+        return $account;
     }
 
     private function ensureTillCashLocation(SalesTillSession $tillSession): SalesCashLocation

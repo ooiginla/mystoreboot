@@ -46,6 +46,8 @@
         .rpos-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; }
         .rpos-brand .mark { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: linear-gradient(140deg, #22dd85, #009a53); }
         .rpos-brand .mark svg { width: 18px; height: 18px; color: #fff; }
+        .rpos-menu-toggle { display: none; width: 34px; height: 34px; border: 1px solid rgba(255,255,255,.14); border-radius: 9px; background: rgba(255,255,255,.06); color: #eef2f0; place-items: center; cursor: pointer; }
+        .rpos-menu-toggle svg { width: 19px; height: 19px; }
         .rpos-context { display: flex; flex-direction: column; line-height: 1.15; }
         .rpos-context strong { font-size: 14px; }
         .rpos-context span { font-size: 11.5px; color: #9db3a8; }
@@ -107,6 +109,10 @@
         .rpos-pay svg { width: 20px; height: 20px; flex: 0 0 auto; }
         .rpos-pay .amt { font-variant-numeric: tabular-nums; font-size: 17px; }
 
+        /* Mobile-only cart drawer bits (hidden on desktop / tablet split view) */
+        .rpos-cartbar { display: none; }
+        .rpos-cart-handle { display: none; }
+
         /* ---- Products panel ---- */
         .rpos-products { display: flex; flex-direction: column; min-height: 0; padding: 12px; }
         .rpos-search { position: relative; flex: 0 0 auto; }
@@ -152,7 +158,12 @@
         .pay-methods .pay-method:nth-child(3) { border-color: #e6e0ff; color: #6d28d9; background: #f5f3ff; }
         .pay-methods .pay-method:nth-child(4) { border-color: #fde68a; color: #b45309; background: #fffbeb; }
         .pay-methods .pay-method:nth-child(5) { border-color: #fbcfe8; color: #be185d; background: #fdf2f8; }
-        .pay-method.active { box-shadow: inset 0 0 0 2px currentColor; transform: translateY(-1px); }
+        .pay-method.active { color: #fff !important; border-color: transparent !important; box-shadow: 0 8px 16px -6px rgba(16,24,40,.4); transform: translateY(-1px); }
+        .pay-methods .pay-method:nth-child(5n+1).active { background: #059669 !important; }
+        .pay-methods .pay-method:nth-child(5n+2).active { background: #2563eb !important; }
+        .pay-methods .pay-method:nth-child(5n+3).active { background: #7c3aed !important; }
+        .pay-methods .pay-method:nth-child(5n+4).active { background: #d97706 !important; }
+        .pay-methods .pay-method:nth-child(5n+5).active { background: #db2777 !important; }
         .rpos-cancel { border: 1.5px solid #fecaca; background: #fef2f2; color: #dc2626; border-radius: 12px; padding: 14px 24px; font-weight: 800; cursor: pointer; font-size: 14px; }
         .rpos-cancel:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
         .pay-quick { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -180,7 +191,115 @@
         .held-item:hover { border-color: var(--brand); }
         .rpos-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); background: #0a1712; color: #fff; padding: 12px 20px; border-radius: 999px; font-weight: 700; box-shadow: 0 12px 30px rgba(16,24,40,.3); opacity: 0; transition: .25s; z-index: 200; pointer-events: none; }
         .rpos-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-        @media (max-width: 900px) { .rpos-body { grid-template-columns: 1fr; } .rpos-cart { display: none; } }
+        @media (max-width: 1100px) {
+            .rpos-body { grid-template-columns: minmax(320px, 40%) 1fr; }
+            .rpos-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+            .rpos-tile { min-height: 172px; padding: 11px; border-radius: 13px; }
+            .rpos-tile-img { height: 82px; }
+            .rpos-topbar { gap: 10px; }
+            .rpos-tbtn { padding: 8px 10px; }
+        }
+
+        @media (max-width: 900px) {
+            body:has([data-rpos]) .shell { grid-template-columns: 1fr; }
+            body:has([data-rpos]) .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 400; width: min(82vw, 300px); height: 100dvh; display: flex; transform: translateX(-105%); transition: transform .2s ease; box-shadow: 18px 0 36px rgba(16,24,40,.28); }
+            body.rpos-menu-open:has([data-rpos]) .sidebar { transform: translateX(0); }
+            body.rpos-menu-open:has([data-rpos])::after { content: ''; position: fixed; inset: 0; z-index: 390; background: rgba(9,20,15,.45); }
+            .rpos { height: 100dvh; min-height: 100dvh; }
+            .rpos-topbar { flex-wrap: wrap; padding: 9px 10px; gap: 8px; }
+            .rpos-menu-toggle { display: grid; }
+            .rpos-brand .mark { width: 30px; height: 30px; border-radius: 8px; }
+            .rpos-context { min-width: 0; flex: 1 1 170px; }
+            .rpos-context strong, .rpos-context span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .rpos-sync { display: none; }
+            .rpos-top-actions { order: 3; width: 100%; margin-left: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+            .rpos-tbtn { justify-content: center; min-height: 42px; padding: 8px 6px; font-size: 12px; border-radius: 8px; }
+            .rpos-tbtn svg { width: 15px; height: 15px; }
+
+            /* Products fill the screen; the cart lives in a slide-up sheet */
+            .rpos-body { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+            .rpos-products { flex: 1 1 auto; min-height: 0; padding: 10px; }
+            .rpos-search input { padding-top: 12px; padding-bottom: 12px; font-size: 16px; }
+            .rpos-cats { padding: 9px 2px; gap: 7px; }
+            .rpos-cat { padding: 8px 13px; font-size: 12.5px; }
+            .rpos-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 9px; padding-bottom: 84px; }
+            .rpos-tile { min-height: 150px; gap: 8px; padding: 9px; border-radius: 12px; }
+            .rpos-tile-img { height: 70px; border-radius: 9px; font-size: 25px; }
+            .rpos-tile-name { font-size: 13px; line-height: 1.25; }
+            .rpos-tile-price { font-size: 14px; }
+
+            /* Fixed cart bar — the drawer trigger */
+            .rpos-cartbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 260;
+                display: flex; align-items: center; gap: 12px; width: 100%; border: 0; cursor: pointer;
+                padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+                background: linear-gradient(100deg, #0a1712, #0f2a1e); color: #eef2f0;
+                box-shadow: 0 -12px 30px -18px rgba(9,20,15,.7); }
+            .rpos-cartbar .cb-cart { position: relative; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: rgba(255,255,255,.1); flex: 0 0 auto; }
+            .rpos-cartbar .cb-cart svg { width: 20px; height: 20px; }
+            .rpos-cartbar .cb-count { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: #22dd85; color: #06231a; font-size: 12px; font-weight: 850; display: grid; place-items: center; }
+            .rpos-cartbar .cb-text { display: flex; flex-direction: column; line-height: 1.15; text-align: left; }
+            .rpos-cartbar .cb-text strong { font-size: 15px; font-weight: 800; }
+            .rpos-cartbar .cb-text span { font-size: 11.5px; color: #9db3a8; }
+            .rpos-cartbar .cb-total { margin-left: auto; font-weight: 850; font-size: 18px; font-variant-numeric: tabular-nums; }
+            .rpos-cartbar .cb-chev { width: 20px; height: 20px; flex: 0 0 auto; opacity: .85; }
+            .rpos-cartbar.is-empty { opacity: .5; pointer-events: none; }
+
+            /* Cart as a bottom sheet */
+            .rpos-cart { position: fixed; left: 0; right: 0; bottom: 0; z-index: 320;
+                width: 100%; height: auto; max-height: 92dvh; border-right: 0; border-top: 0;
+                border-radius: 20px 20px 0 0; box-shadow: 0 -24px 50px -18px rgba(9,20,15,.55);
+                transform: translateY(102%); transition: transform .28s cubic-bezier(.32,.72,0,1); will-change: transform; }
+            body.rpos-cart-open .rpos-cart { transform: translateY(0); }
+            body.rpos-cart-open::before { content: ''; position: fixed; inset: 0; z-index: 300; background: rgba(9,20,15,.5); }
+
+            .rpos-cart-handle { display: flex; align-items: center; gap: 12px; position: relative; padding: 12px 14px 8px; border-bottom: 1px solid #eef2f0; }
+            .rpos-cart-handle .grip { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 40px; height: 4px; border-radius: 999px; background: #cfe0d8; }
+            .rpos-cart-handle strong { font-size: 15px; margin-top: 3px; }
+            .rpos-cart-handle button { margin-left: auto; margin-top: 3px; border: 0; background: var(--brand-050); color: var(--brand-strong); font-weight: 800; font-size: 13px; border-radius: 999px; padding: 7px 16px; cursor: pointer; }
+
+            .rpos-customer { padding: 10px 14px; }
+            .rpos-lines { flex: 1 1 auto; min-height: 90px; max-height: none; padding: 10px 12px; gap: 8px; }
+            .rpos-empty-cart { padding: 22px; font-size: 13px; }
+            .rpos-empty-cart svg { width: 34px; height: 34px; }
+            .rpos-line { grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; padding: 9px 11px; border-radius: 11px; }
+            .rpos-line .nm { grid-column: 1 / -1; font-size: 13.5px; }
+            .rpos-line .lt { min-width: 70px; font-size: 14px; }
+            .rpos-qty button { width: 34px; height: 34px; }
+            .rpos-qty input { width: 42px; height: 34px; }
+            .rpos-summary { flex: 0 0 auto; padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px)); }
+            .rpos-sline { font-size: 13px; padding: 2px 0; }
+            .rpos-total { margin-top: 8px; padding: 11px 14px; border-radius: 11px; }
+            .rpos-total span { font-size: 13px; }
+            .rpos-total strong { font-size: 22px; }
+            .rpos-actions { grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 9px; }
+            .rpos-act { min-height: 44px; padding: 6px 2px; border-radius: 10px; font-size: 10px; }
+            .rpos-act svg { width: 17px; height: 17px; }
+            .rpos-pay { margin-top: 9px; min-height: 50px; padding: 13px 16px; border-radius: 12px; font-size: 16px; }
+
+            #rpos-pay-dialog { width: min(560px, calc(100vw - 16px)) !important; max-height: calc(100dvh - 16px); }
+            #rpos-pay-dialog .dialog-body > div:first-child { grid-template-columns: 1fr !important; gap: 12px !important; }
+            .pay-amount-box { padding: 11px; }
+            .pay-amount-box strong { font-size: 25px; }
+            .pay-methods { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .pay-method { padding: 12px 8px; font-size: 13px; }
+            .rpos-keypad { gap: 7px; }
+            .rpos-keypad button { padding: 13px; font-size: 18px; border-radius: 10px; }
+            .pay-status { padding: 11px 13px; }
+            .pay-status strong { font-size: 19px; }
+            .rpos-success .succ-actions { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 520px) {
+            .rpos-top-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .rpos-tbtn.ghost { display: none; }
+            .rpos-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .rpos-tile { min-height: 138px; }
+            .rpos-tile-img { height: 58px; }
+            .rpos-act { min-height: 42px; font-size: 0; gap: 0; }
+            .rpos-act svg { width: 18px; height: 18px; }
+            .pay-methods { grid-template-columns: 1fr; }
+            .pay-quick button { flex-basis: calc(50% - 4px); }
+        }
     </style>
 
     @if (! $activeTill)
@@ -217,6 +336,9 @@
 
         {{-- ======================= TOP BAR ======================= --}}
         <header class="rpos-topbar">
+            <button class="rpos-menu-toggle" type="button" data-rpos-menu-toggle aria-label="Open menu">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
+            </button>
             <div class="rpos-brand"><span class="mark"><svg viewBox="0 0 24 24"><use href="#i-spark"/></svg></span></div>
             <div class="rpos-context">
                 <strong>{{ $activeTill->branch?->name ?? 'Retail POS' }}</strong>
@@ -245,6 +367,11 @@
         <div class="rpos-body">
             {{-- ======================= CART ======================= --}}
             <aside class="rpos-cart">
+                <div class="rpos-cart-handle">
+                    <span class="grip"></span>
+                    <strong>Current order</strong>
+                    <button type="button" data-cart-close>Done</button>
+                </div>
                 <div class="rpos-customer" data-dialog-open="rpos-customer-dialog">
                     <span class="avatar" data-customer-initial>W</span>
                     <span class="who"><strong data-customer-name>{{ $walkInCustomer->name }}</strong><span data-customer-sub>Walk-in customer</span></span>
@@ -329,6 +456,17 @@
                 </div>
             </section>
         </div>
+
+        {{-- Mobile cart bar — opens the cart sheet --}}
+        <button class="rpos-cartbar is-empty" type="button" data-cart-open aria-label="View order">
+            <span class="cb-cart">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M2.5 3H5l2.2 11.2a1.5 1.5 0 0 0 1.5 1.2h8.4a1.5 1.5 0 0 0 1.5-1.2L21 7H6"/><circle cx="9" cy="20" r="1.4" fill="currentColor" stroke="none"/><circle cx="17" cy="20" r="1.4" fill="currentColor" stroke="none"/></svg>
+                <span class="cb-count" data-cartbar-count>0</span>
+            </span>
+            <span class="cb-text"><strong>View order</strong><span data-cartbar-items>0 items</span></span>
+            <span class="cb-total" data-cartbar-total>{{ $currency }} 0.00</span>
+            <svg class="cb-chev" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 15 6-6 6 6"/></svg>
+        </button>
     </div>
 
     {{-- ======================= HIDDEN ORDER FORM ======================= --}}
@@ -342,6 +480,7 @@
         <input type="hidden" name="order_date" value="{{ now()->toDateString() }}">
         <input type="hidden" name="customer_id" data-f-customer value="{{ $walkInCustomer->id }}">
         <input type="hidden" name="payment_method" data-f-method value="Cash">
+        <input type="hidden" name="business_payment_account_id" data-f-payment-account value="">
         <input type="hidden" name="amount_paid" data-f-paid value="0">
         <input type="hidden" name="coupon_code" data-f-coupon value="">
         <input type="hidden" name="admin_discount_type" data-f-disc-type value="amount">
@@ -393,7 +532,7 @@
 
     <div class="rpos-toast" data-toast></div>
 
-    <script src="{{ asset('js/retail-pos.js') }}?v=5"></script>
+    <script src="{{ asset('js/retail-pos.js') }}?v=8"></script>
     <script>
         window.storebootReceiptOrderId = @json(session('receipt_order_id'));
     </script>

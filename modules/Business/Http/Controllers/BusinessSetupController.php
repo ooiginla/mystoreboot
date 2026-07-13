@@ -23,9 +23,11 @@ use Modules\Business\Http\Requests\BusinessProfileRequest;
 use Modules\Business\Http\Requests\DepartmentRequest;
 use Modules\Business\Http\Requests\OnlineStoreRequest;
 use Modules\Business\Models\Branch;
+use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Business\Models\Department;
 use Modules\Business\Models\OnlineStore;
 use Modules\Catalog\Models\ProductCategory;
+use Modules\Finance\Models\FinanceAccount;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Plan;
 use Modules\Subscriptions\Models\TenantSubscription;
@@ -62,6 +64,9 @@ final class BusinessSetupController extends Controller
                 : collect(),
             'departments' => $tenant
                 ? Department::query()->with('branch')->where('tenant_id', $tenant->id)->orderBy('name')->get()
+                : collect(),
+            'paymentAccounts' => $tenant
+                ? $this->businessPaymentAccounts($tenant)
                 : collect(),
             'roles' => $tenant
                 ? Role::query()->where('tenant_id', $tenant->id)->orderByDesc('is_system')->orderBy('name')->get()
@@ -102,6 +107,72 @@ final class BusinessSetupController extends Controller
         return redirect()
             ->route('admin.business.index', ['tenant' => $savedTenant->id])
             ->with('status', "Business profile saved for {$savedTenant->name}.");
+    }
+
+    public function savePaymentMethods(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            'payment_methods' => ['nullable', 'array'],
+            'payment_methods.*' => ['string', Rule::in(['Cash', 'Transfer', 'Card', 'Cheque'])],
+        ]);
+        $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+        $tenant = Tenant::query()->findOrFail($data['tenant_id']);
+        $methods = collect(['Cash'])
+            ->merge($data['payment_methods'] ?? [])
+            ->map(fn (string $method): string => $this->canonicalPaymentMethod($method))
+            ->unique()
+            ->values()
+            ->all();
+
+        $tenant->settings = array_merge($tenant->settings ?? [], [
+            'payment_methods' => $methods,
+        ]);
+        $tenant->save();
+
+        return redirect()
+            ->to(route('admin.business.index', ['tenant' => $tenant->id]).'#payment-accounts')
+            ->with('status', 'Payment methods updated.');
+    }
+
+    public function storePaymentAccount(Request $request): RedirectResponse
+    {
+        $data = $this->paymentAccountData($request);
+        $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+
+        $paymentAccount = $this->savePaymentAccount($data);
+        $this->syncPaymentAccountSettings($paymentAccount->tenant_id);
+
+        return redirect()
+            ->to(route('admin.business.index', ['tenant' => $paymentAccount->tenant_id]).'#payment-accounts')
+            ->with('status', "Payment account {$paymentAccount->identifier} saved.");
+    }
+
+    public function updatePaymentAccount(Request $request, BusinessPaymentAccount $paymentAccount): RedirectResponse
+    {
+        $data = $this->paymentAccountData($request);
+        $this->authorizeTenantIdAccess($request->user(), $paymentAccount->tenant_id);
+        abort_unless($data['tenant_id'] === $paymentAccount->tenant_id, 403);
+
+        $paymentAccount = $this->savePaymentAccount($data, $paymentAccount);
+        $this->syncPaymentAccountSettings($paymentAccount->tenant_id);
+
+        return redirect()
+            ->to(route('admin.business.index', ['tenant' => $paymentAccount->tenant_id]).'#payment-accounts')
+            ->with('status', "Payment account {$paymentAccount->identifier} updated.");
+    }
+
+    public function destroyPaymentAccount(Request $request, BusinessPaymentAccount $paymentAccount): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $paymentAccount->tenant_id);
+        $tenantId = $paymentAccount->tenant_id;
+        $paymentAccount->update(['status' => 'inactive']);
+        $paymentAccount->financeAccount?->update(['is_active' => false]);
+        $this->syncPaymentAccountSettings($tenantId);
+
+        return redirect()
+            ->to(route('admin.business.index', ['tenant' => $tenantId]).'#payment-accounts')
+            ->with('status', 'Payment account deactivated.');
     }
 
     public function storeBranch(BranchRequest $request, CreateBranchAction $action): RedirectResponse
@@ -437,6 +508,196 @@ final class BusinessSetupController extends Controller
     private function bankAccountKey(array $account): string
     {
         return sha1(implode('|', [$account['bank_name'], $account['account_name'], $account['account_number']]));
+    }
+
+    private function businessPaymentAccounts(Tenant $tenant): EloquentCollection
+    {
+        $this->migrateLegacyBankDetailsToPaymentAccounts($tenant);
+
+        return BusinessPaymentAccount::query()
+            ->with(['branch', 'financeAccount'])
+            ->where('tenant_id', $tenant->id)
+            ->orderBy('sort_order')
+            ->orderBy('identifier')
+            ->get();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function paymentAccountData(Request $request): array
+    {
+        $data = $request->validate([
+            'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+            'identifier' => ['required', 'string', 'max:140'],
+            'account_name' => ['nullable', 'string', 'max:160'],
+            'provider_name' => ['required', 'string', 'max:140'],
+            'account_number' => ['nullable', 'string', 'max:100'],
+            'account_type' => ['required', Rule::in(['normal', 'virtual'])],
+            'supported_payment_methods' => ['required', 'array', 'min:1'],
+            'supported_payment_methods.*' => ['string', Rule::in(['Transfer', 'Card', 'Cheque'])],
+            'status' => ['required', Rule::in(['active', 'inactive'])],
+        ]);
+
+        if (($data['branch_id'] ?? null) !== null) {
+            abort_unless(Branch::query()->where('tenant_id', $data['tenant_id'])->whereKey($data['branch_id'])->exists(), 403);
+        }
+
+        $data['supported_payment_methods'] = collect($data['supported_payment_methods'])
+            ->map(fn (string $method): string => $this->canonicalPaymentMethod($method))
+            ->unique()
+            ->values()
+            ->all();
+
+        return $data;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function savePaymentAccount(array $data, ?BusinessPaymentAccount $paymentAccount = null): BusinessPaymentAccount
+    {
+        $paymentAccount ??= new BusinessPaymentAccount(['tenant_id' => $data['tenant_id']]);
+        $financeAccount = $paymentAccount->financeAccount ?: FinanceAccount::query()->create([
+            'tenant_id' => $data['tenant_id'],
+            'code' => $this->nextPaymentFinanceAccountCode($data['tenant_id']),
+            'name' => (string) $data['identifier'],
+            'type' => 'asset',
+            'category' => $data['account_type'] === 'virtual' ? 'Payment Wallets / Virtual Accounts' : 'Bank & Payment Accounts',
+            'description' => 'Payment receiving account managed from Business Profile.',
+            'normal_balance' => 'debit',
+            'is_system' => false,
+            'is_active' => $data['status'] === 'active',
+        ]);
+
+        $financeAccount->fill([
+            'name' => (string) $data['identifier'],
+            'type' => 'asset',
+            'category' => $data['account_type'] === 'virtual' ? 'Payment Wallets / Virtual Accounts' : 'Bank & Payment Accounts',
+            'description' => 'Payment receiving account managed from Business Profile.',
+            'normal_balance' => 'debit',
+            'is_active' => $data['status'] === 'active',
+        ])->save();
+
+        $paymentAccount->fill([
+            'tenant_id' => $data['tenant_id'],
+            'branch_id' => $data['branch_id'] ?? null,
+            'finance_account_id' => $financeAccount->id,
+            'identifier' => trim((string) $data['identifier']),
+            'account_name' => trim((string) ($data['account_name'] ?? '')) ?: null,
+            'provider_name' => trim((string) $data['provider_name']),
+            'account_number' => trim((string) ($data['account_number'] ?? '')) ?: null,
+            'account_type' => $data['account_type'],
+            'supported_payment_methods' => $data['supported_payment_methods'],
+            'status' => $data['status'],
+        ])->save();
+
+        return $paymentAccount->refresh();
+    }
+
+    private function nextPaymentFinanceAccountCode(string $tenantId): string
+    {
+        $numbers = FinanceAccount::query()
+            ->where('tenant_id', $tenantId)
+            ->where('code', 'like', 'PMT-%')
+            ->pluck('code')
+            ->map(fn (string $code): int => (int) preg_replace('/\D+/', '', $code))
+            ->filter(fn (int $number): bool => $number > 0);
+
+        $next = max(1000, (int) ($numbers->max() ?? 1000)) + 1;
+
+        do {
+            $code = 'PMT-'.$next;
+            $next++;
+        } while (FinanceAccount::query()->where('tenant_id', $tenantId)->where('code', $code)->exists());
+
+        return $code;
+    }
+
+    private function canonicalPaymentMethod(string $method): string
+    {
+        $method = strtolower(trim($method));
+
+        return match (true) {
+            str_contains($method, 'card'), str_contains($method, 'pos') => 'Card',
+            str_contains($method, 'cheque'), str_contains($method, 'check') => 'Cheque',
+            str_contains($method, 'transfer'), str_contains($method, 'bank') => 'Transfer',
+            default => 'Cash',
+        };
+    }
+
+    private function syncPaymentAccountSettings(string $tenantId): void
+    {
+        $tenant = Tenant::query()->find($tenantId);
+
+        if (! $tenant) {
+            return;
+        }
+
+        $accounts = BusinessPaymentAccount::query()
+            ->where('tenant_id', $tenantId)
+            ->where('status', 'active')
+            ->orderBy('identifier')
+            ->get();
+        $methods = collect(['Cash'])
+            ->merge($tenant->settings['payment_methods'] ?? [])
+            ->merge($accounts->flatMap(fn (BusinessPaymentAccount $account): array => $account->supported_payment_methods ?? []))
+            ->map(fn (string $method): string => $this->canonicalPaymentMethod($method))
+            ->unique()
+            ->values()
+            ->all();
+        $bankDetails = $accounts
+            ->filter(fn (BusinessPaymentAccount $account): bool => $account->supports('Transfer'))
+            ->map(fn (BusinessPaymentAccount $account): array => [
+                'bank_name' => $account->provider_name,
+                'account_name' => $account->account_name ?: $account->identifier,
+                'account_number' => $account->account_number ?: '',
+                'status' => $account->status,
+                'asset_account_code' => $account->financeAccount?->code,
+            ])
+            ->values()
+            ->all();
+
+        $tenant->settings = array_merge($tenant->settings ?? [], [
+            'payment_methods' => $methods,
+            'bank_details' => $bankDetails,
+        ]);
+        $tenant->save();
+    }
+
+    private function migrateLegacyBankDetailsToPaymentAccounts(Tenant $tenant): void
+    {
+        if (BusinessPaymentAccount::query()->where('tenant_id', $tenant->id)->exists()) {
+            return;
+        }
+
+        foreach ((array) ($tenant->settings['bank_details'] ?? []) as $account) {
+            if (! is_array($account)) {
+                continue;
+            }
+
+            $bankName = trim((string) ($account['bank_name'] ?? ''));
+            $accountNumber = trim((string) ($account['account_number'] ?? ''));
+
+            if ($bankName === '' && $accountNumber === '') {
+                continue;
+            }
+
+            $this->savePaymentAccount([
+                'tenant_id' => $tenant->id,
+                'branch_id' => null,
+                'identifier' => trim($bankName.' '.$accountNumber) ?: 'Payment account',
+                'account_name' => trim((string) ($account['account_name'] ?? '')),
+                'provider_name' => $bankName ?: 'Bank',
+                'account_number' => $accountNumber,
+                'account_type' => 'normal',
+                'supported_payment_methods' => ['Transfer'],
+                'status' => in_array(($account['status'] ?? 'active'), ['active', 'inactive'], true) ? (string) ($account['status'] ?? 'active') : 'active',
+            ]);
+        }
+
+        $this->syncPaymentAccountSettings($tenant->id);
     }
 
     /**

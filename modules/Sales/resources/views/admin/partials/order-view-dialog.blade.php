@@ -7,7 +7,7 @@
                 <span class="sales-tag {{ $statusClass($order->order_status->value) }}">Order: {{ $order->order_status->label() }}</span>
                 <span class="sales-tag {{ $statusClass($order->payment_status->value) }}">Payment: {{ $order->payment_status->label() }}</span>
                 <span class="sales-tag {{ $statusClass($order->delivery_status ?? 'delivered') }}">Delivery: {{ $deliveryStatusLabel($order->delivery_status ?? 'delivered') }}</span>
-                <span class="sales-tag {{ $order->is_credit_sale ? 'warning' : 'success' }}">{{ $order->is_credit_sale ? 'Credit sale' : 'Paid sale' }}</span>
+                <span class="sales-tag {{ $order->is_credit_sale ? 'warning' : 'success' }}">{{ $order->is_credit_sale ? 'Credit sale' : 'Standard sale' }}</span>
             </div>
         </div>
         <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
@@ -44,7 +44,17 @@
                 <div class="summary-item"><span>Customer credit held</span><strong>{{ $tenant->currency_code }} {{ $money($order->paid_minor - $order->refunded_minor) }}</strong></div>
             @endif
         </div>
-        <h3 class="panel-title" style="margin-top: 18px;">Payments received</h3>
+        <div class="panel-header" style="margin-top: 18px; padding: 0; border: 0;">
+            <div>
+                <h3 class="panel-title">Payments received</h3>
+                @if ($order->balance_minor > 0 && (! $activeTill || $activeTill->branch_id !== $order->branch_id))
+                    <p class="subtle">Open a till for {{ $order->branch?->name ?? 'this order branch' }} to record payment.</p>
+                @endif
+            </div>
+            @if ($order->balance_minor > 0)
+                <button class="btn primary" type="button" data-dialog-open="order-payment-{{ $order->id }}" @disabled(! $activeTill || $activeTill->branch_id !== $order->branch_id)>Record payment</button>
+            @endif
+        </div>
         <table class="table" style="margin-top: 8px;">
             <thead><tr><th>Date</th><th>Method</th><th>Amount</th><th>Reference</th><th></th></tr></thead>
             <tbody>@forelse ($order->payments as $payment)<tr><td>{{ $payment->payment_date->format('M j, Y') }}</td><td>{{ $payment->payment_method }}</td><td>{{ $tenant->currency_code }} {{ $money($payment->amount_minor) }}</td><td>{{ $payment->reference_number ?: 'Not set' }}</td><td><button class="btn secondary" type="button" data-dialog-open="payment-receipt-{{ $payment->id }}">Receipt</button></td></tr>@empty<tr><td colspan="5"><div class="empty">No payments recorded.</div></td></tr>@endforelse</tbody>
@@ -69,6 +79,9 @@
                 </form>
             @endif
             <button class="btn secondary" type="button" data-dialog-close>Close</button>
+            @if ($order->balance_minor > 0)
+                <button class="btn primary" type="button" data-dialog-open="order-payment-{{ $order->id }}" @disabled(! $activeTill || $activeTill->branch_id !== $order->branch_id)>Record payment</button>
+            @endif
             <button class="btn primary" type="button" data-dialog-open="invoice-{{ $order->id }}">Generate invoice</button>
         </div>
     </div>

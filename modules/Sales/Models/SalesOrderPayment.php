@@ -7,6 +7,7 @@ namespace Modules\Sales\Models;
 use App\Shared\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Business\Models\BusinessPaymentAccount;
 
 final class SalesOrderPayment extends Model
 {
@@ -29,5 +30,10 @@ final class SalesOrderPayment extends Model
     public function tillSession(): BelongsTo
     {
         return $this->belongsTo(SalesTillSession::class, 'sales_till_session_id');
+    }
+
+    public function paymentAccount(): BelongsTo
+    {
+        return $this->belongsTo(BusinessPaymentAccount::class, 'business_payment_account_id');
     }
 }

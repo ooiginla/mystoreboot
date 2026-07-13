@@ -2,12 +2,16 @@
     $publicImageUrl = fn (?string $path): ?string => $path ? '/storage/'.ltrim($path, '/') : null;
     $days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
     $hours = old('opening_hours', $tenant?->opening_hours ?? []);
-    $rawPaymentMethods = old('payment_methods');
-    $paymentMethods = is_array($rawPaymentMethods)
-        ? implode(', ', $rawPaymentMethods)
-        : ($rawPaymentMethods ?? implode(', ', $tenant?->settings['payment_methods'] ?? ['Cash', 'Bank transfer', 'POS/Card', 'Cheque']));
-    $bankDetails = collect(old('bank_details', $tenant?->settings['bank_details'] ?? []));
-    $bankDetails = $bankDetails->isNotEmpty() ? $bankDetails : collect([null]);
+    $paymentMethodOptions = ['Cash', 'Transfer', 'Card', 'Cheque'];
+    $enabledPaymentMethods = collect($tenant?->settings['payment_methods'] ?? ['Cash', 'Transfer', 'Card', 'Cheque'])
+        ->map(fn ($method) => match (true) {
+            str_contains(strtolower((string) $method), 'card'), str_contains(strtolower((string) $method), 'pos') => 'Card',
+            str_contains(strtolower((string) $method), 'cheque'), str_contains(strtolower((string) $method), 'check') => 'Cheque',
+            str_contains(strtolower((string) $method), 'transfer'), str_contains(strtolower((string) $method), 'bank') => 'Transfer',
+            default => 'Cash',
+        })
+        ->unique()
+        ->values();
     $maintenanceMode = (bool) old('maintenance_mode', $tenant?->settings['maintenance_mode'] ?? false);
     $useEstimatedCostForCogs = (bool) old('use_estimated_cost_for_cogs', $tenant?->settings['use_estimated_cost_for_cogs'] ?? false);
     $selectedPlan = $plans->firstWhere('id', (int) old('plan_id', $selectedPlanId));
@@ -62,8 +66,24 @@
         'bank_account' => 'Pay via Transfer',
         'place_order' => 'Place Order',
     ];
-    $businessPaymentMethods = collect($tenant?->settings['payment_methods'] ?? []);
+    $businessPaymentMethods = $enabledPaymentMethods;
     $openBusinessDays = collect($tenant?->opening_hours ?? [])->filter(fn ($hours) => (bool) ($hours['is_open'] ?? false));
+
+    $statusTone = function (?string $status): string {
+        $s = strtolower(trim((string) $status));
+        return match (true) {
+            in_array($s, ['active', 'paid', 'completed', 'approved', 'enabled', 'open', 'system'], true) => 'success',
+            in_array($s, ['inactive', 'cancelled', 'canceled', 'expired', 'failed', 'deactivated', 'disabled', 'suspended', 'unpaid'], true) => 'danger',
+            in_array($s, ['pending', 'trial', 'trialing', 'processing', 'past_due', 'incomplete'], true) => 'warn',
+            default => 'neutral',
+        };
+    };
+@endphp
+@php
+    $statusPill = function (string $label, ?string $tone = null) use ($statusTone) {
+        $tone = $tone ?? $statusTone($label);
+        return '<span class="status-pill status-pill--'.$tone.'"><span class="dot"></span>'.e($label).'</span>';
+    };
 @endphp
 
 <x-layouts.admin title="Organization & Branch Management">
@@ -78,12 +98,67 @@
         .check-list { display: grid; grid-template-columns: 1fr; gap: 10px; }
         .inline-check { display: inline-flex; gap: 8px; align-items: center; color: #344054; font-weight: 750; }
         .inline-check input { width: auto; min-width: 16px; height: 16px; }
+
+        /* Selectable check / radio cards */
+        .check-card { display: flex; align-items: center; gap: 11px; border: 1.5px solid var(--line); border-radius: 11px; background: #fff; padding: 12px 14px; cursor: pointer; color: var(--ink-soft); font-weight: 650; font-size: 13.5px; line-height: 1.3; transition: border-color .15s, background .15s, box-shadow .15s, color .15s; }
+        .check-card:hover { border-color: var(--brand-100); background: var(--brand-050); }
+        .check-card:has(input:checked) { border-color: var(--brand); background: var(--brand-050); color: var(--brand-strong); box-shadow: inset 0 0 0 1px var(--brand); }
+        .check-card:has(input:disabled) { opacity: .65; cursor: not-allowed; background: var(--panel-soft); }
+        .check-card:has(input:disabled):hover { border-color: var(--line); }
+        .check-card input[type="checkbox"], .check-card input[type="radio"] { appearance: none; -webkit-appearance: none; width: 20px; height: 20px; min-width: 20px; margin: 0; padding: 0; border: 1.5px solid #cbd5cf; border-radius: 6px; background: #fff; flex: 0 0 auto; position: relative; cursor: pointer; transition: background .15s, border-color .15s; }
+        .check-card input[type="radio"] { border-radius: 50%; }
+        .check-card input:checked { background: var(--brand); border-color: var(--brand); }
+        .check-card input[type="checkbox"]:checked::after { content: ''; position: absolute; inset: 0; margin: auto; width: 5px; height: 9px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: translateY(-1px) rotate(45deg); }
+        .check-card input[type="radio"]:checked::after { content: ''; position: absolute; inset: 0; margin: auto; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+        .check-card input:disabled { cursor: not-allowed; }
+        .check-card .check-card-text { display: grid; gap: 2px; min-width: 0; }
+        .check-card .check-card-text small { font-weight: 500; color: var(--muted); font-size: 12px; }
+        .check-reveal { margin: 10px 0 0 6px; padding: 14px; border: 1px solid var(--line); border-left: 3px solid var(--brand); border-radius: 11px; background: var(--panel-soft); display: grid; gap: 12px; }
+        .check-reveal[hidden] { display: none; }
+        .radio-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
         .nested-check-list { margin: 10px 0 0 24px; display: grid; grid-template-columns: 1fr; gap: 8px; }
         .nested-check-list[hidden] { display: none; }
+
+        /* Semantic status pills */
+        .status-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 11px; font-size: 12px; font-weight: 700; border: 1px solid transparent; white-space: nowrap; }
+        .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+        .status-pill--success { background: var(--brand-050); color: #067647; border-color: #a6f4c5; }
+        .status-pill--neutral { background: #eef2f6; color: #475467; border-color: #e3e8ef; }
+        .status-pill--warn { background: var(--warn-bg); color: var(--warn); border-color: #fde3a7; }
+        .status-pill--danger { background: var(--danger-bg); color: var(--danger-strong); border-color: var(--danger-border); }
+
+        /* Data tables for setup lists */
+        .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); background: #fff; }
+        .table-scroll .table { min-width: 560px; }
+        .table .cell-title { font-weight: 700; color: var(--ink); }
+        .table .cell-sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+        .table-actions { display: inline-flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+        .table-actions form { display: inline-flex; margin: 0; }
+
         .form-grid[hidden] { display: none !important; }
-        .online-store-section-nav { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
-        .online-store-section-nav button { white-space: nowrap; }
-        .online-store-section-nav button.active { background: #111827; color: #fff; border-color: #111827; }
+        .online-store-section-nav { display: flex; gap: 6px; overflow-x: auto; padding: 5px; background: var(--panel-soft); border: 1px solid var(--line); border-radius: 12px; }
+        .online-store-section-nav button.secondary { white-space: nowrap; border: 1px solid transparent; background: transparent; color: var(--ink-soft); box-shadow: none; border-radius: 8px; transition: background .15s, border-color .15s, color .15s; }
+        .online-store-section-nav button.secondary:not(.active):hover { background: #fff; border-color: var(--line); color: var(--ink); }
+        .online-store-section-nav button.secondary.active { background: var(--brand); color: #fff; border-color: var(--brand); box-shadow: 0 6px 14px -6px rgba(6,193,104,.55); }
+
+        /* Styled file upload */
+        .file-upload { position: relative; display: flex; align-items: center; gap: 14px; border: 1.5px dashed #cbd5cf; border-radius: 12px; background: #f8faf9; padding: 14px 16px; cursor: pointer; transition: border-color .15s, background .15s; }
+        .file-upload:hover { border-color: var(--brand); background: var(--brand-050); }
+        .file-upload input[type="file"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+        .file-upload-preview { width: 56px; height: 56px; border-radius: 10px; background: #fff; border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden; flex: 0 0 auto; color: var(--muted); }
+        .file-upload-preview svg { width: 24px; height: 24px; }
+        .file-upload-preview img { width: 100%; height: 100%; object-fit: contain; }
+        .file-upload-copy { display: grid; gap: 2px; min-width: 0; }
+        .file-upload-copy strong { font-weight: 700; color: var(--ink); }
+
+        /* Business profile summary cards */
+        .profile-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+        .profile-grid .summary-item { border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(180deg, #fff, #fbfdfc); padding: 16px 18px; box-shadow: var(--shadow-sm); transition: border-color .15s, box-shadow .15s, transform .06s; }
+        .profile-grid .summary-item:hover { border-color: var(--brand-200); box-shadow: 0 10px 22px -12px rgba(6,193,104,.3); transform: translateY(-2px); }
+        .profile-grid .summary-item span { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+        .profile-grid .summary-item strong { display: block; margin-top: 7px; font-size: 16px; font-weight: 700; color: var(--ink); line-height: 1.35; overflow-wrap: anywhere; }
+        @media (max-width: 900px) { .profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        @media (max-width: 560px) { .profile-grid { grid-template-columns: 1fr; } }
         .online-store-section-panel[hidden] { display: none; }
         .online-store-section-panel { display: grid; gap: 14px; }
         .upload-preview { margin-top: 8px; display: grid; gap: 6px; }
@@ -92,23 +167,24 @@
         .setup-empty-line { border: 1px dashed var(--line); border-radius: 8px; padding: 14px; color: #667085; background: #f8fafc; }
         .setup-row-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
         .setup-list-toolbar { margin-bottom: 12px; }
-        .setup-accordion { border: 1px solid #c7d7fe; border-radius: 8px; background: #fff; overflow: hidden; }
+        .setup-accordion { border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden; box-shadow: var(--shadow-sm); }
         .setup-accordion + .setup-accordion { margin-top: 12px; }
-        .setup-accordion summary { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; font-weight: 900; color: #111827; list-style: none; background: #eef4ff; border-bottom: 1px solid #c7d7fe; }
+        .setup-accordion summary { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; font-weight: 750; color: var(--ink); list-style: none; background: var(--panel-soft); border-bottom: 1px solid transparent; transition: background .15s; }
+        .setup-accordion summary:hover { background: #e9efec; }
         .setup-accordion summary::-webkit-details-marker { display: none; }
-        .setup-accordion[open] summary { background: #e0ecff; }
+        .setup-accordion[open] summary { background: var(--brand-050); border-bottom-color: var(--brand-100); color: var(--brand-strong); }
         .setup-accordion-toggle { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
-        .setup-accordion-icon { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 999px; background: #101828; color: #fff; transition: transform .16s ease; }
+        .setup-accordion-icon { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 8px; background: var(--brand); color: #fff; transition: transform .16s ease; flex: 0 0 auto; }
         .setup-accordion-icon svg { width: 14px; height: 14px; }
         .setup-accordion[open] .setup-accordion-icon { transform: rotate(90deg); }
-        .setup-accordion-body { border-top: 1px solid var(--line); padding: 16px; display: grid; gap: 14px; }
+        .setup-accordion-body { padding: 16px; display: grid; gap: 14px; }
         .online-slide-card { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 14px; display: grid; grid-template-columns: minmax(180px, 30%) 1fr; gap: 16px; }
         .online-slide-card + .online-slide-card { margin-top: 12px; }
         .online-slide-photo { min-height: 180px; border: 1px dashed var(--line); border-radius: 8px; background: #f8fafc; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; color: #667085; font-weight: 800; text-align: center; padding: 12px; }
         .online-slide-photo img { width: 100%; height: 100%; min-height: 160px; object-fit: cover; border-radius: 6px; }
         .online-slide-photo input { display: none; }
         .online-slide-form { display: grid; gap: 12px; }
-        @media (max-width: 700px) { .check-grid, .online-slide-card { grid-template-columns: 1fr; } }
+        @media (max-width: 700px) { .check-grid, .online-slide-card, .radio-cards { grid-template-columns: 1fr; } }
     </style>
 
     <div class="topbar">
@@ -162,6 +238,7 @@
         <div class="tab-layout">
             <nav class="pill-nav" aria-label="Business setup sections" role="tablist">
                 <a href="#business-profile" role="tab" data-tab-target="business-profile">Business profile</a>
+                <a href="#payment-accounts" role="tab" data-tab-target="payment-accounts">Payment accounts <span class="badge neutral">{{ $paymentAccounts->count() }}</span></a>
                 <a href="#subscriptions" role="tab" data-tab-target="subscriptions">Subscriptions <span class="badge neutral">{{ $tenantSubscriptions->count() }}</span></a>
                 <a href="#online-store" role="tab" data-tab-target="online-store">Online Store</a>
                 <a href="#branches" role="tab" data-tab-target="branches">Branches / stores <span class="badge neutral">{{ $branches->count() }}</span></a>
@@ -183,16 +260,20 @@
                         @if (! $tenant)
                             <div class="empty">No organization profile exists yet. Create the profile to unlock branches, departments, roles, and users.</div>
                         @else
-                            <div class="summary-grid">
+                            @php
+                                $countryNames = collect(\App\Support\Geo::countries())->pluck('name', 'code');
+                                $currencyNames = \App\Support\Geo::currencies();
+                            @endphp
+                            <div class="summary-grid profile-grid">
                                 <div class="summary-item"><span>Business name</span><strong>{{ $tenant->name }}</strong></div>
                                 <div class="summary-item"><span>Business type</span><strong>{{ $businessTypes[$tenant->business_type] ?? $tenant->business_type ?? 'Not set' }}</strong></div>
-                                <div class="summary-item"><span>Status</span><strong>{{ $tenant->status->label() }}</strong></div>
+                                <div class="summary-item"><span>Status</span><strong style="margin-top:9px;">{!! $statusPill($tenant->status->label(), $statusTone($tenant->status->value)) !!}</strong></div>
                                 <div class="summary-item"><span>Registration number</span><strong>{{ $tenant->registration_number ?: 'Not set' }}</strong></div>
                                 <div class="summary-item"><span>Email</span><strong>{{ $tenant->email ?: 'Not set' }}</strong></div>
                                 <div class="summary-item"><span>Phone</span><strong>{{ $tenant->phone ?: 'Not set' }}</strong></div>
                                 <div class="summary-item"><span>Website</span><strong>{{ $tenant->website ?: 'Not set' }}</strong></div>
-                                <div class="summary-item"><span>Country</span><strong>{{ $tenant->country_code }}</strong></div>
-                                <div class="summary-item"><span>Currency</span><strong>{{ $tenant->currency_code }}</strong></div>
+                                <div class="summary-item"><span>Country</span><strong>{{ $countryNames[$tenant->country_code] ?? $tenant->country_code ?: 'Not set' }}</strong></div>
+                                <div class="summary-item"><span>Currency</span><strong>{{ $tenant->currency_code }}{{ isset($currencyNames[$tenant->currency_code]) ? ' · '.\Illuminate\Support\Str::before($currencyNames[$tenant->currency_code], ' (') : '' }}</strong></div>
                                 <div class="summary-item"><span>Tax identifier</span><strong>{{ $tenant->tax_identifier ?: 'Not set' }}</strong></div>
                                 <div class="summary-item"><span>Tax rate</span><strong>{{ $tenant->default_tax_rate }}%</strong></div>
                                 <div class="summary-item"><span>Timezone</span><strong>{{ $tenant->timezone }}</strong></div>
@@ -202,9 +283,75 @@
                                 <div class="summary-item"><span>Payment methods</span><strong>{{ $businessPaymentMethods->isNotEmpty() ? $businessPaymentMethods->join(', ') : 'Not set' }}</strong></div>
                                 <div class="summary-item" style="grid-column: 1 / -1;"><span>Address</span><strong>{{ $tenant->address ?: 'Not set' }}</strong></div>
                                 <div class="summary-item"><span>Maintenance mode</span><strong>{{ ($tenant->settings['maintenance_mode'] ?? false) ? 'Enabled' : 'Disabled' }}</strong></div>
-                                <div class="summary-item"><span>Bank accounts</span><strong>{{ count($tenant->settings['bank_details'] ?? []) }}</strong></div>
+                                <div class="summary-item"><span>Payment accounts</span><strong>{{ $paymentAccounts->count() }}</strong></div>
                                 <div class="summary-item"><span>Estimated cost COGS</span><strong>{{ ($tenant->settings['use_estimated_cost_for_cogs'] ?? false) ? 'Enabled' : 'Disabled' }}</strong></div>
                             </div>
+                        @endif
+                    </div>
+                </section>
+
+                <section class="panel tab-panel" id="payment-accounts" role="tabpanel" data-tab-panel hidden>
+                    <div class="panel-header">
+                        <div>
+                            <h2 class="panel-title">Payment accounts</h2>
+                            <p class="subtle">Enable payment methods and map transfer/card/cheque receipts to branch-specific receiving accounts.</p>
+                        </div>
+                        @if ($tenant)
+                            <button class="btn primary" type="button" data-dialog-open="payment-account-dialog">Add payment account</button>
+                        @endif
+                    </div>
+                    <div class="panel-body">
+                        @if (! $tenant)
+                            <div class="empty">Save the business profile first, then add payment accounts.</div>
+                        @else
+                            <div class="setup-section">
+                                <h3 class="setup-section-title">Supported payment methods</h3>
+                                <form class="mini-form" method="POST" action="{{ route('admin.business.payment-methods.save') }}">
+                                    @csrf
+                                    <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                                    <div class="check-grid">
+                                        @foreach ($paymentMethodOptions as $method)
+                                            <label class="check-card"><input type="checkbox" name="payment_methods[]" value="{{ $method }}" @checked($enabledPaymentMethods->contains($method)) @disabled($method === 'Cash')> <span class="check-card-text"><span>{{ strtoupper($method) }}</span>@if ($method === 'Cash')<small>Always available</small>@endif</span></label>
+                                        @endforeach
+                                    </div>
+                                    <p class="subtle">Cash is always available. Transfer, Card, and Cheque can require a receiving account on POS.</p>
+                                    <div class="button-row"><button class="btn primary" type="submit">Save payment methods</button></div>
+                                </form>
+                            </div>
+
+                            @if ($paymentAccounts->isEmpty())
+                                <div class="empty" style="margin-top: 16px;">No payment accounts yet. Add Union Bank, Moniepoint, Opay, Palmpay, FirstBank POS, or any branch receiving account.</div>
+                            @else
+                                <div class="table-scroll" style="margin-top: 16px;">
+                                    <table class="table">
+                                        <thead><tr><th>Account</th><th>Branch</th><th>GL</th><th>Supports</th><th>Status</th><th></th></tr></thead>
+                                        <tbody>
+                                            @foreach ($paymentAccounts as $account)
+                                                <tr>
+                                                    <td>
+                                                        <div class="cell-title">{{ $account->identifier }}</div>
+                                                        <div class="cell-sub">{{ ucfirst($account->account_type) }} · {{ $account->provider_name }}@if ($account->account_number) · {{ $account->account_number }}@endif</div>
+                                                    </td>
+                                                    <td>{{ $account->branch?->name ?? 'All branches' }}</td>
+                                                    <td>{{ $account->financeAccount?->code ?? 'Pending' }}</td>
+                                                    <td>{{ collect($account->supported_payment_methods)->map(fn ($m) => strtoupper($m))->join(', ') }}</td>
+                                                    <td>{!! $statusPill(ucfirst($account->status)) !!}</td>
+                                                    <td>
+                                                        <div class="table-actions">
+                                                            <button class="btn secondary" type="button" data-dialog-open="payment-account-{{ $account->id }}">Edit</button>
+                                                            <form method="POST" action="{{ route('admin.business.payment-accounts.destroy', $account) }}" onsubmit="return confirm('Deactivate this payment account?');">
+                                                                @csrf
+                                                                @method('DELETE')
+                                                                <button class="btn danger" type="submit">Deactivate</button>
+                                                            </form>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
                         @endif
                     </div>
                 </section>
@@ -223,45 +370,43 @@
                         @if (! $tenant)
                             <div class="empty">Save the business profile first, then add subscriptions.</div>
                         @else
-                            <div class="list">
-                                @forelse ($tenantSubscriptions as $subscription)
-                                    <div class="item">
-                                        <div>
-                                            <div class="item-title">{{ $subscription->plan?->name ?? 'Plan not found' }}</div>
-                                            <div class="subtle">
-                                                {{ ucfirst($subscription->billing_interval) }}
-                                                @if ($subscription->current_period_starts_at || $subscription->current_period_ends_at)
-                                                    · Period:
-                                                    {{ $subscription->current_period_starts_at?->format('M j, Y') ?? 'Not set' }}
-                                                    to
-                                                    {{ $subscription->current_period_ends_at?->format('M j, Y') ?? 'Not set' }}
-                                                @endif
-                                            </div>
-                                            @if ($subscription->trial_ends_at || $subscription->cancelled_at)
-                                                <div class="subtle">
-                                                    @if ($subscription->trial_ends_at)
-                                                        Trial ends {{ $subscription->trial_ends_at->format('M j, Y') }}
+                            @if ($tenantSubscriptions->isEmpty())
+                                <div class="empty">No subscriptions have been added for this organization yet.</div>
+                            @else
+                                <div class="table-scroll">
+                                    <table class="table">
+                                        <thead><tr><th>Plan</th><th>Billing</th><th>Current period</th><th>Status</th>@if ($isPlatformAdmin)<th></th>@endif</tr></thead>
+                                        <tbody>
+                                            @foreach ($tenantSubscriptions as $subscription)
+                                                <tr>
+                                                    <td>
+                                                        <div class="cell-title">{{ $subscription->plan?->name ?? 'Plan not found' }}</div>
+                                                        @if ($subscription->trial_ends_at || $subscription->cancelled_at)
+                                                            <div class="cell-sub">
+                                                                @if ($subscription->trial_ends_at)Trial ends {{ $subscription->trial_ends_at->format('M j, Y') }}@endif
+                                                                @if ($subscription->trial_ends_at && $subscription->cancelled_at) · @endif
+                                                                @if ($subscription->cancelled_at)Cancelled {{ $subscription->cancelled_at->format('M j, Y') }}@endif
+                                                            </div>
+                                                        @endif
+                                                    </td>
+                                                    <td>{{ ucfirst($subscription->billing_interval) }}</td>
+                                                    <td>
+                                                        @if ($subscription->current_period_starts_at || $subscription->current_period_ends_at)
+                                                            {{ $subscription->current_period_starts_at?->format('M j, Y') ?? 'Not set' }} → {{ $subscription->current_period_ends_at?->format('M j, Y') ?? 'Not set' }}
+                                                        @else
+                                                            <span class="subtle">Not set</span>
+                                                        @endif
+                                                    </td>
+                                                    <td>{!! $statusPill($subscription->status->label(), $statusTone($subscription->status->value)) !!}</td>
+                                                    @if ($isPlatformAdmin)
+                                                        <td><div class="table-actions"><button class="btn secondary" type="button" data-dialog-open="subscription-edit-{{ $subscription->id }}">Edit</button></div></td>
                                                     @endif
-                                                    @if ($subscription->trial_ends_at && $subscription->cancelled_at)
-                                                        ·
-                                                    @endif
-                                                    @if ($subscription->cancelled_at)
-                                                        Cancelled {{ $subscription->cancelled_at->format('M j, Y') }}
-                                                    @endif
-                                                </div>
-                                            @endif
-                                        </div>
-                                        <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
-                                            <span class="badge neutral">{{ $subscription->status->label() }}</span>
-                                            @if ($isPlatformAdmin)
-                                                <button class="btn secondary" type="button" data-dialog-open="subscription-edit-{{ $subscription->id }}">Edit</button>
-                                            @endif
-                                        </div>
-                                    </div>
-                                @empty
-                                    <div class="empty">No subscriptions have been added for this organization yet.</div>
-                                @endforelse
-                            </div>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
                         @endif
                     </div>
                 </section>
@@ -349,7 +494,7 @@
                                         <div class="setup-accordion-body">
                                             <div class="check-grid">
                                                 @forelse ($productCategories as $category)
-                                                    <label class="inline-check"><input type="checkbox" name="category_ids[]" value="{{ $category->id }}" @checked($selectedOnlineCategories->contains($category->id))> {{ $category->name }}</label>
+                                                    <label class="check-card"><input type="checkbox" name="category_ids[]" value="{{ $category->id }}" @checked($selectedOnlineCategories->contains($category->id))> <span>{{ $category->name }}</span></label>
                                                 @empty
                                                     <span class="subtle">No product categories yet.</span>
                                                 @endforelse
@@ -409,12 +554,13 @@
 
                                 <div class="setup-section online-store-section-panel" id="online-store-payments" role="tabpanel" data-online-store-section-panel hidden>
                                     <h3 class="setup-section-title">Payment Method</h3>
+                                    <p class="subtle">Choose how customers can pay at checkout on your online store.</p>
                                     <div class="check-list">
                                         @foreach ($onlinePaymentOptions as $value => $label)
                                             @if ($value === 'bank_account')
-                                                <div>
-                                                    <label class="inline-check"><input type="checkbox" name="payment_methods[]" value="{{ $value }}" @checked(in_array($value, $onlinePaymentMethods, true))> {{ $label }}</label>
-                                                    <div class="nested-check-list" data-transfer-bank-selector @if (! in_array('bank_account', $onlinePaymentMethods, true)) hidden @endif>
+                                                <div class="check-card-group">
+                                                    <label class="check-card"><input type="checkbox" name="payment_methods[]" value="{{ $value }}" @checked(in_array($value, $onlinePaymentMethods, true))> <span>{{ $label }}</span></label>
+                                                    <div class="check-reveal" data-transfer-bank-selector @if (! in_array('bank_account', $onlinePaymentMethods, true)) hidden @endif>
                                                         <div class="field">
                                                             <label>Bank account</label>
                                                             @if ($businessBankAccountOptions->isNotEmpty())
@@ -437,15 +583,17 @@
                                                     </div>
                                                 </div>
                                             @else
-                                                <label class="inline-check"><input type="checkbox" name="payment_methods[]" value="{{ $value }}" @checked(in_array($value, $onlinePaymentMethods, true))> {{ $label }}</label>
+                                                <label class="check-card"><input type="checkbox" name="payment_methods[]" value="{{ $value }}" @checked(in_array($value, $onlinePaymentMethods, true))> <span>{{ $label }}</span></label>
                                             @endif
                                         @endforeach
-                                        <div>
-                                            <label class="inline-check"><input type="checkbox" data-paystack-toggle @checked($onlinePaystackMethod !== 'none')> Paystack</label>
-                                            <div class="nested-check-list" data-paystack-options @if ($onlinePaystackMethod === 'none') hidden @endif>
+                                        <div class="check-card-group">
+                                            <label class="check-card"><input type="checkbox" data-paystack-toggle @checked($onlinePaystackMethod !== 'none')> <span>Paystack</span></label>
+                                            <div class="check-reveal" data-paystack-options @if ($onlinePaystackMethod === 'none') hidden @endif>
                                                 <input type="hidden" name="paystack_method" value="none" data-paystack-method-fallback @disabled($onlinePaystackMethod !== 'none')>
-                                                <label class="inline-check"><input type="radio" name="paystack_method" value="storeboot_paystack" @checked($onlinePaystackMethod === 'storeboot_paystack') @disabled($onlinePaystackMethod === 'none') data-paystack-method-option> Storeboot Paystack</label>
-                                                <label class="inline-check"><input type="radio" name="paystack_method" value="self_hosted_paystack" @checked($onlinePaystackMethod === 'self_hosted_paystack') @disabled($onlinePaystackMethod === 'none') data-paystack-method-option> Self Hosted Paystack</label>
+                                                <div class="radio-cards">
+                                                    <label class="check-card"><input type="radio" name="paystack_method" value="storeboot_paystack" @checked($onlinePaystackMethod === 'storeboot_paystack') @disabled($onlinePaystackMethod === 'none') data-paystack-method-option> <span>Storeboot Paystack</span></label>
+                                                    <label class="check-card"><input type="radio" name="paystack_method" value="self_hosted_paystack" @checked($onlinePaystackMethod === 'self_hosted_paystack') @disabled($onlinePaystackMethod === 'none') data-paystack-method-option> <span>Self Hosted Paystack</span></label>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -616,27 +764,30 @@
                         @if (! $tenant)
                             <div class="empty">Save the business profile first, then add branches.</div>
                         @else
-                            <div class="list">
-                                @forelse ($branches as $branch)
-                                    <div class="item">
-                                        <div>
-                                            <div class="item-title">{{ $branch->name }}</div>
-                                            <div class="subtle">{{ $branch->code }} · {{ $branch->status }} · {{ $branch->currency_code ?: $tenant->currency_code }}</div>
-                                            @if (collect($branch->settings['delivery_methods'] ?? [])->isNotEmpty())
-                                                <div class="subtle">Delivery: {{ collect($branch->settings['delivery_methods'])->pluck('name')->join(', ') }}</div>
-                                            @endif
-                                        </div>
-                                        <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
-                                            @if ($branch->is_primary)
-                                                <span class="badge">Primary</span>
-                                            @endif
-                                            <button class="btn secondary" type="button" data-dialog-open="branch-edit-{{ $branch->id }}">Edit</button>
-                                        </div>
-                                    </div>
-                                @empty
-                                    <div class="empty">No branches yet. Add the first store or operating location.</div>
-                                @endforelse
-                            </div>
+                            @if ($branches->isEmpty())
+                                <div class="empty">No branches yet. Add the first store or operating location.</div>
+                            @else
+                                <div class="table-scroll">
+                                    <table class="table">
+                                        <thead><tr><th>Branch</th><th>Currency</th><th>Status</th><th></th></tr></thead>
+                                        <tbody>
+                                            @foreach ($branches as $branch)
+                                                <tr>
+                                                    <td>
+                                                        <div class="cell-title">{{ $branch->name }} @if ($branch->is_primary)<span class="status-pill status-pill--success" style="margin-left:6px;"><span class="dot"></span>Primary</span>@endif</div>
+                                                        <div class="cell-sub">
+                                                            {{ $branch->code }}@if (collect($branch->settings['delivery_methods'] ?? [])->isNotEmpty()) · Delivery: {{ collect($branch->settings['delivery_methods'])->pluck('name')->join(', ') }}@endif
+                                                        </div>
+                                                    </td>
+                                                    <td>{{ $branch->currency_code ?: $tenant->currency_code }}</td>
+                                                    <td>{!! $statusPill(ucfirst($branch->status)) !!}</td>
+                                                    <td><div class="table-actions"><button class="btn secondary" type="button" data-dialog-open="branch-edit-{{ $branch->id }}">Edit</button></div></td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
                         @endif
                     </div>
                 </section>
@@ -655,19 +806,27 @@
                         @if (! $tenant)
                             <div class="empty">Save the business profile first, then add departments.</div>
                         @else
-                            <div class="list">
-                                @forelse ($departments as $department)
-                                    <div class="item">
-                                        <div>
-                                            <div class="item-title">{{ $department->name }}</div>
-                                            <div class="subtle">{{ $department->code }} @if ($department->branch) · {{ $department->branch->name }} @else · All branches @endif</div>
-                                        </div>
-                                        <span class="badge neutral">{{ $department->status }}</span>
-                                    </div>
-                                @empty
-                                    <div class="empty">No departments yet.</div>
-                                @endforelse
-                            </div>
+                            @if ($departments->isEmpty())
+                                <div class="empty">No departments yet.</div>
+                            @else
+                                <div class="table-scroll">
+                                    <table class="table">
+                                        <thead><tr><th>Department</th><th>Branch</th><th>Status</th></tr></thead>
+                                        <tbody>
+                                            @foreach ($departments as $department)
+                                                <tr>
+                                                    <td>
+                                                        <div class="cell-title">{{ $department->name }}</div>
+                                                        <div class="cell-sub">{{ $department->code }}</div>
+                                                    </td>
+                                                    <td>{{ $department->branch?->name ?? 'All branches' }}</td>
+                                                    <td>{!! $statusPill(ucfirst($department->status)) !!}</td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
                         @endif
                     </div>
                 </section>
@@ -686,19 +845,24 @@
                         @if (! $tenant)
                             <div class="empty">Default roles are created after business registration.</div>
                         @else
-                            <div class="list">
-                                @forelse ($roles as $role)
-                                    <div class="item">
-                                        <div>
-                                            <div class="item-title">{{ $role->name }}</div>
-                                            <div class="subtle">{{ $role->slug }}</div>
-                                        </div>
-                                        <span class="badge {{ $role->is_system ? '' : 'neutral' }}">{{ $role->is_system ? 'System' : 'Custom' }}</span>
-                                    </div>
-                                @empty
-                                    <div class="empty">No roles yet.</div>
-                                @endforelse
-                            </div>
+                            @if ($roles->isEmpty())
+                                <div class="empty">No roles yet.</div>
+                            @else
+                                <div class="table-scroll">
+                                    <table class="table">
+                                        <thead><tr><th>Role</th><th>Slug</th><th>Type</th></tr></thead>
+                                        <tbody>
+                                            @foreach ($roles as $role)
+                                                <tr>
+                                                    <td><div class="cell-title">{{ $role->name }}</div></td>
+                                                    <td class="subtle">{{ $role->slug }}</td>
+                                                    <td>{!! $statusPill($role->is_system ? 'System' : 'Custom', $role->is_system ? 'success' : 'neutral') !!}</td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
                         @endif
                     </div>
                 </section>
@@ -717,23 +881,28 @@
                         @if (! $tenant)
                             <div class="empty">Create or select an organization first, then add its users.</div>
                         @else
-                            <div class="list">
-                                @forelse ($memberships as $membership)
-                                    <div class="item">
-                                        <div>
-                                            <div class="item-title">{{ $membership->user->name }}</div>
-                                            <div class="subtle">
-                                                {{ $membership->user->email }}
-                                                @if ($membership->role) · {{ $membership->role->name }} @endif
-                                                @if ($membership->branch) · {{ $membership->branch->name }} @endif
-                                            </div>
-                                        </div>
-                                        <span class="badge neutral">{{ $membership->status->label() }}</span>
-                                    </div>
-                                @empty
-                                    <div class="empty">No users belong to this organization yet.</div>
-                                @endforelse
-                            </div>
+                            @if ($memberships->isEmpty())
+                                <div class="empty">No users belong to this organization yet.</div>
+                            @else
+                                <div class="table-scroll">
+                                    <table class="table">
+                                        <thead><tr><th>User</th><th>Role</th><th>Branch</th><th>Status</th></tr></thead>
+                                        <tbody>
+                                            @foreach ($memberships as $membership)
+                                                <tr>
+                                                    <td>
+                                                        <div class="cell-title">{{ $membership->user->name }}</div>
+                                                        <div class="cell-sub">{{ $membership->user->email }}</div>
+                                                    </td>
+                                                    <td>{{ $membership->role?->name ?? '—' }}</td>
+                                                    <td>{{ $membership->branch?->name ?? 'All branches' }}</td>
+                                                    <td>{!! $statusPill($membership->status->label(), $statusTone($membership->status->value)) !!}</td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
                         @endif
                     </div>
                 </section>
@@ -771,36 +940,55 @@
                         <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" value="{{ old('phone', $tenant?->phone) }}"></div>
                         <div class="field"><label for="email">Email</label><input id="email" name="email" type="email" value="{{ old('email', $tenant?->email) }}"></div>
                         <div class="field"><label for="website">Website</label><input id="website" name="website" type="url" value="{{ old('website', $tenant?->website) }}" placeholder="https://example.com"></div>
-                        <div class="field"><label for="logo">Logo</label><input id="logo" name="logo" type="file" accept="image/*"></div>
+                        @php
+                            $geoCountries = \App\Support\Geo::countries();
+                            $geoCurrencies = \App\Support\Geo::currencies();
+                            $geoTimezones = \App\Support\Geo::timezones();
+                            $selCountry = old('country_code', $tenant?->country_code ?? 'NG');
+                            $selCurrency = old('currency_code', $tenant?->currency_code ?? 'NGN');
+                            $selTimezone = old('timezone', $tenant?->timezone ?? 'Africa/Lagos');
+                            $currentLogo = $publicImageUrl($tenant?->logo_path);
+                        @endphp
+                        <div class="field full">
+                            <label for="logo">Logo</label>
+                            <label class="file-upload" data-file-upload>
+                                <input id="logo" name="logo" type="file" accept="image/*" data-file-input>
+                                <span class="file-upload-preview" data-file-preview>
+                                    @if ($currentLogo)<img src="{{ $currentLogo }}" alt="Current logo">@else<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M12 15V3m0 0-4 4m4-4 4 4"/></svg>@endif
+                                </span>
+                                <span class="file-upload-copy">
+                                    <strong data-file-title>{{ $currentLogo ? 'Replace logo' : 'Upload a logo' }}</strong>
+                                    <span class="subtle" data-file-name>Click to browse — PNG or JPG, up to 2MB</span>
+                                </span>
+                            </label>
+                        </div>
                         <div class="field full"><label for="address">Business address</label><textarea id="address" name="address">{{ old('address', $tenant?->address) }}</textarea></div>
-                        <div class="field"><label for="country_code">Country</label><input id="country_code" name="country_code" maxlength="2" value="{{ old('country_code', $tenant?->country_code ?? 'NG') }}" required></div>
-                        <div class="field"><label for="timezone">Timezone</label><input id="timezone" name="timezone" value="{{ old('timezone', $tenant?->timezone ?? 'Africa/Lagos') }}" required></div>
-                        <div class="field"><label for="currency_code">Currency</label><input id="currency_code" name="currency_code" maxlength="3" value="{{ old('currency_code', $tenant?->currency_code ?? 'NGN') }}" required></div>
+                        <div class="field">
+                            <label for="country_code">Country</label>
+                            <select id="country_code" name="country_code" required data-geo-country>
+                                @foreach ($geoCountries as $c)
+                                    <option value="{{ $c['code'] }}" data-currency="{{ $c['currency'] }}" data-timezone="{{ $c['timezone'] }}" @selected($selCountry === $c['code'])>{{ $c['name'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="currency_code">Currency</label>
+                            <select id="currency_code" name="currency_code" required data-geo-currency>
+                                @foreach ($geoCurrencies as $code => $label)
+                                    <option value="{{ $code }}" @selected($selCurrency === $code)>{{ $code }} — {{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="timezone">Timezone</label>
+                            <select id="timezone" name="timezone" required data-geo-timezone>
+                                @foreach ($geoTimezones as $tz)
+                                    <option value="{{ $tz }}" @selected($selTimezone === $tz)>{{ str_replace('_', ' ', $tz) }}</option>
+                                @endforeach
+                            </select>
+                        </div>
                         <div class="field"><label for="tax_identifier">Tax identifier</label><input id="tax_identifier" name="tax_identifier" value="{{ old('tax_identifier', $tenant?->tax_identifier) }}"></div>
                         <div class="field"><label for="default_tax_rate">Default tax rate (%)</label><input id="default_tax_rate" name="default_tax_rate" type="number" step="0.01" min="0" max="100" value="{{ old('default_tax_rate', $tenant?->default_tax_rate ?? 0) }}" required></div>
-                        <div class="field full"><label for="payment_methods">Payment methods</label><input id="payment_methods" name="payment_methods" value="{{ $paymentMethods }}" placeholder="Cash, Bank transfer, POS/Card, Cheque"></div>
-                        <div class="field full">
-                            <label>Bank details</label>
-                            <div data-business-bank-details>
-                                @foreach ($bankDetails as $index => $account)
-                                    <div class="setup-line-card" data-business-bank-detail>
-                                        <div class="setup-line-header"><strong>Bank account</strong><button class="btn danger" type="button" data-remove-business-bank-detail>Remove</button></div>
-                                        <div class="form-grid">
-                                            <div class="field"><label>Bank name</label><input name="bank_details[{{ $index }}][bank_name]" value="{{ $account['bank_name'] ?? '' }}"></div>
-                                            <div class="field"><label>Bank account name</label><input name="bank_details[{{ $index }}][account_name]" value="{{ $account['account_name'] ?? '' }}"></div>
-                                            <div class="field"><label>Bank account number</label><input name="bank_details[{{ $index }}][account_number]" value="{{ $account['account_number'] ?? '' }}"></div>
-                                            <div class="field"><label>Status</label><select name="bank_details[{{ $index }}][status]"><option value="active" @selected(($account['status'] ?? 'active') === 'active')>Active</option><option value="inactive" @selected(($account['status'] ?? 'active') === 'inactive')>Inactive</option></select></div>
-                                            <div class="field">
-                                                <label>Asset account code</label>
-                                                <input type="hidden" name="bank_details[{{ $index }}][asset_account_code]" value="{{ $account['asset_account_code'] ?? '' }}">
-                                                <span class="subtle" data-bank-asset-code>{{ $account['asset_account_code'] ?? 'Created on save' }}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-                            <button class="btn primary" type="button" data-add-business-bank-detail style="margin-top: 10px;">Add bank account</button>
-                        </div>
                         <div class="field full"><label><input type="checkbox" name="maintenance_mode" value="1" @checked($maintenanceMode)> Enable maintenance mode</label></div>
                         <div class="field">
                             <label for="plan_id">Subscription plan</label>
@@ -841,6 +1029,66 @@
         </dialog>
 
         @if ($tenant)
+            <dialog class="dialog" id="payment-account-dialog">
+                <div class="dialog-header"><div><h2 class="panel-title">Add payment account</h2><p class="subtle">Create a real or virtual receiving account for transfer, card, or cheque payments.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
+                <div class="dialog-body">
+                    <form class="mini-form" method="POST" action="{{ route('admin.business.payment-accounts.store') }}">
+                        @csrf
+                        <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                        <div class="form-grid">
+                            <div class="field"><label>Identifier</label><input name="identifier" required placeholder="Moniepoint Ikeja POS 001"></div>
+                            <div class="field"><label>Account name</label><input name="account_name" placeholder="Account holder name"></div>
+                            <div class="field"><label>Bank / provider name</label><input name="provider_name" required placeholder="Moniepoint"></div>
+                            <div class="field"><label>Account / terminal number</label><input name="account_number" placeholder="Account number or terminal ID"></div>
+                            <div class="field"><label>Type</label><select name="account_type" required><option value="normal">Normal</option><option value="virtual">Virtual</option></select></div>
+                            <div class="field"><label>Branch</label><select name="branch_id"><option value="">All branches</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}">{{ $branch->name }}</option>@endforeach</select></div>
+                            <div class="field"><label>Status</label><select name="status"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
+                            <div class="field full">
+                                <label>Payment methods supported</label>
+                                <div class="check-grid">
+                                    @foreach (['Transfer', 'Card', 'Cheque'] as $method)
+                                        <label class="check-card"><input type="checkbox" name="supported_payment_methods[]" value="{{ $method }}" @checked($method === 'Transfer')> <span>{{ strtoupper($method) }}</span></label>
+                                    @endforeach
+                                </div>
+                            </div>
+                        </div>
+                        <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Cancel</button><button class="btn primary" type="submit">Save payment account</button></div>
+                    </form>
+                </div>
+            </dialog>
+
+            @foreach ($paymentAccounts as $account)
+                <dialog class="dialog" id="payment-account-{{ $account->id }}">
+                    <div class="dialog-header"><div><h2 class="panel-title">Edit payment account</h2><p class="subtle">{{ $account->financeAccount?->code }} · {{ $account->financeAccount?->name }}</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
+                    <div class="dialog-body">
+                        <form class="mini-form" method="POST" action="{{ route('admin.business.payment-accounts.update', $account) }}">
+                            @csrf
+                            @method('PUT')
+                            <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                            <div class="form-grid">
+                                <div class="field"><label>Identifier</label><input name="identifier" required value="{{ $account->identifier }}"></div>
+                                <div class="field"><label>Account name</label><input name="account_name" value="{{ $account->account_name }}"></div>
+                                <div class="field"><label>Bank / provider name</label><input name="provider_name" required value="{{ $account->provider_name }}"></div>
+                                <div class="field"><label>Account / terminal number</label><input name="account_number" value="{{ $account->account_number }}"></div>
+                                <div class="field"><label>Type</label><select name="account_type" required><option value="normal" @selected($account->account_type === 'normal')>Normal</option><option value="virtual" @selected($account->account_type === 'virtual')>Virtual</option></select></div>
+                                <div class="field"><label>Branch</label><select name="branch_id"><option value="">All branches</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((int) $account->branch_id === (int) $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
+                                <div class="field"><label>Status</label><select name="status"><option value="active" @selected($account->status === 'active')>Active</option><option value="inactive" @selected($account->status === 'inactive')>Inactive</option></select></div>
+                                <div class="field"><label>Finance account</label><input value="{{ $account->financeAccount?->code ?? 'Created on save' }}" disabled></div>
+                                <div class="field full">
+                                    <label>Payment methods supported</label>
+                                    <div class="check-grid">
+                                        @foreach (['Transfer', 'Card', 'Cheque'] as $method)
+                                            <label class="check-card"><input type="checkbox" name="supported_payment_methods[]" value="{{ $method }}" @checked(collect($account->supported_payment_methods)->contains($method))> <span>{{ strtoupper($method) }}</span></label>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Cancel</button><button class="btn primary" type="submit">Update payment account</button></div>
+                        </form>
+                    </div>
+                </dialog>
+            @endforeach
+
             @if ($isPlatformAdmin)
                 <dialog class="dialog" id="subscription-dialog">
                     <div class="dialog-header"><div><h2 class="panel-title">Add subscription</h2><p class="subtle">Assign a plan and billing period to this organization.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
@@ -1614,6 +1862,36 @@
                     field.value = 'active';
                 });
             });
+        });
+
+        // Business profile: styled logo upload preview + country → currency/timezone cascade.
+        document.addEventListener('change', function (event) {
+            var input = event.target.closest('[data-file-input]');
+            if (input && input.files && input.files[0]) {
+                var wrap = input.closest('[data-file-upload]');
+                var nameEl = wrap.querySelector('[data-file-name]');
+                var titleEl = wrap.querySelector('[data-file-title]');
+                var preview = wrap.querySelector('[data-file-preview]');
+                if (nameEl) nameEl.textContent = input.files[0].name;
+                if (titleEl) titleEl.textContent = 'File selected';
+                if (preview && /^image\//.test(input.files[0].type)) {
+                    var reader = new FileReader();
+                    reader.onload = function (e) { preview.innerHTML = '<img src="' + e.target.result + '" alt="preview">'; };
+                    reader.readAsDataURL(input.files[0]);
+                }
+            }
+
+            var country = event.target.closest('[data-geo-country]');
+            if (country) {
+                var opt = country.options[country.selectedIndex];
+                if (!opt) return;
+                var cur = opt.getAttribute('data-currency');
+                var tz = opt.getAttribute('data-timezone');
+                var currencySel = document.getElementById('currency_code');
+                var tzSel = document.getElementById('timezone');
+                if (cur && currencySel && Array.prototype.some.call(currencySel.options, function (o) { return o.value === cur; })) currencySel.value = cur;
+                if (tz && tzSel && Array.prototype.some.call(tzSel.options, function (o) { return o.value === tz; })) tzSel.value = tz;
+            }
         });
         </script>
     @endif

@@ -38,18 +38,24 @@ final class SaveBusinessProfileAction
                 $logoPath = $data['logo']->store("tenants/{$tenant->id}/business/logos", 'public');
             }
 
-            $bankDetails = $this->normalizeBankDetails($data['bank_details'] ?? []);
-
             $settings = array_merge($tenant->settings ?? [], [
                 'brand_color' => $data['brand_color'] ?? null,
-                'payment_methods' => $this->normalizePaymentMethods($data['payment_methods'] ?? null),
-                'bank_details' => $bankDetails,
                 'maintenance_mode' => (bool) ($data['maintenance_mode'] ?? false),
             ]);
             unset($settings['seo']);
 
             if (array_key_exists('use_estimated_cost_for_cogs', $data)) {
                 $settings['use_estimated_cost_for_cogs'] = (bool) $data['use_estimated_cost_for_cogs'];
+            }
+
+            if (array_key_exists('payment_methods', $data)) {
+                $settings['payment_methods'] = $this->normalizePaymentMethods(is_string($data['payment_methods']) ? $data['payment_methods'] : null);
+            }
+
+            $bankDetails = null;
+            if (array_key_exists('bank_details', $data)) {
+                $bankDetails = $this->normalizeBankDetails($data['bank_details'] ?? []);
+                $settings['bank_details'] = $bankDetails;
             }
 
             $tenant->fill([
@@ -73,11 +79,13 @@ final class SaveBusinessProfileAction
 
             $tenant->save();
 
-            $bankDetails = $this->ensureBankDetailAssetAccounts($tenant, $bankDetails);
-            $tenant->settings = array_merge($tenant->settings ?? [], [
-                'bank_details' => $bankDetails,
-            ]);
-            $tenant->save();
+            if (is_array($bankDetails)) {
+                $bankDetails = $this->ensureBankDetailAssetAccounts($tenant, $bankDetails);
+                $tenant->settings = array_merge($tenant->settings ?? [], [
+                    'bank_details' => $bankDetails,
+                ]);
+                $tenant->save();
+            }
 
             if (! $tenant->roles()->exists()) {
                 $this->createDefaultRoles($tenant);

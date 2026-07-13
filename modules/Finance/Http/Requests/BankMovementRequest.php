@@ -7,6 +7,7 @@ namespace Modules\Finance\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
+use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Finance\Models\FinanceJournalLine;
 
@@ -63,8 +64,15 @@ final class BankMovementRequest extends FormRequest
                 $validator->errors()->add('source_account_code', 'The selected source account does not match the banking action.');
             }
 
-            if (! str_starts_with((string) $this->input('destination_account_code'), 'BANK-')) {
-                $validator->errors()->add('destination_account_code', 'Select an actual business bank account.');
+            $destinationCode = (string) $this->input('destination_account_code');
+            $isConfiguredPaymentAccount = BusinessPaymentAccount::query()
+                ->where('tenant_id', $this->string('tenant_id')->toString())
+                ->where('status', 'active')
+                ->whereHas('financeAccount', fn ($query) => $query->where('code', $destinationCode))
+                ->exists();
+
+            if (! str_starts_with($destinationCode, 'BANK-') && ! $isConfiguredPaymentAccount) {
+                $validator->errors()->add('destination_account_code', 'Select an active business payment or bank account.');
             }
 
             $grossMinor = (int) round(((float) $this->input('gross_amount', 0)) * 100);

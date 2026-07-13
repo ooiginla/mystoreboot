@@ -35,7 +35,7 @@
         var discount = { type: 'amount', value: 0 };
         var delivery = { method: '', shipping: 0, status: 'delivered', address: '' };
         var note = '';
-        var pay = { received: 0, method: (function () { var m = $('[data-pay-method]'); return m ? m.dataset.payMethod : 'Cash'; })(), credit: false };
+        var pay = { received: 0, method: '', accountId: '', credit: false };
         var pins = loadPins();
 
         function loadPins() { try { return new Set(JSON.parse(localStorage.getItem(PIN_KEY) || '[]')); } catch (e) { return new Set(); } }
@@ -48,6 +48,30 @@
             t.textContent = msg; t.classList.add('show');
             clearTimeout(t._t); t._t = setTimeout(function () { t.classList.remove('show'); }, 2200);
         }
+
+        on('[data-rpos-menu-toggle]', function () {
+            document.body.classList.toggle('rpos-menu-open');
+        });
+        document.addEventListener('click', function (e) {
+            if (!document.body.classList.contains('rpos-menu-open')) return;
+            if (e.target.closest('.sidebar') || e.target.closest('[data-rpos-menu-toggle]')) return;
+            document.body.classList.remove('rpos-menu-open');
+        });
+        $$('.sidebar a').forEach(function (link) {
+            link.addEventListener('click', function () { document.body.classList.remove('rpos-menu-open'); });
+        });
+
+        // ---- Mobile cart drawer ----
+        function openCartDrawer() { document.body.classList.add('rpos-cart-open'); }
+        function closeCartDrawer() { document.body.classList.remove('rpos-cart-open'); }
+        on('[data-cart-open]', openCartDrawer);
+        on('[data-cart-close]', closeCartDrawer);
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeCartDrawer(); });
+        document.addEventListener('click', function (e) {
+            if (!document.body.classList.contains('rpos-cart-open')) return;
+            if (e.target.closest('.rpos-cart') || e.target.closest('[data-cart-open]')) return;
+            closeCartDrawer();
+        });
 
         // ================= CART =================
         function findCoupon(code) {
@@ -94,6 +118,14 @@
             toggleLine('[data-shipping-line]', t.shipping > 0, '[data-sum-shipping]', fmt(t.shipping));
             var tag = $('[data-coupon-tag]'); if (tag) tag.textContent = t.couponValid ? '(' + coupon.toUpperCase() + ')' : '';
             var payBtn = $('[data-open-pay]'); if (payBtn) payBtn.disabled = cart.length === 0;
+
+            // Mobile cart bar sync
+            var qtyCount = cart.reduce(function (n, i) { return n + i.qty; }, 0);
+            var cbCount = $('[data-cartbar-count]'); if (cbCount) cbCount.textContent = qtyCount;
+            var cbItems = $('[data-cartbar-items]'); if (cbItems) cbItems.textContent = qtyCount + (qtyCount === 1 ? ' item' : ' items');
+            var cbTotal = $('[data-cartbar-total]'); if (cbTotal) cbTotal.textContent = fmt(t.total);
+            var bar = $('[data-cart-open]'); if (bar) bar.classList.toggle('is-empty', cart.length === 0);
+            if (!cart.length) document.body.classList.remove('rpos-cart-open');
         }
         function toggleLine(sel, show, valSel, val) {
             var line = $(sel); if (!line) return; line.hidden = !show;
@@ -217,12 +249,15 @@
         on('[data-open-pay]', function () { if (!cart.length) return; openPay(); });
         function openPay() {
             var t = totals();
-            pay.received = 0; pay.credit = false;
+            pay.received = 0; pay.credit = false; pay.method = ''; pay.accountId = '';
+            $$('[data-pay-method]').forEach(function (x) { x.classList.remove('active'); });
+            $$('[data-payment-account]').forEach(function (x) { x.classList.remove('active'); });
             $('[data-pay-credit]').checked = false;
             $('[data-pay-total]').textContent = fmt(t.total);
             $('[data-pay-received]').value = '0.00';
             var err = $('[data-pay-error]'); if (err) err.hidden = true;
             buildQuickCash(t.total);
+            syncPaymentAccounts();
             syncChange();
             var d = document.getElementById('rpos-pay-dialog'); if (d) d.showModal();
         }
@@ -260,14 +295,45 @@
             $('[data-pay-received]').addEventListener('blur', function () { this.value = commafy(this.value); });
         }
         $('[data-pay-credit]') && $('[data-pay-credit]').addEventListener('change', function () { pay.credit = this.checked; syncChange(); });
-        $$('[data-pay-method]').forEach(function (b) { b.addEventListener('click', function () { $$('[data-pay-method]').forEach(function (x) { x.classList.remove('active'); }); b.classList.add('active'); pay.method = b.dataset.payMethod; }); });
+        $$('[data-pay-method]').forEach(function (b) { b.addEventListener('click', function () { $$('[data-pay-method]').forEach(function (x) { x.classList.remove('active'); }); b.classList.add('active'); pay.method = b.dataset.payMethod; pay.accountId = ''; syncPaymentAccounts(); }); });
+        $$('[data-payment-account]').forEach(function (b) { b.addEventListener('click', function () { $$('[data-payment-account]').forEach(function (x) { x.classList.remove('active'); }); b.classList.add('active'); pay.accountId = b.dataset.accountId || ''; }); });
+        function canonicalMethod(method) {
+            method = String(method || '').toLowerCase();
+            if (method.indexOf('card') !== -1 || method.indexOf('pos') !== -1) return 'card';
+            if (method.indexOf('cheque') !== -1 || method.indexOf('check') !== -1) return 'cheque';
+            if (method.indexOf('transfer') !== -1 || method.indexOf('bank') !== -1) return 'transfer';
+            return 'cash';
+        }
+        function syncPaymentAccounts() {
+            var wrap = $('[data-payment-account-wrap]');
+            if (!wrap) return;
+            var method = canonicalMethod(pay.method);
+            var needsAccount = method !== 'cash';
+            wrap.hidden = !needsAccount;
+            var shown = [];
+            $$('[data-payment-account]').forEach(function (b) {
+                var match = canonicalMethod(b.dataset.accountMethod) === method;
+                b.hidden = !match;
+                b.classList.remove('active');
+                if (match) shown.push(b);
+            });
+            var empty = $('[data-payment-account-empty]');
+            if (empty) empty.hidden = !needsAccount || shown.length > 0;
+            if (needsAccount && shown.length === 1) {
+                shown[0].classList.add('active');
+                pay.accountId = shown[0].dataset.accountId || '';
+            } else if (!needsAccount) {
+                pay.accountId = '';
+            }
+        }
         $$('[data-pay-keypad] [data-key]').forEach(function (b) {
             b.addEventListener('click', function () {
                 var input = $('[data-pay-received]'); var k = b.dataset.key; var v = input.value.replace(/,/g, '');
+                var isZeroValue = clean(v) === 0 && v.indexOf('.') !== -1;
                 if (k === 'clear') v = '';
                 else if (k === 'back') v = v.slice(0, -1);
                 else if (k === '.') { if (v.indexOf('.') === -1) v = (v || '0') + '.'; }
-                else v = (v === '0' ? '' : v) + k;
+                else v = (v === '0' || isZeroValue ? '' : v) + k;
                 input.value = commafy(v); syncChange();
             });
         });
@@ -280,16 +346,22 @@
             if (!cart.length) return;
             var t = totals();
             var received = clean($('[data-pay-received]').value);
+            if (received > 0.001 && !pay.method) { payError('Select a payment method for the amount received.'); return; }
             if (!pay.credit && received < t.total - 0.001) {
                 var status = $('[data-pay-status]'); if (status) { status.classList.remove('over', 'exact'); status.classList.add('short'); }
                 payError('Short by ' + fmt(t.total - received) + '. Collect the full amount, or switch on "Credit sale (pay later)".');
                 return;
             }
             if (pay.credit && (customer.id === WALKIN.id)) { payError('Select or create a customer before booking a credit sale.'); return; }
+            if (canonicalMethod(pay.method) !== 'cash' && $('[data-payment-account]:not([hidden])') && !pay.accountId) {
+                payError('Select the receiving account for this ' + String(pay.method || 'payment').toUpperCase() + ' payment.');
+                return;
+            }
 
             var f = $('[data-pos-form]');
             $('[data-f-customer]', f).value = customer.id;
             $('[data-f-method]', f).value = pay.method || 'Cash';
+            $('[data-f-payment-account]', f).value = pay.accountId || '';
             $('[data-f-paid]', f).value = received;
             $('[data-f-coupon]', f).value = t.couponValid ? coupon : '';
             $('[data-f-disc-type]', f).value = discount.type;

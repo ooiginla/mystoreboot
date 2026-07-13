@@ -111,10 +111,23 @@
                 <div>
                     <label style="display:block; margin-bottom:6px; font-weight:600;">Payment method</label>
                     <div class="pay-methods" data-pay-methods>
-                        @foreach ($paymentMethods as $i => $method)
-                            <button class="pay-method {{ $i === 0 ? 'active' : '' }}" type="button" data-pay-method="{{ $method }}">{{ $method }}</button>
+                        @foreach ($paymentMethods as $method)
+                            <button class="pay-method" type="button" data-pay-method="{{ $method }}">{{ strtoupper($method) }}</button>
                         @endforeach
                     </div>
+                </div>
+                <div data-payment-account-wrap hidden>
+                    <label style="display:block; margin-bottom:6px; font-weight:600;">Receiving account</label>
+                    <div class="pay-methods" data-payment-accounts>
+                        @foreach ($paymentAccounts as $account)
+                            @foreach ((array) $account->supported_payment_methods as $method)
+                                <button class="pay-method" type="button" data-payment-account data-account-method="{{ $method }}" data-account-id="{{ $account->id }}">
+                                    {{ $account->identifier }}
+                                </button>
+                            @endforeach
+                        @endforeach
+                    </div>
+                    <p class="subtle" data-payment-account-empty hidden>No active receiving account supports this payment method for this branch.</p>
                 </div>
                 <div class="rpos-keypad" data-pay-keypad>
                     @foreach (['1','2','3','4','5','6','7','8','9'] as $k)<button type="button" data-key="{{ $k }}">{{ $k }}</button>@endforeach

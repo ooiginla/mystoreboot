@@ -16,6 +16,7 @@ use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
+use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Customers\Models\Customer;
@@ -110,6 +111,7 @@ final class SalesController extends Controller
             'coupons' => $coupons,
             'orderSearch' => $orderSearch,
             'paymentMethods' => $tenant->settings['payment_methods'] ?? ['Cash', 'Bank transfer', 'POS/Card', 'Cheque'],
+            'paymentAccounts' => $this->paymentAccountsFor($tenant->id, $activeTill?->branch_id),
             'deliveryMethods' => $branches->flatMap(fn (Branch $branch) => collect($branch->settings['delivery_methods'] ?? []))->where('status', 'active')->values(),
             'discountTypes' => DiscountType::cases(),
             'orderStatuses' => SalesOrderStatus::cases(),
@@ -214,6 +216,7 @@ final class SalesController extends Controller
             'recentOrders' => $recentOrders,
             'sessionOrders' => $sessionOrders,
             'paymentMethods' => $tenant->settings['payment_methods'] ?? ['Cash', 'Bank transfer', 'POS/Card', 'Cheque'],
+            'paymentAccounts' => $this->paymentAccountsFor($tenant->id, $activeTill?->branch_id),
             'deliveryMethods' => $branches->flatMap(fn (Branch $branch) => collect($branch->settings['delivery_methods'] ?? []))->where('status', 'active')->values(),
         ]);
     }
@@ -1123,6 +1126,18 @@ final class SalesController extends Controller
             str_contains($method, 'online'), str_contains($method, 'paystack'), str_contains($method, 'gateway') => '1060',
             default => '1040',
         };
+    }
+
+    private function paymentAccountsFor(string $tenantId, ?int $branchId = null): \Illuminate\Database\Eloquent\Collection
+    {
+        return BusinessPaymentAccount::query()
+            ->with(['branch', 'financeAccount'])
+            ->where('tenant_id', $tenantId)
+            ->where('status', 'active')
+            ->when($branchId !== null, fn ($query) => $query->where(fn ($inner) => $inner->whereNull('branch_id')->orWhere('branch_id', $branchId)))
+            ->orderBy('sort_order')
+            ->orderBy('identifier')
+            ->get();
     }
 
     private function moneyToMinor(mixed $value): int

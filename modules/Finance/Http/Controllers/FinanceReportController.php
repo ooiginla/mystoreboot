@@ -18,6 +18,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
+use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Customers\Models\Customer;
 use Modules\Finance\Actions\EnsureDefaultChartOfAccountsAction;
 use Modules\Finance\Actions\PostJournalEntryAction;
@@ -381,10 +382,14 @@ final class FinanceReportController extends Controller
                 'balance_minor' => $this->accountBalance($tenant->id, $code),
             ];
         });
+        $paymentAccountFinanceIds = BusinessPaymentAccount::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('status', 'active')
+            ->pluck('finance_account_id');
         $bankAccounts = FinanceAccount::query()
             ->where('tenant_id', $tenant->id)
             ->where('type', 'asset')
-            ->where('code', 'like', 'BANK-%')
+            ->where(fn ($query) => $query->where('code', 'like', 'BANK-%')->orWhereIn('id', $paymentAccountFinanceIds))
             ->where('is_active', true)
             ->orderBy('name')
             ->get();
