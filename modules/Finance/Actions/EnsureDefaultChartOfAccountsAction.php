@@ -96,7 +96,7 @@ final class EnsureDefaultChartOfAccountsAction
             'EXP-5000' => $this->account('Cost of Goods Sold', 'expense', 'Direct Costs', 'Cost of inventory sold.', 'debit'),
             'EXP-5100' => $this->account('Outbound Delivery Expense', 'expense', 'Admin & Ops', 'Customer delivery and outbound shipping expenses.', 'debit'),
             'EXP-5200' => $this->account('Taxes and Licenses', 'expense', 'Non-Operating Expenses', 'Business taxes, levies, permits, and licenses that are not recoverable VAT.', 'debit'),
-            'EXP-6000' => $this->account('General Operating Expense', 'expense', 'Admin & Ops', 'General uncategorized operating expenses.', 'debit'),
+            'EXP-6000' => $this->account('General Office & Administrative Expense', 'expense', 'Admin & Ops', 'General office, administrative, and uncategorized operating expenses.', 'debit'),
             'EXP-6030' => $this->account('Salaries and Wages Expense', 'expense', 'Compensation & Labour', 'Payroll expense for employees.', 'debit'),
             'EXP-6040' => $this->account('Marketing Expense', 'expense', 'Sales & Marketing', 'Marketing and promotional expenses.', 'debit'),
             'EXP-6050' => $this->account('Inventory Shrinkage and Write-Offs', 'expense', 'Direct Costs', 'Inventory losses, damage, shrinkage, and write-offs.', 'debit'),
@@ -115,16 +115,16 @@ final class EnsureDefaultChartOfAccountsAction
             'EXP-6230' => $this->account('IT and Software Subscription', 'expense', 'Admin & Ops', 'Cloud tools, CRM, and accounting platforms.', 'debit'),
             'EXP-6240' => $this->account('Office Supplies', 'expense', 'Admin & Ops', 'Paper, pens, ink, and stationery.', 'debit'),
             'EXP-6250' => $this->account('Insurance', 'expense', 'Admin & Ops', 'General liability, professional, and property policies.', 'debit'),
-            'EXP-6260' => $this->account('Office Expense / General Admin', 'expense', 'Admin & Ops', 'General uncategorized items.', 'debit'),
             'EXP-6270' => $this->account('Advertising', 'expense', 'Sales & Marketing', 'Paid digital ads, print, and billboards.', 'debit'),
             'EXP-6280' => $this->account('Marketing campaigns', 'expense', 'Sales & Marketing', 'Event sponsorships and promotional materials.', 'debit'),
             'EXP-6290' => $this->account('Sales commissions', 'expense', 'Sales & Marketing', 'Performance bonuses paid to sales staff.', 'debit'),
-            'EXP-6300' => $this->account('Travel and entertainment', 'expense', 'Sales & Marketing', 'Client dinners, flights, and lodging.', 'debit'),
+            'EXP-6300' => $this->account('Travelling & Transportation', 'expense', 'Travel & Logistics', 'Business transport, local travel, flights, lodging, and related travel costs.', 'debit'),
             'EXP-6310' => $this->account('Loan Interest', 'expense', 'Non-Operating Expenses', 'Fees paid on business loans.', 'debit'),
             'EXP-6320' => $this->account('Amortization', 'expense', 'Non-Operating Expenses', 'Expensing intangible assets over time.', 'debit'),
             'EXP-6330' => $this->account('Depreciation', 'expense', 'Non-Operating Expenses', 'Spreading asset costs over useful lifespans.', 'debit'),
             'EXP-6340' => $this->account('Income Tax Expense', 'expense', 'Non-Operating Expenses', 'Income tax expense on business profit.', 'debit'),
             'EXP-6350' => $this->account('Bank, POS and Gateway Charges', 'expense', 'Non-Operating Expenses', 'Bank transfer, POS card, and online payment settlement charges.', 'debit'),
+            'EXP-6360' => $this->account('Meals & Entertainment', 'expense', 'Meals & Entertainment', 'Business meals, client entertainment, refreshments, and hospitality costs.', 'debit'),
         ];
     }
 
@@ -156,6 +156,8 @@ final class EnsureDefaultChartOfAccountsAction
             'Inventory Adjustments' => 'EXP-6050',
             'Freight and Delivery' => 'EXP-5100',
             'Taxes and Licenses' => 'EXP-5200',
+            'Travelling & Transportation' => 'EXP-6300',
+            'Meals & Entertainment' => 'EXP-6360',
         ];
     }
 }

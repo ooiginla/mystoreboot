@@ -5,11 +5,16 @@ namespace Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Business\Models\Branch;
+use Modules\Catalog\Models\Product;
+use Modules\Catalog\Models\ProductVariant;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Finance\Models\FinanceBankMovement;
 use Modules\Finance\Models\FinanceExpense;
 use Modules\Finance\Models\FinanceExpenseCategory;
 use Modules\Finance\Models\FinanceJournalEntry;
+use Modules\Finance\Models\FinanceJournalLine;
+use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderItem;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 use Tests\TestCase;
@@ -44,7 +49,335 @@ class FinanceReportTest extends TestCase
             ->assertSee('Report')
             ->assertSee('Financial Reports')
             ->assertSee('Balance Sheet')
-            ->assertSee('Accounts receivable');
+            ->assertSee('Sales Report')
+            ->assertDontSee('Revenue report')
+            ->assertDontSee('Cash Flow statement')
+            ->assertDontSee('Branch profitability report')
+            ->assertSee('target="_blank"', false)
+            ->assertSee('Reports open in a new tab with export and print actions.');
+
+        $branch = Branch::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Main Branch',
+            'code' => 'MAIN',
+            'status' => 'active',
+            'is_primary' => true,
+        ]);
+        $orderWithReferences = SalesOrder::query()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'order_number' => 'SO-SALES-001',
+            'invoice_number' => 'INV-SALES-001',
+            'receipt_number' => 'RCT-SALES-001',
+            'order_status' => 'completed',
+            'payment_status' => 'paid',
+            'order_date' => '2026-06-02',
+            'subtotal_minor' => 100000,
+            'tax_minor' => 5000,
+            'shipping_minor' => 0,
+            'coupon_discount_minor' => 10000,
+            'admin_discount_minor' => 0,
+            'total_minor' => 95000,
+            'paid_minor' => 95000,
+            'refunded_minor' => 0,
+            'payment_method' => 'POS',
+        ]);
+        $invoiceOnlyOrder = SalesOrder::query()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'order_number' => '',
+            'invoice_number' => 'INV-ONLY-002',
+            'receipt_number' => 'RCT-SALES-002',
+            'order_status' => 'completed',
+            'payment_status' => 'partially_paid',
+            'order_date' => '2026-06-03',
+            'subtotal_minor' => 20000,
+            'tax_minor' => 0,
+            'shipping_minor' => 0,
+            'coupon_discount_minor' => 0,
+            'admin_discount_minor' => 0,
+            'total_minor' => 20000,
+            'paid_minor' => 5000,
+            'refunded_minor' => 0,
+            'payment_method' => 'Cash',
+        ]);
+        $product = Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Premium Rice 10kg',
+            'slug' => 'premium-rice-10kg',
+            'base_price_minor' => 10000,
+            'base_cost_price_minor' => 6000,
+            'has_variants' => true,
+        ]);
+        $variant = ProductVariant::query()->create([
+            'tenant_id' => $tenant->id,
+            'product_id' => $product->id,
+            'variant_name' => 'Default',
+            'sku' => 'RICE-10KG',
+            'selling_price_minor' => 10000,
+            'cost_price_minor' => 6000,
+        ]);
+        SalesOrderItem::query()->create([
+            'tenant_id' => $tenant->id,
+            'sales_order_id' => $orderWithReferences->id,
+            'product_variant_id' => $variant->id,
+            'item_name' => 'Premium Rice 10kg',
+            'sku' => 'RICE-10KG',
+            'quantity' => 5,
+            'quantity_returned' => 1,
+            'unit_price_minor' => 10000,
+            'unit_cost_minor' => 6000,
+            'tax_minor' => 0,
+            'line_total_minor' => 50000,
+        ]);
+        SalesOrderItem::query()->create([
+            'tenant_id' => $tenant->id,
+            'sales_order_id' => $invoiceOnlyOrder->id,
+            'product_variant_id' => $variant->id,
+            'item_name' => 'Premium Rice 10kg',
+            'sku' => 'RICE-10KG',
+            'quantity' => 2,
+            'quantity_returned' => 0,
+            'unit_price_minor' => 10000,
+            'unit_cost_minor' => 6000,
+            'tax_minor' => 0,
+            'line_total_minor' => 20000,
+        ]);
+        $accounts = FinanceAccount::query()
+            ->where('tenant_id', $tenant->id)
+            ->whereIn('code', ['1000', '1100', '1200', '4000', 'EXP-5000', 'EXP-6130'])
+            ->get()
+            ->keyBy('code');
+        $journal = FinanceJournalEntry::query()->create([
+            'tenant_id' => $tenant->id,
+            'entry_number' => 'JE-PL-001',
+            'entry_date' => '2026-06-02',
+            'source_type' => 'manual_journal',
+            'source_event' => 'posted',
+            'memo' => 'Profit and loss test activity',
+        ]);
+        foreach ([
+            ['account' => '1100', 'debit_minor' => 100000, 'credit_minor' => 0],
+            ['account' => '4000', 'debit_minor' => 0, 'credit_minor' => 100000],
+            ['account' => 'EXP-5000', 'debit_minor' => 40000, 'credit_minor' => 0],
+            ['account' => '1200', 'debit_minor' => 0, 'credit_minor' => 40000],
+            ['account' => 'EXP-6130', 'debit_minor' => 10000, 'credit_minor' => 0],
+            ['account' => '1000', 'debit_minor' => 0, 'credit_minor' => 10000],
+        ] as $line) {
+            FinanceJournalLine::query()->create([
+                'tenant_id' => $tenant->id,
+                'finance_journal_entry_id' => $journal->id,
+                'finance_account_id' => $accounts[$line['account']]->id,
+                'branch_id' => $branch->id,
+                'debit_minor' => $line['debit_minor'],
+                'credit_minor' => $line['credit_minor'],
+            ]);
+        }
+
+        $this->actingAs($user)
+            ->get(route('admin.finance.reports.show', [
+                'report' => 'profit-loss',
+                'tenant' => $tenant->id,
+                'date_from' => '2026-06-01',
+                'date_to' => '2026-06-08',
+                'branch_id' => $branch->id,
+            ]))
+            ->assertOk()
+            ->assertSee('Income Statement')
+            ->assertSee('Profit and Loss Statement')
+            ->assertSee('Sales Revenue')
+            ->assertSee('Cost of Goods Sold')
+            ->assertSee('Gross Profit')
+            ->assertSee('Net Profit')
+            ->assertSee('NGN 600.00')
+            ->assertSee('NGN 500.00')
+            ->assertSee('Inventory Movement Note')
+            ->assertSee('Download PDF')
+            ->assertSee('Download Excel')
+            ->assertSee('Download Word')
+            ->assertSee('Print');
+
+        $this->actingAs($user)
+            ->get(route('admin.finance.reports.show', [
+                'report' => 'balance-sheet',
+                'tenant' => $tenant->id,
+                'date_to' => '2026-06-08',
+                'branch_id' => $branch->id,
+            ]))
+            ->assertOk()
+            ->assertSee('Balance Sheet')
+            ->assertSee('Balance Sheet As On')
+            ->assertSee('Assets')
+            ->assertSee('Current Assets')
+            ->assertSee('Accounts Receivable')
+            ->assertSee('Liabilities')
+            ->assertSee('Equity')
+            ->assertSee('Current Year Earnings')
+            ->assertSee('Total Liabilities + Equity')
+            ->assertSee('NGN 500.00')
+            ->assertSee('Download PDF')
+            ->assertSee('Download Excel')
+            ->assertSee('Download Word')
+            ->assertSee('Print');
+
+        $this->actingAs($user)
+            ->get(route('admin.finance.reports.download', [
+                'report' => 'balance-sheet',
+                'tenant' => $tenant->id,
+                'date_to' => '2026-06-08',
+                'branch_id' => $branch->id,
+                'format' => 'excel',
+            ]))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/vnd.ms-excel; charset=UTF-8')
+            ->assertSee('Total Liabilities + Equity');
+
+        $this->actingAs($user)
+            ->get(route('admin.finance.reports.show', [
+                'report' => 'sales',
+                'tenant' => $tenant->id,
+                'date_from' => '2026-06-01',
+                'date_to' => '2026-06-08',
+            ]))
+            ->assertOk()
+            ->assertSee('Sales Report')
+            ->assertSee('Sales Details')
+            ->assertSee('Reference')
+            ->assertSee('Payment Method')
+            ->assertSee('Payment Status')
+            ->assertSee('Subtotal')
+            ->assertSee('Discount')
+            ->assertSee('Total Sales')
+            ->assertSee('SO-SALES-001')
+            ->assertDontSee('INV-SALES-001')
+            ->assertSee('INV-ONLY-002')
+            ->assertSee('POS')
+            ->assertSee('₦950.00')
+            ->assertDontSee('NGN 950.00');
+
+        $this->actingAs($user)
+            ->get(route('admin.finance.reports.show', [
+                'report' => 'revenue',
+                'tenant' => $tenant->id,
+                'date_from' => '2026-06-01',
+                'date_to' => '2026-06-08',
+            ]))
+            ->assertOk()
+            ->assertSee('Sales Report')
+            ->assertSee('SO-SALES-001')
+            ->assertDontSee('INV-SALES-001');
+
+        $salesExport = $this->actingAs($user)
+            ->get(route('admin.finance.reports.download', [
+                'report' => 'sales',
+                'tenant' => $tenant->id,
+                'date_from' => '2026-06-01',
+                'date_to' => '2026-06-08',
+                'format' => 'excel',
+            ]));
+
+        $salesExport->assertOk();
+        $salesExport->assertSee('SO-SALES-001');
+        $salesExport->assertDontSee('INV-SALES-001');
+        $salesExport->assertSee('INV-ONLY-002');
+        $salesExport->assertSee('₦950.00');
+
+        $this->actingAs($user)
+            ->get(route('admin.finance.reports.show', [
+                'report' => 'product-profitability',
+                'tenant' => $tenant->id,
+                'date_from' => '2026-06-01',
+                'date_to' => '2026-06-08',
+                'branch_id' => $branch->id,
+            ]))
+            ->assertOk()
+            ->assertSee('Product Profitability Report')
+            ->assertSee('Company / Branch Information')
+            ->assertSee('Product Details')
+            ->assertSee('Premium Rice 10kg')
+            ->assertSee('RICE-10KG')
+            ->assertSee('Qty Sold')
+            ->assertSee('Qty Returned')
+            ->assertSee('Net Qty')
+            ->assertSee('Sales Revenue')
+            ->assertSee('COGS')
+            ->assertSee('Gross Profit')
+            ->assertSee('Gross Margin')
+            ->assertSee('₦600.00')
+            ->assertSee('₦360.00')
+            ->assertSee('₦240.00')
+            ->assertSee('40.00%')
+            ->assertSee('Download PDF')
+            ->assertSee('Download Excel')
+            ->assertSee('Download Word')
+            ->assertSee('Print');
+
+        $this->actingAs($user)
+            ->get(route('admin.finance.reports.download', [
+                'report' => 'product-profitability',
+                'tenant' => $tenant->id,
+                'date_from' => '2026-06-01',
+                'date_to' => '2026-06-08',
+                'branch_id' => $branch->id,
+                'format' => 'excel',
+            ]))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/vnd.ms-excel; charset=UTF-8')
+            ->assertSee('Product Profitability Report')
+            ->assertSee('Premium Rice 10kg')
+            ->assertSee('₦240.00')
+            ->assertSee('40.00%');
+
+        $this->actingAs($user)
+            ->get(route('admin.finance.reports.show', [
+                'report' => 'expense',
+                'tenant' => $tenant->id,
+                'date_from' => '2026-06-01',
+                'date_to' => '2026-06-08',
+            ]))
+            ->assertOk()
+            ->assertSee('Expense Report')
+            ->assertSee('Company / Branch Information')
+            ->assertSee('Download PDF')
+            ->assertSee('Download Excel')
+            ->assertSee('Download Word')
+            ->assertSee('Print')
+            ->assertSee('<th style="width: 10%;">Date</th>', false)
+            ->assertSee('<th style="width: 14%;">Category</th>', false)
+            ->assertSee('<th style="width: 24%;">Description</th>', false)
+            ->assertSee('<th style="width: 15%;">Payee</th>', false)
+            ->assertSee('Amount')
+            ->assertSee('Paid')
+            ->assertSee('Payable')
+            ->assertSee('Status')
+            ->assertSee('Total Expense')
+            ->assertSee('Total Paid')
+            ->assertSee('Total Payable')
+            ->assertDontSee('FinancialAha')
+            ->assertDontSee('Approvals')
+            ->assertDontSee('amount owed to employee');
+
+        $this->actingAs($user)
+            ->get(route('admin.finance.reports.download', [
+                'report' => 'expense',
+                'tenant' => $tenant->id,
+                'date_from' => '2026-06-01',
+                'date_to' => '2026-06-08',
+                'format' => 'excel',
+            ]))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/vnd.ms-excel; charset=UTF-8');
+
+        $this->actingAs($user)
+            ->get(route('admin.finance.reports.download', [
+                'report' => 'expense',
+                'tenant' => $tenant->id,
+                'date_from' => '2026-06-01',
+                'date_to' => '2026-06-08',
+                'format' => 'pdf',
+            ]))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
 
         $this->actingAs($user)
             ->get(route('admin.finance.chart-of-accounts', ['tenant' => $tenant->id]))
@@ -60,6 +393,15 @@ class FinanceReportTest extends TestCase
             ->assertSee('Rent &amp; Lease', false)
             ->assertSee('Facilities &amp; Utility', false)
             ->assertSee('Monthly payments for office space.')
+            ->assertSee('EXP-6000')
+            ->assertSee('General Office &amp; Administrative Expense', false)
+            ->assertSee('EXP-6300')
+            ->assertSee('Travelling &amp; Transportation', false)
+            ->assertSee('EXP-6360')
+            ->assertSee('Meals &amp; Entertainment', false)
+            ->assertDontSee('EXP-6260')
+            ->assertDontSee('Office Expense / General Admin')
+            ->assertDontSee('Travel and entertainment')
             ->assertSee('IT and Software Subscription')
             ->assertSee('Cloud tools, CRM, and accounting platforms.');
 
@@ -468,12 +810,12 @@ class FinanceReportTest extends TestCase
             ->assertDontSee('Annex branch cash');
 
         $this->actingAs($user)
-            ->get(route('admin.finance.index', [
+            ->get(route('admin.finance.journals', [
                 'tenant' => $tenant->id,
-                'date_from' => '2026-07-08',
-                'date_to' => '2026-07-08',
-                'branch_id' => $main->id,
-            ]))
+                'journal_date_from' => '2026-07-08',
+                'journal_date_to' => '2026-07-08',
+                'journal_branch_id' => $main->id,
+            ]).'#reports')
             ->assertOk()
             ->assertSee('Branch ledger snapshot')
             ->assertSee('Main Branch')

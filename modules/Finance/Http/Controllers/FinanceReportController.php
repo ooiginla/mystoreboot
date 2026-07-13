@@ -49,13 +49,9 @@ final class FinanceReportController extends Controller
      */
     private const REPORTS = [
         'profit-loss' => 'Profit and Loss statement',
-        'cash-flow' => 'Cash Flow statement',
-        'revenue' => 'Revenue report',
+        'sales' => 'Sales Report',
         'expense' => 'Expense report',
-        'gross-profit' => 'Gross profit report',
-        'net-profit' => 'Net profit report',
         'balance-sheet' => 'Balance Sheet',
-        'branch-profitability' => 'Branch profitability report',
         'product-profitability' => 'Product profitability report',
     ];
 
@@ -78,6 +74,9 @@ final class FinanceReportController extends Controller
         }
         $selectedBranch = $selectedBranchId !== '' ? $branches->firstWhere('id', (int) $selectedBranchId) : null;
         $selectedReport = $request->string('report')->toString();
+        if ($selectedReport === 'revenue') {
+            $selectedReport = 'sales';
+        }
 
         if (! array_key_exists($selectedReport, self::REPORTS)) {
             $selectedReport = array_key_first(self::REPORTS);
@@ -216,6 +215,112 @@ final class FinanceReportController extends Controller
             'expenseCategories' => $expenseCategories,
             'operationalExpenses' => $operationalExpenses,
             'journalEntries' => $journalEntries,
+        ]);
+    }
+
+    public function showReport(Request $request, string $report): View|RedirectResponse
+    {
+        if ($report === 'revenue') {
+            $report = 'sales';
+        }
+
+        if (! in_array($report, ['expense', 'profit-loss', 'sales', 'balance-sheet', 'product-profitability'], true)) {
+            return redirect()->route('admin.finance.index', [
+                'tenant' => $request->string('tenant')->toString(),
+                'report' => $report,
+                'date_from' => $request->string('date_from')->toString(),
+                'date_to' => $request->string('date_to')->toString(),
+                'branch_id' => $request->string('branch_id')->toString(),
+            ]);
+        }
+
+        if ($report === 'sales') {
+            return view('finance::admin.reports.sales', $this->salesReportData($request));
+        }
+
+        if ($report === 'profit-loss') {
+            return view('finance::admin.reports.profit-loss', $this->profitLossReportData($request));
+        }
+
+        if ($report === 'balance-sheet') {
+            return view('finance::admin.reports.balance-sheet', $this->balanceSheetReportData($request));
+        }
+
+        if ($report === 'product-profitability') {
+            return view('finance::admin.reports.product-profitability', $this->productProfitabilityReportData($request));
+        }
+
+        return view('finance::admin.reports.expense', $this->expenseReportData($request));
+    }
+
+    public function downloadReport(Request $request, string $report): StreamedResponse|\Illuminate\Http\Response|RedirectResponse
+    {
+        if ($report === 'revenue') {
+            $report = 'sales';
+        }
+
+        if (! in_array($report, ['expense', 'profit-loss', 'sales', 'balance-sheet', 'product-profitability'], true)) {
+            return redirect()->route('admin.finance.index', [
+                'tenant' => $request->string('tenant')->toString(),
+                'report' => $report,
+                'date_from' => $request->string('date_from')->toString(),
+                'date_to' => $request->string('date_to')->toString(),
+                'branch_id' => $request->string('branch_id')->toString(),
+            ]);
+        }
+
+        $data = match ($report) {
+            'sales' => $this->salesReportData($request),
+            'profit-loss' => $this->profitLossReportData($request),
+            'balance-sheet' => $this->balanceSheetReportData($request),
+            'product-profitability' => $this->productProfitabilityReportData($request),
+            default => $this->expenseReportData($request),
+        };
+        $format = $request->string('format')->toString();
+        $filenameDateFrom = $data['dateFrom'] ?? $data['dateTo'];
+        $filename = $report.'-report-'.$data['tenant']->slug.'-'.$filenameDateFrom->format('Ymd').'-'.$data['dateTo']->format('Ymd');
+
+        if ($format === 'pdf') {
+            $pdf = match ($report) {
+                'sales' => $this->salesReportPdf($data),
+                'profit-loss' => $this->profitLossReportPdf($data),
+                'balance-sheet' => $this->balanceSheetReportPdf($data),
+                'product-profitability' => $this->productProfitabilityReportPdf($data),
+                default => $this->expenseReportPdf($data),
+            };
+
+            return response($pdf, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="'.$filename.'.pdf"',
+            ]);
+        }
+
+        if ($format === 'word') {
+            $html = match ($report) {
+                'sales' => $this->salesReportExportHtml($data),
+                'profit-loss' => $this->profitLossReportExportHtml($data),
+                'balance-sheet' => $this->balanceSheetReportExportHtml($data),
+                'product-profitability' => $this->productProfitabilityReportExportHtml($data),
+                default => $this->expenseReportExportHtml($data),
+            };
+
+            return response($html, 200, [
+                'Content-Type' => 'application/msword; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="'.$filename.'.doc"',
+            ]);
+        }
+
+        $html = match ($report) {
+            'sales' => $this->salesReportExportHtml($data),
+            'profit-loss' => $this->profitLossReportExportHtml($data),
+            'balance-sheet' => $this->balanceSheetReportExportHtml($data),
+            'product-profitability' => $this->productProfitabilityReportExportHtml($data),
+            default => $this->expenseReportExportHtml($data),
+        };
+
+        return response($html, 200, [
+            'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'.xls"',
         ]);
     }
 
@@ -610,6 +715,1106 @@ final class FinanceReportController extends Controller
         return redirect()->to(route('admin.finance.journals', ['tenant' => $movement->tenant_id]).'#banking')->with('status', 'Banking movement posted.');
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    private function profitLossReportData(Request $request): array
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenants = $this->visibleTenantsFor($user);
+        $tenant = $this->resolveTenant($request, $tenants);
+
+        abort_if(! $tenant, 403);
+        app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
+
+        $dateFrom = CarbonImmutable::parse($request->string('date_from')->toString() ?: now()->startOfMonth()->toDateString())->startOfDay();
+        $dateTo = CarbonImmutable::parse($request->string('date_to')->toString() ?: now()->toDateString())->endOfDay();
+        $branches = Branch::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
+        $selectedBranchId = $request->string('branch_id')->toString();
+
+        if ($selectedBranchId !== '') {
+            abort_unless($branches->contains('id', (int) $selectedBranchId), 403);
+        }
+
+        $selectedBranch = $selectedBranchId !== '' ? $branches->firstWhere('id', (int) $selectedBranchId) : null;
+        $rows = $this->profitLossAccountRows($tenant->id, $dateFrom, $dateTo, $selectedBranchId);
+        $operatingRevenue = $rows->filter(fn (array $row): bool => $row['type'] === 'income' && $row['category'] === 'Operating Income')->values();
+        $contraRevenue = $rows->filter(fn (array $row): bool => $row['type'] === 'income' && $row['category'] === 'Contra Income')->values();
+        $otherIncome = $rows->filter(fn (array $row): bool => $row['type'] === 'income' && ! in_array($row['category'], ['Operating Income', 'Contra Income'], true))->values();
+        $directCosts = $rows->filter(fn (array $row): bool => $row['type'] === 'expense' && $row['category'] === 'Direct Costs')->values();
+        $operatingExpenses = $rows->filter(fn (array $row): bool => $row['type'] === 'expense' && ! in_array($row['category'], ['Direct Costs', 'Non-Operating Expenses'], true))->values();
+        $nonOperatingExpenses = $rows->filter(fn (array $row): bool => $row['type'] === 'expense' && $row['category'] === 'Non-Operating Expenses')->values();
+
+        $totalOperatingRevenueMinor = (int) $operatingRevenue->sum('amount_minor');
+        $totalContraRevenueMinor = (int) $contraRevenue->sum('amount_minor');
+        $netRevenueMinor = $totalOperatingRevenueMinor - $totalContraRevenueMinor;
+        $totalDirectCostsMinor = (int) $directCosts->sum('amount_minor');
+        $grossProfitMinor = $netRevenueMinor - $totalDirectCostsMinor;
+        $totalOperatingExpensesMinor = (int) $operatingExpenses->sum('amount_minor');
+        $operatingProfitMinor = $grossProfitMinor - $totalOperatingExpensesMinor;
+        $totalOtherIncomeMinor = (int) $otherIncome->sum('amount_minor');
+        $totalNonOperatingExpensesMinor = (int) $nonOperatingExpenses->sum('amount_minor');
+        $netProfitMinor = $operatingProfitMinor + $totalOtherIncomeMinor - $totalNonOperatingExpensesMinor;
+        $query = [
+            'tenant' => $tenant->id,
+            'date_from' => $dateFrom->toDateString(),
+            'date_to' => $dateTo->toDateString(),
+            'branch_id' => $selectedBranchId,
+        ];
+
+        return [
+            'tenant' => $tenant,
+            'branches' => $branches,
+            'selectedBranch' => $selectedBranch,
+            'selectedBranchId' => $selectedBranchId,
+            'dateFrom' => $dateFrom,
+            'dateTo' => $dateTo,
+            'sections' => [
+                'operatingRevenue' => $operatingRevenue,
+                'contraRevenue' => $contraRevenue,
+                'directCosts' => $directCosts,
+                'operatingExpenses' => $operatingExpenses,
+                'otherIncome' => $otherIncome,
+                'nonOperatingExpenses' => $nonOperatingExpenses,
+            ],
+            'inventoryNote' => $this->profitLossInventoryNote($tenant->id, $dateFrom, $dateTo, $selectedBranchId),
+            'totals' => [
+                'operating_revenue_minor' => $totalOperatingRevenueMinor,
+                'contra_revenue_minor' => $totalContraRevenueMinor,
+                'net_revenue_minor' => $netRevenueMinor,
+                'direct_costs_minor' => $totalDirectCostsMinor,
+                'gross_profit_minor' => $grossProfitMinor,
+                'operating_expenses_minor' => $totalOperatingExpensesMinor,
+                'operating_profit_minor' => $operatingProfitMinor,
+                'other_income_minor' => $totalOtherIncomeMinor,
+                'non_operating_expenses_minor' => $totalNonOperatingExpensesMinor,
+                'net_profit_minor' => $netProfitMinor,
+            ],
+            'reportNumber' => 'PL-'.$dateFrom->format('Ym').'-'.$dateTo->format('d'),
+            'generatedAt' => now(),
+            'query' => $query,
+            'money' => fn (?int $minor): string => $tenant->currency_code.' '.number_format(($minor ?? 0) / 100, 2),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function salesReportData(Request $request): array
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenants = $this->visibleTenantsFor($user);
+        $tenant = $this->resolveTenant($request, $tenants);
+
+        abort_if(! $tenant, 403);
+
+        $dateFrom = CarbonImmutable::parse($request->string('date_from')->toString() ?: now()->startOfMonth()->toDateString())->startOfDay();
+        $dateTo = CarbonImmutable::parse($request->string('date_to')->toString() ?: now()->toDateString())->endOfDay();
+        $branches = Branch::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
+        $selectedBranchId = $request->string('branch_id')->toString();
+
+        if ($selectedBranchId !== '') {
+            abort_unless($branches->contains('id', (int) $selectedBranchId), 403);
+        }
+
+        $selectedBranch = $selectedBranchId !== '' ? $branches->firstWhere('id', (int) $selectedBranchId) : null;
+        $orders = SalesOrder::query()
+            ->with(['branch', 'customer'])
+            ->where('tenant_id', $tenant->id)
+            ->where('order_status', '!=', SalesOrderStatus::Cancelled->value)
+            ->whereBetween('order_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->when($selectedBranchId !== '', fn ($query) => $query->where('branch_id', $selectedBranchId))
+            ->oldest('order_date')
+            ->oldest('id')
+            ->get();
+
+        $paymentSummary = $orders
+            ->groupBy(fn (SalesOrder $order): string => $order->payment_method ?: 'Not set')
+            ->map(fn (Collection $items, string $method): array => [
+                'method' => $method,
+                'orders' => $items->count(),
+                'total_minor' => (int) $items->sum('total_minor'),
+                'paid_minor' => (int) $items->sum('paid_minor'),
+                'balance_minor' => (int) $items->sum(fn (SalesOrder $order): int => $order->balance_minor),
+            ])
+            ->sortBy('method')
+            ->values();
+        $branchSummary = $orders
+            ->groupBy(fn (SalesOrder $order): string => (string) ($order->branch_id ?: 'unassigned'))
+            ->map(fn (Collection $items): array => [
+                'branch' => $items->first()?->branch?->name ?? 'Unassigned branch',
+                'orders' => $items->count(),
+                'total_minor' => (int) $items->sum('total_minor'),
+                'paid_minor' => (int) $items->sum('paid_minor'),
+                'balance_minor' => (int) $items->sum(fn (SalesOrder $order): int => $order->balance_minor),
+            ])
+            ->sortBy('branch')
+            ->values();
+        $discountMinor = (int) $orders->sum(fn (SalesOrder $order): int => $order->coupon_discount_minor + $order->admin_discount_minor);
+        $totalSalesMinor = (int) $orders->sum('total_minor');
+        $refundedMinor = (int) $orders->sum('refunded_minor');
+        $query = [
+            'tenant' => $tenant->id,
+            'date_from' => $dateFrom->toDateString(),
+            'date_to' => $dateTo->toDateString(),
+            'branch_id' => $selectedBranchId,
+        ];
+
+        return [
+            'tenant' => $tenant,
+            'branches' => $branches,
+            'selectedBranch' => $selectedBranch,
+            'selectedBranchId' => $selectedBranchId,
+            'dateFrom' => $dateFrom,
+            'dateTo' => $dateTo,
+            'orders' => $orders,
+            'paymentSummary' => $paymentSummary,
+            'branchSummary' => $branchSummary,
+            'totals' => [
+                'orders' => $orders->count(),
+                'subtotal_minor' => (int) $orders->sum('subtotal_minor'),
+                'discount_minor' => $discountMinor,
+                'tax_minor' => (int) $orders->sum('tax_minor'),
+                'shipping_minor' => (int) $orders->sum('shipping_minor'),
+                'sales_minor' => $totalSalesMinor,
+                'paid_minor' => (int) $orders->sum('paid_minor'),
+                'balance_minor' => (int) $orders->sum(fn (SalesOrder $order): int => $order->balance_minor),
+                'refunded_minor' => $refundedMinor,
+                'net_sales_minor' => $totalSalesMinor - $refundedMinor,
+            ],
+            'reportNumber' => 'SAL-'.$dateFrom->format('Ym').'-'.str_pad((string) max(1, $orders->count()), 3, '0', STR_PAD_LEFT),
+            'generatedAt' => now(),
+            'query' => $query,
+            'currencySymbol' => $this->currencySymbol($tenant->currency_code),
+            'money' => fn (?int $minor): string => $this->currencySymbol($tenant->currency_code).number_format(($minor ?? 0) / 100, 2),
+            'salesReference' => fn (SalesOrder $order): string => $this->salesReportReference($order),
+            'statusLabel' => fn (?string $value): string => Str::headline((string) $value),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function balanceSheetReportData(Request $request): array
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenants = $this->visibleTenantsFor($user);
+        $tenant = $this->resolveTenant($request, $tenants);
+
+        abort_if(! $tenant, 403);
+        app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
+
+        $dateTo = CarbonImmutable::parse($request->string('date_to')->toString() ?: now()->toDateString())->endOfDay();
+        $branches = Branch::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
+        $selectedBranchId = $request->string('branch_id')->toString();
+
+        if ($selectedBranchId !== '') {
+            abort_unless($branches->contains('id', (int) $selectedBranchId), 403);
+        }
+
+        $selectedBranch = $selectedBranchId !== '' ? $branches->firstWhere('id', (int) $selectedBranchId) : null;
+        $rows = $this->balanceSheetAccountRows($tenant->id, $dateTo, $selectedBranchId);
+        $assetRows = $rows->where('type', 'asset')->values();
+        $liabilityRows = $rows->where('type', 'liability')->values();
+        $equityRows = $rows->where('type', 'equity')->values();
+        $currentAssets = $assetRows->filter(fn (array $row): bool => $this->isCurrentAssetCategory($row['category']))->values();
+        $longTermAssets = $assetRows->reject(fn (array $row): bool => $this->isCurrentAssetCategory($row['category']))->values();
+        $currentLiabilities = $liabilityRows->filter(fn (array $row): bool => str_contains(Str::lower($row['category']), 'current'))->values();
+        $longTermLiabilities = $liabilityRows->reject(fn (array $row): bool => str_contains(Str::lower($row['category']), 'current'))->values();
+        $currentEarningsMinor = $this->currentEarningsToDate($tenant->id, $dateTo, $selectedBranchId);
+
+        if ($currentEarningsMinor !== 0) {
+            $equityRows->push([
+                'code' => '',
+                'name' => $currentEarningsMinor >= 0 ? 'Current Year Earnings' : 'Current Year Loss',
+                'type' => 'equity',
+                'category' => 'Equity',
+                'normal_balance' => 'credit',
+                'amount_minor' => $currentEarningsMinor,
+            ]);
+        }
+
+        $totalAssetsMinor = (int) $assetRows->sum('amount_minor');
+        $totalLiabilitiesMinor = (int) $liabilityRows->sum('amount_minor');
+        $totalEquityMinor = (int) $equityRows->sum('amount_minor');
+        $totalLiabilitiesEquityMinor = $totalLiabilitiesMinor + $totalEquityMinor;
+        $query = [
+            'tenant' => $tenant->id,
+            'date_from' => $request->string('date_from')->toString(),
+            'date_to' => $dateTo->toDateString(),
+            'branch_id' => $selectedBranchId,
+        ];
+
+        return [
+            'tenant' => $tenant,
+            'branches' => $branches,
+            'selectedBranch' => $selectedBranch,
+            'selectedBranchId' => $selectedBranchId,
+            'dateTo' => $dateTo,
+            'sections' => [
+                'currentAssets' => $currentAssets,
+                'longTermAssets' => $longTermAssets,
+                'currentLiabilities' => $currentLiabilities,
+                'longTermLiabilities' => $longTermLiabilities,
+                'equity' => $equityRows,
+            ],
+            'totals' => [
+                'current_assets_minor' => (int) $currentAssets->sum('amount_minor'),
+                'long_term_assets_minor' => (int) $longTermAssets->sum('amount_minor'),
+                'assets_minor' => $totalAssetsMinor,
+                'current_liabilities_minor' => (int) $currentLiabilities->sum('amount_minor'),
+                'long_term_liabilities_minor' => (int) $longTermLiabilities->sum('amount_minor'),
+                'liabilities_minor' => $totalLiabilitiesMinor,
+                'equity_minor' => $totalEquityMinor,
+                'liabilities_equity_minor' => $totalLiabilitiesEquityMinor,
+                'difference_minor' => $totalAssetsMinor - $totalLiabilitiesEquityMinor,
+            ],
+            'reportNumber' => 'BS-'.$dateTo->format('Ym').'-'.$dateTo->format('d'),
+            'generatedAt' => now(),
+            'query' => $query,
+            'money' => fn (?int $minor): string => $tenant->currency_code.' '.number_format(($minor ?? 0) / 100, 2),
+            'statementMoney' => fn (?int $minor): string => $this->statementMoney($tenant->currency_code, $minor ?? 0),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function expenseReportData(Request $request): array
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenants = $this->visibleTenantsFor($user);
+        $tenant = $this->resolveTenant($request, $tenants);
+
+        abort_if(! $tenant, 403);
+        app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
+
+        $dateFrom = CarbonImmutable::parse($request->string('date_from')->toString() ?: now()->startOfMonth()->toDateString())->startOfDay();
+        $dateTo = CarbonImmutable::parse($request->string('date_to')->toString() ?: now()->toDateString())->endOfDay();
+        $branches = Branch::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
+        $selectedBranchId = $request->string('branch_id')->toString();
+
+        if ($selectedBranchId !== '') {
+            abort_unless($branches->contains('id', (int) $selectedBranchId), 403);
+        }
+
+        $selectedBranch = $selectedBranchId !== '' ? $branches->firstWhere('id', (int) $selectedBranchId) : null;
+        $expenses = FinanceExpense::query()
+            ->with(['category', 'expenseAccount', 'paymentAccount'])
+            ->where('tenant_id', $tenant->id)
+            ->whereBetween('expense_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->when($selectedBranchId !== '', fn ($query) => $query->whereIn('id', FinanceJournalEntry::query()
+                ->select('source_id')
+                ->where('tenant_id', $tenant->id)
+                ->where('source_type', 'finance_expense')
+                ->whereNotNull('source_id')
+                ->whereHas('lines', fn ($lineQuery) => $lineQuery->where('branch_id', $selectedBranchId))))
+            ->oldest('expense_date')
+            ->oldest('id')
+            ->get();
+
+        $categorySummary = $expenses
+            ->groupBy(fn (FinanceExpense $expense): string => $expense->category?->name ?? 'Uncategorized')
+            ->map(fn (Collection $items, string $category): array => [
+                'category' => $category,
+                'amount_minor' => (int) $items->sum('amount_minor'),
+                'paid_minor' => (int) $items->sum('paid_minor'),
+                'payable_minor' => (int) $items->sum(fn (FinanceExpense $expense): int => max(0, $expense->amount_minor - $expense->paid_minor)),
+            ])
+            ->sortBy('category')
+            ->values();
+
+        $totalExpenseMinor = (int) $expenses->sum('amount_minor');
+        $totalPaidMinor = (int) $expenses->sum('paid_minor');
+        $totalPayableMinor = (int) $expenses->sum(fn (FinanceExpense $expense): int => max(0, $expense->amount_minor - $expense->paid_minor));
+        $query = [
+            'tenant' => $tenant->id,
+            'date_from' => $dateFrom->toDateString(),
+            'date_to' => $dateTo->toDateString(),
+            'branch_id' => $selectedBranchId,
+        ];
+
+        return [
+            'tenant' => $tenant,
+            'branches' => $branches,
+            'selectedBranch' => $selectedBranch,
+            'selectedBranchId' => $selectedBranchId,
+            'dateFrom' => $dateFrom,
+            'dateTo' => $dateTo,
+            'expenses' => $expenses,
+            'categorySummary' => $categorySummary,
+            'totals' => [
+                'expense_minor' => $totalExpenseMinor,
+                'paid_minor' => $totalPaidMinor,
+                'payable_minor' => $totalPayableMinor,
+            ],
+            'reportNumber' => 'EXP-'.$dateFrom->format('Ym').'-'.str_pad((string) max(1, $expenses->count()), 3, '0', STR_PAD_LEFT),
+            'generatedAt' => now(),
+            'query' => $query,
+            'money' => fn (?int $minor): string => $tenant->currency_code.' '.number_format(($minor ?? 0) / 100, 2),
+            'statusLabel' => fn (?string $value): string => Str::headline((string) $value),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function productProfitabilityReportData(Request $request): array
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenants = $this->visibleTenantsFor($user);
+        $tenant = $this->resolveTenant($request, $tenants);
+
+        abort_if(! $tenant, 403);
+
+        $dateFrom = CarbonImmutable::parse($request->string('date_from')->toString() ?: now()->startOfMonth()->toDateString())->startOfDay();
+        $dateTo = CarbonImmutable::parse($request->string('date_to')->toString() ?: now()->toDateString())->endOfDay();
+        $branches = Branch::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
+        $selectedBranchId = $request->string('branch_id')->toString();
+
+        if ($selectedBranchId !== '') {
+            abort_unless($branches->contains('id', (int) $selectedBranchId), 403);
+        }
+
+        $selectedBranch = $selectedBranchId !== '' ? $branches->firstWhere('id', (int) $selectedBranchId) : null;
+        $salesItems = SalesOrderItem::query()
+            ->with(['order.branch', 'variant.product'])
+            ->where('tenant_id', $tenant->id)
+            ->whereHas('order', fn ($query) => $query
+                ->when($selectedBranchId !== '', fn ($orderQuery) => $orderQuery->where('branch_id', $selectedBranchId))
+                ->where('order_status', '!=', SalesOrderStatus::Cancelled->value)
+                ->whereBetween('order_date', [$dateFrom->toDateString(), $dateTo->toDateString()]))
+            ->get();
+        $rows = $this->productProfitability($salesItems);
+        $netRevenueMinor = (int) $rows->sum('revenue_minor');
+        $cogsMinor = (int) $rows->sum('cogs_minor');
+        $profitMinor = (int) $rows->sum('profit_minor');
+        $query = [
+            'tenant' => $tenant->id,
+            'date_from' => $dateFrom->toDateString(),
+            'date_to' => $dateTo->toDateString(),
+            'branch_id' => $selectedBranchId,
+        ];
+
+        return [
+            'tenant' => $tenant,
+            'branches' => $branches,
+            'selectedBranch' => $selectedBranch,
+            'selectedBranchId' => $selectedBranchId,
+            'dateFrom' => $dateFrom,
+            'dateTo' => $dateTo,
+            'rows' => $rows,
+            'totals' => [
+                'products' => $rows->count(),
+                'quantity_sold' => (int) $rows->sum('quantity_sold'),
+                'quantity_returned' => (int) $rows->sum('quantity_returned'),
+                'net_quantity' => (int) $rows->sum('net_quantity'),
+                'gross_revenue_minor' => (int) $rows->sum('gross_revenue_minor'),
+                'returned_revenue_minor' => (int) $rows->sum('returned_revenue_minor'),
+                'net_revenue_minor' => $netRevenueMinor,
+                'cogs_minor' => $cogsMinor,
+                'profit_minor' => $profitMinor,
+                'margin_percent' => $netRevenueMinor > 0 ? ($profitMinor / $netRevenueMinor) * 100 : 0.0,
+            ],
+            'reportNumber' => 'PP-'.$dateFrom->format('Ym').'-'.str_pad((string) max(1, $rows->count()), 3, '0', STR_PAD_LEFT),
+            'generatedAt' => now(),
+            'query' => $query,
+            'currencySymbol' => $this->currencySymbol($tenant->currency_code),
+            'money' => fn (?int $minor): string => $this->currencySymbol($tenant->currency_code).number_format(($minor ?? 0) / 100, 2),
+            'percent' => fn (float|int $value): string => number_format((float) $value, 2).'%',
+        ];
+    }
+
+    private function profitLossAccountRows(string $tenantId, CarbonImmutable $dateFrom, CarbonImmutable $dateTo, string $branchId): Collection
+    {
+        $accounts = FinanceAccount::query()
+            ->where('tenant_id', $tenantId)
+            ->whereIn('type', ['income', 'expense'])
+            ->orderBy('code')
+            ->get();
+
+        $activity = FinanceJournalLine::query()
+            ->with('account')
+            ->where('tenant_id', $tenantId)
+            ->when($branchId !== '', fn ($query) => $query->where('branch_id', $branchId))
+            ->whereHas('entry', fn ($entryQuery) => $entryQuery
+                ->whereDate('entry_date', '>=', $dateFrom->toDateString())
+                ->whereDate('entry_date', '<=', $dateTo->toDateString()))
+            ->whereHas('account', fn ($accountQuery) => $accountQuery->whereIn('type', ['income', 'expense']))
+            ->get()
+            ->groupBy('finance_account_id');
+
+        return $accounts
+            ->map(function (FinanceAccount $account) use ($activity): array {
+                $lines = $activity->get($account->id, collect());
+                $debitMinor = (int) $lines->sum('debit_minor');
+                $creditMinor = (int) $lines->sum('credit_minor');
+                $amountMinor = $account->type === 'income'
+                    ? $creditMinor - $debitMinor
+                    : $debitMinor - $creditMinor;
+
+                if ($account->category === 'Contra Income') {
+                    $amountMinor = $debitMinor - $creditMinor;
+                }
+
+                return [
+                    'code' => $account->code,
+                    'name' => $account->name,
+                    'type' => $account->type,
+                    'category' => $account->category ?: 'Uncategorized',
+                    'debit_minor' => $debitMinor,
+                    'credit_minor' => $creditMinor,
+                    'amount_minor' => $amountMinor,
+                ];
+            })
+            ->values();
+    }
+
+    private function balanceSheetAccountRows(string $tenantId, CarbonImmutable $dateTo, string $branchId): Collection
+    {
+        $accounts = FinanceAccount::query()
+            ->where('tenant_id', $tenantId)
+            ->whereIn('type', ['asset', 'liability', 'equity'])
+            ->orderBy('code')
+            ->get();
+
+        $activity = FinanceJournalLine::query()
+            ->where('tenant_id', $tenantId)
+            ->when($branchId !== '', fn ($query) => $query->where('branch_id', $branchId))
+            ->whereHas('entry', fn ($entryQuery) => $entryQuery->whereDate('entry_date', '<=', $dateTo->toDateString()))
+            ->whereHas('account', fn ($accountQuery) => $accountQuery->whereIn('type', ['asset', 'liability', 'equity']))
+            ->get()
+            ->groupBy('finance_account_id');
+
+        return $accounts
+            ->map(function (FinanceAccount $account) use ($activity): array {
+                $lines = $activity->get($account->id, collect());
+                $debitMinor = (int) $lines->sum('debit_minor');
+                $creditMinor = (int) $lines->sum('credit_minor');
+                $balanceMinor = $account->normal_balance === 'credit'
+                    ? $creditMinor - $debitMinor
+                    : $debitMinor - $creditMinor;
+                $amountMinor = $account->type === 'equity' && $account->normal_balance === 'debit'
+                    ? -$balanceMinor
+                    : $balanceMinor;
+
+                return [
+                    'code' => $account->code,
+                    'name' => $account->name,
+                    'type' => $account->type,
+                    'category' => $account->category ?: 'Uncategorized',
+                    'normal_balance' => $account->normal_balance,
+                    'amount_minor' => $amountMinor,
+                ];
+            })
+            ->values();
+    }
+
+    private function currentEarningsToDate(string $tenantId, CarbonImmutable $dateTo, string $branchId): int
+    {
+        $rows = $this->profitLossAccountRows(
+            $tenantId,
+            CarbonImmutable::create(1900, 1, 1)->startOfDay(),
+            $dateTo,
+            $branchId,
+        );
+
+        return (int) $rows->sum(function (array $row): int {
+            if ($row['type'] === 'income') {
+                return $row['category'] === 'Contra Income' ? -$row['amount_minor'] : $row['amount_minor'];
+            }
+
+            return -$row['amount_minor'];
+        });
+    }
+
+    private function isCurrentAssetCategory(string $category): bool
+    {
+        $category = Str::lower($category);
+
+        return str_contains($category, 'current') || str_contains($category, 'receivable');
+    }
+
+    private function profitLossInventoryNote(string $tenantId, CarbonImmutable $dateFrom, CarbonImmutable $dateTo, string $branchId): array
+    {
+        $openingInventoryMinor = $this->accountBalanceOnDate($tenantId, '1200', $dateFrom->subDay()->toDateString(), $branchId);
+        $closingInventoryMinor = $this->accountBalanceOnDate($tenantId, '1200', $dateTo->toDateString(), $branchId);
+        $periodLines = $this->accountLinesForPeriod($tenantId, '1200', $dateFrom, $dateTo, $branchId);
+        $inventoryAdditionsMinor = (int) $periodLines->sum('debit_minor');
+        $inventoryReductionsMinor = (int) $periodLines->sum('credit_minor');
+
+        return [
+            'opening_inventory_minor' => $openingInventoryMinor,
+            'inventory_additions_minor' => $inventoryAdditionsMinor,
+            'inventory_reductions_minor' => $inventoryReductionsMinor,
+            'closing_inventory_minor' => $closingInventoryMinor,
+        ];
+    }
+
+    private function accountLinesForPeriod(string $tenantId, string $accountCode, CarbonImmutable $dateFrom, CarbonImmutable $dateTo, string $branchId): Collection
+    {
+        $account = FinanceAccount::query()->where('tenant_id', $tenantId)->where('code', $accountCode)->first();
+
+        if (! $account) {
+            return collect();
+        }
+
+        return FinanceJournalLine::query()
+            ->where('tenant_id', $tenantId)
+            ->where('finance_account_id', $account->id)
+            ->when($branchId !== '', fn ($query) => $query->where('branch_id', $branchId))
+            ->whereHas('entry', fn ($entryQuery) => $entryQuery
+                ->whereDate('entry_date', '>=', $dateFrom->toDateString())
+                ->whereDate('entry_date', '<=', $dateTo->toDateString()))
+            ->get();
+    }
+
+    private function accountBalanceOnDate(string $tenantId, string $accountCode, string $dateTo, string $branchId): int
+    {
+        $account = FinanceAccount::query()->where('tenant_id', $tenantId)->where('code', $accountCode)->first();
+
+        if (! $account) {
+            return 0;
+        }
+
+        $query = FinanceJournalLine::query()
+            ->where('tenant_id', $tenantId)
+            ->where('finance_account_id', $account->id)
+            ->when($branchId !== '', fn ($lineQuery) => $lineQuery->where('branch_id', $branchId))
+            ->whereHas('entry', fn ($entryQuery) => $entryQuery->whereDate('entry_date', '<=', $dateTo));
+        $debitMinor = (int) (clone $query)->sum('debit_minor');
+        $creditMinor = (int) $query->sum('credit_minor');
+
+        return $account->normal_balance === 'credit' ? $creditMinor - $debitMinor : $debitMinor - $creditMinor;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function balanceSheetReportExportHtml(array $data): string
+    {
+        $money = $data['statementMoney'];
+        $sectionRows = function (Collection $rows) use ($money): string {
+            if ($rows->isEmpty()) {
+                return '<tr><td colspan="3">No accounts in this section.</td></tr>';
+            }
+
+            return $rows->map(fn (array $row): string => '<tr>'
+                .'<td>'.e($row['code']).'</td>'
+                .'<td>'.e($row['name']).'</td>'
+                .'<td>'.e($money($row['amount_minor'])).'</td>'
+                .'</tr>')->implode('');
+        };
+
+        return '<!doctype html><html><head><meta charset="utf-8"><title>Balance Sheet</title></head><body>'
+            .'<h1>Balance Sheet</h1>'
+            .'<p><strong>Company:</strong> '.e($data['tenant']->name).'</p>'
+            .'<p><strong>Branch:</strong> '.e($data['selectedBranch']?->name ?? 'All branches').'</p>'
+            .'<p><strong>As at:</strong> '.e($data['dateTo']->format('F j, Y')).'</p>'
+            .'<table border="1" cellspacing="0" cellpadding="6"><thead><tr><th>GL Code</th><th>Account</th><th>Amount</th></tr></thead><tbody>'
+            .'<tr><th colspan="3">Assets</th></tr>'
+            .'<tr><th colspan="3">Current Assets</th></tr>'.$sectionRows($data['sections']['currentAssets'])
+            .'<tr><th colspan="2">Total Current Assets</th><th>'.e($money($data['totals']['current_assets_minor'])).'</th></tr>'
+            .'<tr><th colspan="3">Long-term Assets</th></tr>'.$sectionRows($data['sections']['longTermAssets'])
+            .'<tr><th colspan="2">Total Assets</th><th>'.e($money($data['totals']['assets_minor'])).'</th></tr>'
+            .'<tr><th colspan="3">Liabilities</th></tr>'
+            .'<tr><th colspan="3">Current Liabilities</th></tr>'.$sectionRows($data['sections']['currentLiabilities'])
+            .'<tr><th colspan="2">Total Current Liabilities</th><th>'.e($money($data['totals']['current_liabilities_minor'])).'</th></tr>'
+            .'<tr><th colspan="3">Long-term Liabilities</th></tr>'.$sectionRows($data['sections']['longTermLiabilities'])
+            .'<tr><th colspan="2">Total Liabilities</th><th>'.e($money($data['totals']['liabilities_minor'])).'</th></tr>'
+            .'<tr><th colspan="3">Equity</th></tr>'.$sectionRows($data['sections']['equity'])
+            .'<tr><th colspan="2">Total Equity</th><th>'.e($money($data['totals']['equity_minor'])).'</th></tr>'
+            .'<tr><th colspan="2">Total Liabilities + Equity</th><th>'.e($money($data['totals']['liabilities_equity_minor'])).'</th></tr>'
+            .'</tbody></table>'
+            .'</body></html>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function profitLossReportExportHtml(array $data): string
+    {
+        $money = $data['money'];
+        $sectionRows = function (Collection $rows) use ($money): string {
+            if ($rows->isEmpty()) {
+                return '<tr><td colspan="4">No accounts in this section.</td></tr>';
+            }
+
+            return $rows->map(fn (array $row): string => '<tr>'
+                .'<td>'.e($row['code']).'</td>'
+                .'<td>'.e($row['name']).'</td>'
+                .'<td>'.e($row['category']).'</td>'
+                .'<td>'.e($money($row['amount_minor'])).'</td>'
+                .'</tr>')->implode('');
+        };
+
+        return '<!doctype html><html><head><meta charset="utf-8"><title>Profit and Loss Statement</title></head><body>'
+            .'<h1>Profit and Loss Statement</h1>'
+            .'<p><strong>Company:</strong> '.e($data['tenant']->name).'</p>'
+            .'<p><strong>Branch:</strong> '.e($data['selectedBranch']?->name ?? 'All branches').'</p>'
+            .'<p><strong>Period:</strong> '.e($data['dateFrom']->format('M j, Y')).' to '.e($data['dateTo']->format('M j, Y')).'</p>'
+            .'<table border="1" cellspacing="0" cellpadding="6"><thead><tr><th>GL Code</th><th>Account</th><th>Category</th><th>Amount</th></tr></thead>'
+            .'<tbody><tr><th colspan="4">Revenue</th></tr>'.$sectionRows($data['sections']['operatingRevenue'])
+            .'<tr><th colspan="4">Less Contra Revenue</th></tr>'.$sectionRows($data['sections']['contraRevenue'])
+            .'<tr><th colspan="3">Net Revenue</th><th>'.e($money($data['totals']['net_revenue_minor'])).'</th></tr>'
+            .'<tr><th colspan="4">Cost of Goods Sold / Direct Costs</th></tr>'.$sectionRows($data['sections']['directCosts'])
+            .'<tr><th colspan="3">Gross Profit</th><th>'.e($money($data['totals']['gross_profit_minor'])).'</th></tr>'
+            .'<tr><th colspan="4">Operating Expenses</th></tr>'.$sectionRows($data['sections']['operatingExpenses'])
+            .'<tr><th colspan="3">Operating Profit</th><th>'.e($money($data['totals']['operating_profit_minor'])).'</th></tr>'
+            .'<tr><th colspan="4">Other Income</th></tr>'.$sectionRows($data['sections']['otherIncome'])
+            .'<tr><th colspan="4">Non-Operating Expenses</th></tr>'.$sectionRows($data['sections']['nonOperatingExpenses'])
+            .'<tr><th colspan="3">'.($data['totals']['net_profit_minor'] >= 0 ? 'Net Profit' : 'Net Loss').'</th><th>'.e($money($data['totals']['net_profit_minor'])).'</th></tr>'
+            .'</tbody></table>'
+            .'<h2>Inventory Movement Note</h2>'
+            .'<p>Opening Inventory: '.e($money($data['inventoryNote']['opening_inventory_minor']))
+            .' | Inventory Purchases / Additions: '.e($money($data['inventoryNote']['inventory_additions_minor']))
+            .' | Inventory Reductions: '.e($money($data['inventoryNote']['inventory_reductions_minor']))
+            .' | Closing Inventory: '.e($money($data['inventoryNote']['closing_inventory_minor'])).'</p>'
+            .'</body></html>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function salesReportExportHtml(array $data): string
+    {
+        $money = $data['money'];
+        $statusLabel = $data['statusLabel'];
+        $rows = '';
+
+        foreach ($data['orders'] as $order) {
+            $discountMinor = (int) $order->coupon_discount_minor + (int) $order->admin_discount_minor;
+            $rows .= '<tr>'
+                .'<td>'.e($order->order_date->format('M j, Y')).'</td>'
+                .'<td>'.e($data['salesReference']($order)).'</td>'
+                .'<td>'.e($order->customer?->name ?? 'Walk-In').'</td>'
+                .'<td>'.e($order->branch?->name ?? 'Unassigned').'</td>'
+                .'<td>'.e($order->payment_method ?: 'Not set').'</td>'
+                .'<td>'.e($statusLabel($order->payment_status->value ?? (string) $order->payment_status)).'</td>'
+                .'<td>'.e($money($order->subtotal_minor)).'</td>'
+                .'<td>'.e($money($discountMinor)).'</td>'
+                .'<td>'.e($money($order->tax_minor)).'</td>'
+                .'<td>'.e($money($order->total_minor)).'</td>'
+                .'<td>'.e($money($order->paid_minor)).'</td>'
+                .'<td>'.e($money($order->balance_minor)).'</td>'
+                .'</tr>';
+        }
+
+        if ($rows === '') {
+            $rows = '<tr><td colspan="12">No sales records for this period.</td></tr>';
+        }
+
+        return '<!doctype html><html><head><meta charset="utf-8"><title>Sales Report</title></head><body>'
+            .'<h1>Sales Report</h1>'
+            .'<p><strong>Company:</strong> '.e($data['tenant']->name).'</p>'
+            .'<p><strong>Branch:</strong> '.e($data['selectedBranch']?->name ?? 'All branches').'</p>'
+            .'<p><strong>Period:</strong> '.e($data['dateFrom']->format('M j, Y')).' to '.e($data['dateTo']->format('M j, Y')).'</p>'
+            .'<table border="1" cellspacing="0" cellpadding="6"><thead><tr><th>Date</th><th>Reference</th><th>Customer</th><th>Branch</th><th>Payment Method</th><th>Payment Status</th><th>Subtotal</th><th>Discount</th><th>Tax</th><th>Total</th><th>Paid</th><th>Balance</th></tr></thead><tbody>'.$rows.'</tbody></table>'
+            .'<p><strong>Total Sales:</strong> '.e($money($data['totals']['sales_minor'])).' <strong>Total Paid:</strong> '.e($money($data['totals']['paid_minor'])).' <strong>Total Balance:</strong> '.e($money($data['totals']['balance_minor'])).'</p>'
+            .'</body></html>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function expenseReportExportHtml(array $data): string
+    {
+        $money = $data['money'];
+        $statusLabel = $data['statusLabel'];
+        $rows = '';
+
+        foreach ($data['expenses'] as $expense) {
+            $rows .= '<tr>'
+                .'<td>'.e($expense->expense_date->format('M j, Y')).'</td>'
+                .'<td>'.e($expense->category?->name ?? 'Uncategorized').'</td>'
+                .'<td>'.e($expense->description ?: $expense->expense_number).'</td>'
+                .'<td>'.e($expense->payee_name ?: 'Not set').'</td>'
+                .'<td>'.e($money($expense->amount_minor)).'</td>'
+                .'<td>'.e($money($expense->paid_minor)).'</td>'
+                .'<td>'.e($money(max(0, $expense->amount_minor - $expense->paid_minor))).'</td>'
+                .'<td>'.e($statusLabel($expense->payment_status)).'</td>'
+                .'</tr>';
+        }
+
+        if ($rows === '') {
+            $rows = '<tr><td colspan="8">No expense records for this period.</td></tr>';
+        }
+
+        return '<!doctype html><html><head><meta charset="utf-8"><title>Expense Report</title></head><body>'
+            .'<h1>Expense Report</h1>'
+            .'<p><strong>Company:</strong> '.e($data['tenant']->name).'</p>'
+            .'<p><strong>Branch:</strong> '.e($data['selectedBranch']?->name ?? 'All branches').'</p>'
+            .'<p><strong>Period:</strong> '.e($data['dateFrom']->format('M j, Y')).' to '.e($data['dateTo']->format('M j, Y')).'</p>'
+            .'<table border="1" cellspacing="0" cellpadding="6"><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Payee</th><th>Amount</th><th>Paid</th><th>Payable</th><th>Status</th></tr></thead><tbody>'.$rows.'</tbody></table>'
+            .'<p><strong>Total Expense:</strong> '.e($money($data['totals']['expense_minor'])).' <strong>Total Paid:</strong> '.e($money($data['totals']['paid_minor'])).' <strong>Total Payable:</strong> '.e($money($data['totals']['payable_minor'])).'</p>'
+            .'</body></html>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function productProfitabilityReportExportHtml(array $data): string
+    {
+        $money = $data['money'];
+        $percent = $data['percent'];
+        $rows = '';
+
+        foreach ($data['rows'] as $row) {
+            $rows .= '<tr>'
+                .'<td>'.e($row['name']).'</td>'
+                .'<td>'.e($row['sku'] ?: 'Not set').'</td>'
+                .'<td>'.e((string) $row['quantity_sold']).'</td>'
+                .'<td>'.e((string) $row['quantity_returned']).'</td>'
+                .'<td>'.e((string) $row['net_quantity']).'</td>'
+                .'<td>'.e($money($row['revenue_minor'])).'</td>'
+                .'<td>'.e($money($row['cogs_minor'])).'</td>'
+                .'<td>'.e($money($row['profit_minor'])).'</td>'
+                .'<td>'.e($percent($row['margin_percent'])).'</td>'
+                .'</tr>';
+        }
+
+        if ($rows === '') {
+            $rows = '<tr><td colspan="9">No product sales for this period.</td></tr>';
+        }
+
+        return '<!doctype html><html><head><meta charset="utf-8"><title>Product Profitability Report</title></head><body>'
+            .'<h1>Product Profitability Report</h1>'
+            .'<p><strong>Company:</strong> '.e($data['tenant']->name).'</p>'
+            .'<p><strong>Branch:</strong> '.e($data['selectedBranch']?->name ?? 'All branches').'</p>'
+            .'<p><strong>Period:</strong> '.e($data['dateFrom']->format('M j, Y')).' to '.e($data['dateTo']->format('M j, Y')).'</p>'
+            .'<table border="1" cellspacing="0" cellpadding="6"><thead><tr><th>Product</th><th>SKU</th><th>Qty Sold</th><th>Qty Returned</th><th>Net Qty</th><th>Sales Revenue</th><th>COGS</th><th>Gross Profit</th><th>Gross Margin</th></tr></thead><tbody>'.$rows.'</tbody></table>'
+            .'<p><strong>Net Revenue:</strong> '.e($money($data['totals']['net_revenue_minor'])).' <strong>COGS:</strong> '.e($money($data['totals']['cogs_minor'])).' <strong>Gross Profit:</strong> '.e($money($data['totals']['profit_minor'])).' <strong>Gross Margin:</strong> '.e($percent($data['totals']['margin_percent'])).'</p>'
+            .'</body></html>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function balanceSheetReportPdf(array $data): string
+    {
+        $money = $data['statementMoney'];
+        $lines = [
+            'Balance Sheet',
+            'Company: '.$data['tenant']->name,
+            'Branch: '.($data['selectedBranch']?->name ?? 'All branches'),
+            'As at: '.$data['dateTo']->format('F j, Y'),
+            'Total Assets: '.$money($data['totals']['assets_minor']),
+            'Total Liabilities: '.$money($data['totals']['liabilities_minor']),
+            'Total Equity: '.$money($data['totals']['equity_minor']),
+            'Total Liabilities + Equity: '.$money($data['totals']['liabilities_equity_minor']),
+            'Difference: '.$money($data['totals']['difference_minor']),
+            '',
+        ];
+
+        foreach (['currentAssets', 'longTermAssets', 'currentLiabilities', 'longTermLiabilities', 'equity'] as $section) {
+            $lines[] = Str::headline($section);
+            foreach ($data['sections'][$section]->take(10) as $row) {
+                $lines[] = trim($row['code'].' '.$row['name']).' | '.$money($row['amount_minor']);
+            }
+        }
+
+        $content = "BT\n/F1 18 Tf\n50 780 Td\n(Balance Sheet) Tj\n/F1 10 Tf\n0 -28 Td\n";
+        foreach (array_slice($lines, 1) as $line) {
+            $content .= '('.$this->pdfText($line).") Tj\n0 -16 Td\n";
+        }
+        $content .= "ET\n";
+
+        $objects = [
+            "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+            "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
+            "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+            "5 0 obj\n<< /Length ".strlen($content)." >>\nstream\n".$content."endstream\nendobj\n",
+        ];
+        $pdf = "%PDF-1.4\n";
+        $offsets = [0];
+        foreach ($objects as $object) {
+            $offsets[] = strlen($pdf);
+            $pdf .= $object;
+        }
+        $xref = strlen($pdf);
+        $pdf .= "xref\n0 ".(count($objects) + 1)."\n0000000000 65535 f \n";
+        foreach (array_slice($offsets, 1) as $offset) {
+            $pdf .= str_pad((string) $offset, 10, '0', STR_PAD_LEFT)." 00000 n \n";
+        }
+        $pdf .= "trailer\n<< /Size ".(count($objects) + 1)." /Root 1 0 R >>\nstartxref\n".$xref."\n%%EOF";
+
+        return $pdf;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function profitLossReportPdf(array $data): string
+    {
+        $money = $data['money'];
+        $lines = [
+            'Profit and Loss Statement',
+            'Company: '.$data['tenant']->name,
+            'Branch: '.($data['selectedBranch']?->name ?? 'All branches'),
+            'Period: '.$data['dateFrom']->format('M j, Y').' to '.$data['dateTo']->format('M j, Y'),
+            'Net Revenue: '.$money($data['totals']['net_revenue_minor']),
+            'Cost of Goods Sold / Direct Costs: '.$money($data['totals']['direct_costs_minor']),
+            'Gross Profit: '.$money($data['totals']['gross_profit_minor']),
+            'Operating Expenses: '.$money($data['totals']['operating_expenses_minor']),
+            'Operating Profit: '.$money($data['totals']['operating_profit_minor']),
+            'Other Income: '.$money($data['totals']['other_income_minor']),
+            'Non-Operating Expenses: '.$money($data['totals']['non_operating_expenses_minor']),
+            ($data['totals']['net_profit_minor'] >= 0 ? 'Net Profit: ' : 'Net Loss: ').$money($data['totals']['net_profit_minor']),
+            '',
+            'Inventory Note',
+            'Opening Inventory: '.$money($data['inventoryNote']['opening_inventory_minor']),
+            'Inventory Purchases / Additions: '.$money($data['inventoryNote']['inventory_additions_minor']),
+            'Inventory Reductions: '.$money($data['inventoryNote']['inventory_reductions_minor']),
+            'Closing Inventory: '.$money($data['inventoryNote']['closing_inventory_minor']),
+        ];
+
+        foreach (['operatingRevenue', 'contraRevenue', 'directCosts', 'operatingExpenses', 'otherIncome', 'nonOperatingExpenses'] as $section) {
+            foreach ($data['sections'][$section]->take(10) as $row) {
+                $lines[] = $row['code'].' '.$row['name'].' | '.$money($row['amount_minor']);
+            }
+        }
+
+        $content = "BT\n/F1 18 Tf\n50 780 Td\n(Profit and Loss Statement) Tj\n/F1 10 Tf\n0 -28 Td\n";
+        foreach (array_slice($lines, 1) as $line) {
+            $content .= '('.$this->pdfText($line).") Tj\n0 -16 Td\n";
+        }
+        $content .= "ET\n";
+
+        $objects = [
+            "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+            "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
+            "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+            "5 0 obj\n<< /Length ".strlen($content)." >>\nstream\n".$content."endstream\nendobj\n",
+        ];
+        $pdf = "%PDF-1.4\n";
+        $offsets = [0];
+        foreach ($objects as $object) {
+            $offsets[] = strlen($pdf);
+            $pdf .= $object;
+        }
+        $xref = strlen($pdf);
+        $pdf .= "xref\n0 ".(count($objects) + 1)."\n0000000000 65535 f \n";
+        foreach (array_slice($offsets, 1) as $offset) {
+            $pdf .= str_pad((string) $offset, 10, '0', STR_PAD_LEFT)." 00000 n \n";
+        }
+        $pdf .= "trailer\n<< /Size ".(count($objects) + 1)." /Root 1 0 R >>\nstartxref\n".$xref."\n%%EOF";
+
+        return $pdf;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function salesReportPdf(array $data): string
+    {
+        $money = $data['money'];
+        $lines = [
+            'Sales Report',
+            'Company: '.$data['tenant']->name,
+            'Branch: '.($data['selectedBranch']?->name ?? 'All branches'),
+            'Period: '.$data['dateFrom']->format('M j, Y').' to '.$data['dateTo']->format('M j, Y'),
+            'Orders: '.$data['totals']['orders'],
+            'Total Sales: '.$money($data['totals']['sales_minor']),
+            'Total Paid: '.$money($data['totals']['paid_minor']),
+            'Total Balance: '.$money($data['totals']['balance_minor']),
+            '',
+        ];
+
+        foreach ($data['orders']->take(32) as $order) {
+            $lines[] = $order->order_date->format('M j, Y').' | '.$data['salesReference']($order).' | '.($order->customer?->name ?? 'Walk-In').' | '.($order->branch?->name ?? 'Unassigned').' | '.$money($order->total_minor).' | '.$money($order->paid_minor).' | '.$money($order->balance_minor);
+        }
+
+        if ($data['orders']->isEmpty()) {
+            $lines[] = 'No sales records for this period.';
+        }
+
+        $content = "BT\n/F1 18 Tf\n50 780 Td\n(Sales Report) Tj\n/F1 10 Tf\n0 -28 Td\n";
+        foreach (array_slice($lines, 1) as $line) {
+            $content .= '('.$this->pdfText($line).") Tj\n0 -16 Td\n";
+        }
+        $content .= "ET\n";
+
+        $objects = [
+            "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+            "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
+            "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+            "5 0 obj\n<< /Length ".strlen($content)." >>\nstream\n".$content."endstream\nendobj\n",
+        ];
+        $pdf = "%PDF-1.4\n";
+        $offsets = [0];
+        foreach ($objects as $object) {
+            $offsets[] = strlen($pdf);
+            $pdf .= $object;
+        }
+        $xref = strlen($pdf);
+        $pdf .= "xref\n0 ".(count($objects) + 1)."\n0000000000 65535 f \n";
+        foreach (array_slice($offsets, 1) as $offset) {
+            $pdf .= str_pad((string) $offset, 10, '0', STR_PAD_LEFT)." 00000 n \n";
+        }
+        $pdf .= "trailer\n<< /Size ".(count($objects) + 1)." /Root 1 0 R >>\nstartxref\n".$xref."\n%%EOF";
+
+        return $pdf;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function expenseReportPdf(array $data): string
+    {
+        $money = $data['money'];
+        $lines = [
+            'Expense Report',
+            'Company: '.$data['tenant']->name,
+            'Branch: '.($data['selectedBranch']?->name ?? 'All branches'),
+            'Period: '.$data['dateFrom']->format('M j, Y').' to '.$data['dateTo']->format('M j, Y'),
+            'Total Expense: '.$money($data['totals']['expense_minor']),
+            'Total Paid: '.$money($data['totals']['paid_minor']),
+            'Total Payable: '.$money($data['totals']['payable_minor']),
+            '',
+        ];
+
+        foreach ($data['expenses']->take(34) as $expense) {
+            $lines[] = $expense->expense_date->format('M j, Y').' | '.($expense->category?->name ?? 'Uncategorized').' | '.($expense->payee_name ?: 'Not set').' | '.$money($expense->amount_minor).' | '.$money($expense->paid_minor).' | '.$money(max(0, $expense->amount_minor - $expense->paid_minor));
+        }
+
+        if ($data['expenses']->isEmpty()) {
+            $lines[] = 'No expense records for this period.';
+        }
+
+        $content = "BT\n/F1 18 Tf\n50 780 Td\n(Expense Report) Tj\n/F1 10 Tf\n0 -28 Td\n";
+        foreach (array_slice($lines, 1) as $line) {
+            $content .= '('.$this->pdfText($line).") Tj\n0 -16 Td\n";
+        }
+        $content .= "ET\n";
+
+        $objects = [
+            "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+            "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
+            "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+            "5 0 obj\n<< /Length ".strlen($content)." >>\nstream\n".$content."endstream\nendobj\n",
+        ];
+        $pdf = "%PDF-1.4\n";
+        $offsets = [0];
+        foreach ($objects as $object) {
+            $offsets[] = strlen($pdf);
+            $pdf .= $object;
+        }
+        $xref = strlen($pdf);
+        $pdf .= "xref\n0 ".(count($objects) + 1)."\n0000000000 65535 f \n";
+        foreach (array_slice($offsets, 1) as $offset) {
+            $pdf .= str_pad((string) $offset, 10, '0', STR_PAD_LEFT)." 00000 n \n";
+        }
+        $pdf .= "trailer\n<< /Size ".(count($objects) + 1)." /Root 1 0 R >>\nstartxref\n".$xref."\n%%EOF";
+
+        return $pdf;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function productProfitabilityReportPdf(array $data): string
+    {
+        $money = $data['money'];
+        $percent = $data['percent'];
+        $lines = [
+            'Product Profitability Report',
+            'Company: '.$data['tenant']->name,
+            'Branch: '.($data['selectedBranch']?->name ?? 'All branches'),
+            'Period: '.$data['dateFrom']->format('M j, Y').' to '.$data['dateTo']->format('M j, Y'),
+            'Products: '.$data['totals']['products'],
+            'Net Quantity: '.$data['totals']['net_quantity'],
+            'Net Revenue: '.$money($data['totals']['net_revenue_minor']),
+            'COGS: '.$money($data['totals']['cogs_minor']),
+            'Gross Profit: '.$money($data['totals']['profit_minor']),
+            'Gross Margin: '.$percent($data['totals']['margin_percent']),
+            '',
+        ];
+
+        foreach ($data['rows']->take(32) as $row) {
+            $lines[] = $row['name'].' | '.($row['sku'] ?: 'Not set').' | Qty '.$row['net_quantity'].' | Revenue '.$money($row['revenue_minor']).' | Profit '.$money($row['profit_minor']).' | '.$percent($row['margin_percent']);
+        }
+
+        if ($data['rows']->isEmpty()) {
+            $lines[] = 'No product sales for this period.';
+        }
+
+        $content = "BT\n/F1 18 Tf\n50 780 Td\n(Product Profitability Report) Tj\n/F1 10 Tf\n0 -28 Td\n";
+        foreach (array_slice($lines, 1) as $line) {
+            $content .= '('.$this->pdfText($line).") Tj\n0 -16 Td\n";
+        }
+        $content .= "ET\n";
+
+        $objects = [
+            "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+            "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
+            "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+            "5 0 obj\n<< /Length ".strlen($content)." >>\nstream\n".$content."endstream\nendobj\n",
+        ];
+        $pdf = "%PDF-1.4\n";
+        $offsets = [0];
+        foreach ($objects as $object) {
+            $offsets[] = strlen($pdf);
+            $pdf .= $object;
+        }
+        $xref = strlen($pdf);
+        $pdf .= "xref\n0 ".(count($objects) + 1)."\n0000000000 65535 f \n";
+        foreach (array_slice($offsets, 1) as $offset) {
+            $pdf .= str_pad((string) $offset, 10, '0', STR_PAD_LEFT)." 00000 n \n";
+        }
+        $pdf .= "trailer\n<< /Size ".(count($objects) + 1)." /Root 1 0 R >>\nstartxref\n".$xref."\n%%EOF";
+
+        return $pdf;
+    }
+
+    private function pdfText(string $text): string
+    {
+        return str_replace(['\\', '(', ')'], ['\\\\', '\(', '\)'], Str::limit($text, 100, ''));
+    }
+
+    private function currencySymbol(string $currencyCode): string
+    {
+        return match (strtoupper($currencyCode)) {
+            'NGN' => '₦',
+            'USD' => '$',
+            'EUR' => '€',
+            'GBP' => '£',
+            'GHS' => '₵',
+            'KES' => 'KSh ',
+            'ZAR' => 'R',
+            default => strtoupper($currencyCode).' ',
+        };
+    }
+
+    private function statementMoney(string $currencyCode, int $minor): string
+    {
+        $formatted = $currencyCode.' '.number_format(abs($minor) / 100, 2);
+
+        return $minor < 0 ? '('.$formatted.')' : $formatted;
+    }
+
+    private function salesReportReference(SalesOrder $order): string
+    {
+        $orderReference = trim((string) $order->order_number);
+
+        if ($orderReference !== '') {
+            return $orderReference;
+        }
+
+        $invoiceReference = trim((string) $order->invoice_number);
+
+        return $invoiceReference !== '' ? $invoiceReference : 'Not set';
+    }
+
     private function visibleTenantsFor(User $user): EloquentCollection
     {
         if ($user->is_platform_admin) {
@@ -796,21 +2001,36 @@ final class FinanceReportController extends Controller
     private function productProfitability(Collection $salesItems): Collection
     {
         return $salesItems
-            ->groupBy('product_variant_id')
+            ->groupBy(fn (SalesOrderItem $item): string => (string) ($item->product_variant_id ?: ($item->sku ?: $item->item_name)))
             ->map(function (Collection $items): array {
                 /** @var SalesOrderItem $first */
                 $first = $items->first();
-                $quantity = (int) $items->sum(fn (SalesOrderItem $item): int => max(0, $item->quantity - $item->quantity_returned));
-                $revenueMinor = (int) $items->sum('line_total_minor');
+                $quantitySold = (int) $items->sum('quantity');
+                $quantityReturned = (int) $items->sum('quantity_returned');
+                $netQuantity = (int) $items->sum(fn (SalesOrderItem $item): int => max(0, $item->quantity - $item->quantity_returned));
+                $grossRevenueMinor = (int) $items->sum('line_total_minor');
+                $returnedRevenueMinor = (int) $items->sum(function (SalesOrderItem $item): int {
+                    $quantity = max(1, (int) $item->quantity);
+
+                    return (int) round(((int) $item->line_total_minor / $quantity) * (int) $item->quantity_returned);
+                });
+                $revenueMinor = max(0, $grossRevenueMinor - $returnedRevenueMinor);
                 $cogsMinor = $this->costOfGoodsSold($items);
+                $profitMinor = $revenueMinor - $cogsMinor;
 
                 return [
                     'name' => trim(($first->variant?->product?->name ?? $first->item_name).' / '.($first->variant?->variant_name ?? $first->sku ?? 'Default')),
                     'sku' => $first->sku ?? $first->variant?->sku,
-                    'quantity' => $quantity,
+                    'quantity_sold' => $quantitySold,
+                    'quantity_returned' => $quantityReturned,
+                    'net_quantity' => $netQuantity,
+                    'quantity' => $netQuantity,
+                    'gross_revenue_minor' => $grossRevenueMinor,
+                    'returned_revenue_minor' => $returnedRevenueMinor,
                     'revenue_minor' => $revenueMinor,
                     'cogs_minor' => $cogsMinor,
-                    'profit_minor' => $revenueMinor - $cogsMinor,
+                    'profit_minor' => $profitMinor,
+                    'margin_percent' => $revenueMinor > 0 ? ($profitMinor / $revenueMinor) * 100 : 0.0,
                 ];
             })
             ->sortByDesc('profit_minor')

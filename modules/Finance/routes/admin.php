@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Route;
 use Modules\Finance\Http\Controllers\FinanceReportController;
 
 Route::get('/', [FinanceReportController::class, 'index'])->name('index');
+Route::get('/reports/{report}', [FinanceReportController::class, 'showReport'])->name('reports.show');
+Route::get('/reports/{report}/download', [FinanceReportController::class, 'downloadReport'])->name('reports.download');
 Route::get('/chart-of-accounts', [FinanceReportController::class, 'chartOfAccounts'])->name('chart-of-accounts');
 Route::get('/expenses', [FinanceReportController::class, 'expenses'])->name('expenses');
 Route::get('/journals', [FinanceReportController::class, 'journals'])->name('journals');
