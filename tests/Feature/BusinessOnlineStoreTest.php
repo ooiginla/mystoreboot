@@ -112,7 +112,7 @@ class BusinessOnlineStoreTest extends TestCase
         $bankAccountKey = sha1('Test Bank|Web Shop|1234567890');
 
         $this->actingAs($user)
-            ->get(route('admin.business.index', ['tenant' => $tenant->id]).'#online-store')
+            ->get(route('admin.business.online-store.index', ['tenant' => $tenant->id]).'#online-store')
             ->assertOk()
             ->assertSee('Online Store')
             ->assertSee('Online Store Basics')
@@ -204,7 +204,7 @@ class BusinessOnlineStoreTest extends TestCase
                     ['question' => 'Do you deliver?', 'answer' => 'Yes.'],
                 ],
             ])
-            ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id, 'online_store_section' => 'online-store-theme']).'#online-store');
+            ->assertRedirect(route('admin.business.online-store.index', ['tenant' => $tenant->id, 'online_store_section' => 'online-store-theme']).'#online-store');
 
         $store = OnlineStore::query()->where('tenant_id', $tenant->id)->firstOrFail();
 
@@ -244,7 +244,7 @@ class BusinessOnlineStoreTest extends TestCase
         $this->assertTrue($store->categories()->whereKey($category->id)->exists());
 
         $this->actingAs($user)
-            ->get(route('admin.business.index', ['tenant' => $tenant->id]).'#online-store')
+            ->get(route('admin.business.online-store.index', ['tenant' => $tenant->id]).'#online-store')
             ->assertOk()
             ->assertSee('/storage/'.$store->logo_path, false)
             ->assertSee('/storage/'.$store->hero_image_path, false);
@@ -264,7 +264,7 @@ class BusinessOnlineStoreTest extends TestCase
                     'private_key' => 'sk_live_test',
                 ],
             ])
-            ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id, 'online_store_section' => 'online-store-payments']).'#online-store');
+            ->assertRedirect(route('admin.business.online-store.index', ['tenant' => $tenant->id, 'online_store_section' => 'online-store-payments']).'#online-store');
 
         $store->refresh();
 
@@ -272,7 +272,7 @@ class BusinessOnlineStoreTest extends TestCase
         $this->assertFalse(in_array('storeboot_paystack', $store->payment_methods, true));
 
         $response = $this->actingAs($user)
-            ->get(route('admin.business.index', ['tenant' => $tenant->id]).'#online-store')
+            ->get(route('admin.business.online-store.index', ['tenant' => $tenant->id]).'#online-store')
             ->assertOk()
             ->assertSee('Settlement Bank Name');
         $this->assertMatchesRegularExpression('/data-paystack-settlement-bank-fields\s+hidden/', $response->getContent());
@@ -448,9 +448,10 @@ class BusinessOnlineStoreTest extends TestCase
             ],
         ])
             ->actingAs($user)
-            ->get(route('admin.business.index', ['tenant' => $tenant->id]).'#online-store')
+            ->get(route('admin.business.online-store.index', ['tenant' => $tenant->id]).'#online-store')
             ->assertOk()
-            ->assertSee('pay_on_delivery, bank_account')
+            ->assertDontSee('pay_on_delivery, bank_account')
+            ->assertSee('Pay On Delivery')
             ->assertSee('Pay via Transfer');
     }
 }

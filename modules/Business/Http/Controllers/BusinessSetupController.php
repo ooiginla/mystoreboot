@@ -37,6 +37,19 @@ final class BusinessSetupController extends Controller
 {
     public function index(Request $request): View
     {
+        return view('business::admin.setup', $this->setupViewData($request, false));
+    }
+
+    public function onlineStore(Request $request): View
+    {
+        return view('business::admin.setup', $this->setupViewData($request, true));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function setupViewData(Request $request, bool $onlineStoreOnly): array
+    {
         /** @var User $user */
         $user = $request->user();
         $isPlatformAdmin = $user->is_platform_admin;
@@ -45,10 +58,11 @@ final class BusinessSetupController extends Controller
 
         abort_if(! $isPlatformAdmin && ! $tenant, 403);
 
-        return view('business::admin.setup', [
+        return [
             'tenant' => $tenant,
             'tenants' => $tenants,
             'isPlatformAdmin' => $isPlatformAdmin,
+            'onlineStoreOnly' => $onlineStoreOnly,
             'plans' => Plan::query()->with('modules')->where('is_active', true)->orderBy('sort_order')->get(),
             'subscriptionStatuses' => SubscriptionStatus::cases(),
             'tenantSubscriptions' => $tenant
@@ -87,7 +101,7 @@ final class BusinessSetupController extends Controller
             'productCategories' => $tenant
                 ? ProductCategory::query()->where('tenant_id', $tenant->id)->orderBy('name')->get()
                 : collect(),
-        ]);
+        ];
     }
 
     public function saveProfile(BusinessProfileRequest $request, SaveBusinessProfileAction $action): RedirectResponse
@@ -287,7 +301,7 @@ final class BusinessSetupController extends Controller
         $store->categories()->sync($data['category_ids'] ?? []);
 
         return redirect()
-            ->to(route('admin.business.index', [
+            ->to(route('admin.business.online-store.index', [
                 'tenant' => $store->tenant_id,
                 'online_store_section' => $data['online_store_section'] ?? 'online-store-basics',
             ]).'#online-store')

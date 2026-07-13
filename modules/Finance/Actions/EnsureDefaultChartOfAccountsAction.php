@@ -125,6 +125,7 @@ final class EnsureDefaultChartOfAccountsAction
             'EXP-6340' => $this->account('Income Tax Expense', 'expense', 'Non-Operating Expenses', 'Income tax expense on business profit.', 'debit'),
             'EXP-6350' => $this->account('Bank, POS and Gateway Charges', 'expense', 'Non-Operating Expenses', 'Bank transfer, POS card, and online payment settlement charges.', 'debit'),
             'EXP-6360' => $this->account('Meals & Entertainment', 'expense', 'Meals & Entertainment', 'Business meals, client entertainment, refreshments, and hospitality costs.', 'debit'),
+            'EXP-6370' => $this->account('Cash Short & Over (Till Variance)', 'expense', 'Admin & Ops', 'Cash drawer shortages and overages recognised at till close.', 'debit'),
         ];
     }
 

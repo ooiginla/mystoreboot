@@ -1,4 +1,5 @@
 @php
+    $onlineStoreOnly = (bool) ($onlineStoreOnly ?? false);
     $publicImageUrl = fn (?string $path): ?string => $path ? '/storage/'.ltrim($path, '/') : null;
     $days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
     $hours = old('opening_hours', $tenant?->opening_hours ?? []);
@@ -86,7 +87,7 @@
     };
 @endphp
 
-<x-layouts.admin title="Organization & Branch Management">
+<x-layouts.admin :title="$onlineStoreOnly ? 'Online Store Setup' : 'Organization & Branch Management'">
     <style>
         .setup-line-card { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 14px; display: grid; gap: 12px; }
         .setup-line-card + .setup-line-card { margin-top: 12px; }
@@ -189,14 +190,14 @@
 
     <div class="topbar">
         <div>
-            <div class="eyebrow">Business administration</div>
-            <h1>Business Setup</h1>
-            <p class="subtle">{{ $tenant ? "Managing {$tenant->name}." : 'Register a new organization.' }}</p>
+            <div class="eyebrow">{{ $onlineStoreOnly ? 'Storefront administration' : 'Business administration' }}</div>
+            <h1>{{ $onlineStoreOnly ? 'Online Store Setup' : 'Business Setup' }}</h1>
+            <p class="subtle">{{ $tenant ? ($onlineStoreOnly ? "Managing {$tenant->name} storefront." : "Managing {$tenant->name}.") : 'Register a new organization.' }}</p>
         </div>
 
         <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; align-items: center;">
             @if ($tenants->count() > 1)
-                <form method="GET" action="{{ route('admin.business.index') }}" style="min-width: 260px;">
+                <form method="GET" action="{{ $onlineStoreOnly ? route('admin.business.online-store.index') : route('admin.business.index') }}" style="min-width: 260px;">
                     <select name="tenant" onchange="this.form.submit()" aria-label="Switch organization">
                         @foreach ($tenants as $visibleTenant)
                             <option value="{{ $visibleTenant->id }}" @selected($tenant?->id === $visibleTenant->id)>{{ $visibleTenant->name }}</option>
@@ -235,17 +236,18 @@
             </div>
         </section>
     @else
-        <div class="tab-layout">
+        <div class="tab-layout" @if ($onlineStoreOnly) data-default-tab="online-store" @endif>
+            @unless ($onlineStoreOnly)
             <nav class="pill-nav" aria-label="Business setup sections" role="tablist">
                 <a href="#business-profile" role="tab" data-tab-target="business-profile">Business profile</a>
                 <a href="#payment-accounts" role="tab" data-tab-target="payment-accounts">Payment accounts <span class="badge neutral">{{ $paymentAccounts->count() }}</span></a>
                 <a href="#subscriptions" role="tab" data-tab-target="subscriptions">Subscriptions <span class="badge neutral">{{ $tenantSubscriptions->count() }}</span></a>
-                <a href="#online-store" role="tab" data-tab-target="online-store">Online Store</a>
                 <a href="#branches" role="tab" data-tab-target="branches">Branches / stores <span class="badge neutral">{{ $branches->count() }}</span></a>
                 <a href="#departments" role="tab" data-tab-target="departments">Departments / units <span class="badge neutral">{{ $departments->count() }}</span></a>
                 <a href="#roles" role="tab" data-tab-target="roles">User roles <span class="badge neutral">{{ $roles->count() }}</span></a>
                 <a href="#users" role="tab" data-tab-target="users">Organization users <span class="badge neutral">{{ $memberships->count() }}</span></a>
             </nav>
+            @endunless
 
             <div class="content-stack">
                 <section class="panel tab-panel" id="business-profile" role="tabpanel" data-tab-panel>
@@ -285,6 +287,7 @@
                                 <div class="summary-item"><span>Maintenance mode</span><strong>{{ ($tenant->settings['maintenance_mode'] ?? false) ? 'Enabled' : 'Disabled' }}</strong></div>
                                 <div class="summary-item"><span>Payment accounts</span><strong>{{ $paymentAccounts->count() }}</strong></div>
                                 <div class="summary-item"><span>Estimated cost COGS</span><strong>{{ ($tenant->settings['use_estimated_cost_for_cogs'] ?? false) ? 'Enabled' : 'Disabled' }}</strong></div>
+                                <div class="summary-item"><span>Online store</span><strong><a class="btn secondary" href="{{ route('admin.business.online-store.index', ['tenant' => $tenant->id]) }}#online-store">Manage setup</a></strong></div>
                             </div>
                         @endif
                     </div>

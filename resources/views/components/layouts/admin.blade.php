@@ -308,10 +308,11 @@
                 </div>
                 <nav class="nav" aria-label="Admin navigation">
                     <a class="{{ request()->routeIs('admin.analytics.*') ? 'active' : '' }}" href="{{ route('admin.analytics.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg><span>Dashboard</span></a>
-                    <a class="{{ request()->routeIs('admin.business.*') && ! request()->routeIs('admin.business.organizations.*') ? 'active' : '' }}" href="{{ route('admin.business.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-store"/></svg><span>Business setup</span></a>
+                    <a class="{{ request()->routeIs('admin.business.*') && ! request()->routeIs('admin.business.organizations.*') && ! request()->routeIs('admin.business.online-store.*') ? 'active' : '' }}" href="{{ route('admin.business.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-store"/></svg><span>Business setup</span></a>
 
                     <div class="nav-group">Operations</div>
                     <a class="{{ request()->routeIs('admin.catalog.*') ? 'active' : '' }}" href="{{ route('admin.catalog.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-package"/></svg><span>Product &amp; Services</span></a>
+                    <a class="{{ request()->routeIs('admin.business.online-store.*') ? 'active' : '' }}" href="{{ route('admin.business.online-store.index', $activeTenantRouteParams) }}#online-store"><svg viewBox="0 0 24 24"><use href="#i-store"/></svg><span>Online Store</span></a>
                     <a class="{{ request()->routeIs('admin.inventory.*') ? 'active' : '' }}" href="{{ route('admin.inventory.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-layers"/></svg><span>Inventory &amp; Stock</span></a>
                     <a class="{{ request()->routeIs('admin.procurement.*') ? 'active' : '' }}" href="{{ route('admin.procurement.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-truck"/></svg><span>Purchasing &amp; Suppliers</span></a>
                     <a class="{{ request()->routeIs('admin.customers.*') ? 'active' : '' }}" href="{{ route('admin.customers.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-users"/></svg><span>Customers &amp; Support</span></a>
@@ -587,7 +588,7 @@
                     window.print();
                 });
 
-                activateTab(window.location.hash.replace('#', ''));
+                activateTab(window.location.hash.replace('#', '') || document.querySelector('[data-default-tab]')?.dataset.defaultTab || '');
             });
         </script>
     </body>

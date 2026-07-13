@@ -8,6 +8,7 @@ use Modules\Business\Http\Controllers\BusinessSetupController;
 Route::get('/organizations', [BusinessSetupController::class, 'organizations'])->name('organizations.index');
 Route::get('/organizations/{tenant}', [BusinessSetupController::class, 'organizationDetails'])->name('organizations.show');
 Route::get('/', [BusinessSetupController::class, 'index'])->name('index');
+Route::get('/online-store', [BusinessSetupController::class, 'onlineStore'])->name('online-store.index');
 Route::post('/profile', [BusinessSetupController::class, 'saveProfile'])->name('profile.save');
 Route::post('/payment-methods', [BusinessSetupController::class, 'savePaymentMethods'])->name('payment-methods.save');
 Route::post('/payment-accounts', [BusinessSetupController::class, 'storePaymentAccount'])->name('payment-accounts.store');

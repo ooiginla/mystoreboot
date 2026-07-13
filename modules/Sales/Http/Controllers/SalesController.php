@@ -908,7 +908,7 @@ final class SalesController extends Controller
     private function ensureCashShortOverAccount(string $tenantId): FinanceAccount
     {
         $account = FinanceAccount::query()->firstOrCreate(
-            ['tenant_id' => $tenantId, 'code' => 'EXP-6360'],
+            ['tenant_id' => $tenantId, 'code' => 'EXP-6370'],
             [
                 'name' => 'Cash Short & Over (Till Variance)',
                 'type' => 'expense',
