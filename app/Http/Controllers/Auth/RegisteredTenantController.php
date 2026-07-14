@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
@@ -20,6 +21,7 @@ use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\Role;
 use Modules\Access\Models\TenantMembership;
 use Modules\Business\Enums\BusinessType;
+use Modules\Finance\Actions\EnsureDefaultChartOfAccountsAction;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Module;
 use Modules\Subscriptions\Models\Plan;
@@ -34,6 +36,8 @@ final class RegisteredTenantController extends Controller
         return view('auth.register', [
             'businessCategories' => BusinessType::options(),
             'countries' => $this->countries(),
+            'recaptchaSiteKey' => config('services.recaptcha.site_key'),
+            'recaptchaEnabled' => $this->recaptchaEnabled(),
         ]);
     }
 
@@ -47,6 +51,16 @@ final class RegisteredTenantController extends Controller
             'name' => ['required', 'string', 'max:160'],
             'email' => ['required', 'email:rfc', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'g-recaptcha-response' => [
+                Rule::requiredIf($this->recaptchaEnabled()),
+                'nullable',
+                'string',
+                function (string $attribute, mixed $value, \Closure $fail) use ($request): void {
+                    if ($this->recaptchaEnabled() && ! $this->verifyRecaptcha($request, (string) $value)) {
+                        $fail('Please complete the captcha verification.');
+                    }
+                },
+            ],
         ]);
 
         [$tenant, $user] = DB::transaction(function () use ($data): array {
@@ -96,6 +110,8 @@ final class RegisteredTenantController extends Controller
                 'current_period_starts_at' => now(),
                 'current_period_ends_at' => $tenant->trial_ends_at,
             ]);
+
+            app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
 
             return [$tenant, $user];
         });
@@ -147,6 +163,28 @@ final class RegisteredTenantController extends Controller
                 'hash' => sha1($user->email),
             ],
         );
+    }
+
+    private function recaptchaEnabled(): bool
+    {
+        return filled(config('services.recaptcha.site_key')) && filled(config('services.recaptcha.secret_key'));
+    }
+
+    private function verifyRecaptcha(Request $request, string $token): bool
+    {
+        if (trim($token) === '') {
+            return false;
+        }
+
+        $response = Http::asForm()
+            ->timeout(5)
+            ->post((string) config('services.recaptcha.verify_url'), [
+                'secret' => config('services.recaptcha.secret_key'),
+                'response' => $token,
+                'remoteip' => $request->ip(),
+            ]);
+
+        return $response->ok() && (bool) $response->json('success');
     }
 
     private function allModulesTrialPlan(): Plan

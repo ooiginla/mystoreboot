@@ -44,13 +44,15 @@
         .order-card .oc-label { color: var(--muted); font-size: 12.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .03em; }
         .order-card .oc-value { margin-top: 6px; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
         .dash-charts { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; margin-bottom: 16px; }
+        .dash-charts.cols-4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
         .chart-card { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; box-shadow: var(--shadow-sm); padding: 18px 18px 8px; min-width: 0; }
         .chart-card.span2 { grid-column: span 2; }
         .chart-card h3 { margin: 0 0 6px; font-size: 15px; font-weight: 700; }
         .chart-card .subtle { margin-bottom: 6px; }
         .chart-empty { color: var(--muted); background: var(--panel-soft); border-radius: 9px; padding: 28px; text-align: center; font-size: 13px; margin: 6px 0 12px; }
         .rank { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--brand-050); color: var(--brand-strong); font-weight: 800; font-size: 12px; }
-        @media (max-width: 1100px) { .dash-kpis { grid-template-columns: repeat(2, minmax(0,1fr)); } .dash-charts { grid-template-columns: 1fr; } .chart-card.span2 { grid-column: auto; } .dash-orders { grid-template-columns: 1fr; } }
+        @media (max-width: 1100px) { .dash-kpis { grid-template-columns: repeat(2, minmax(0,1fr)); } .dash-charts { grid-template-columns: 1fr; } .dash-charts.cols-4 { grid-template-columns: repeat(2, minmax(0,1fr)); } .chart-card.span2 { grid-column: auto; } .dash-orders { grid-template-columns: 1fr; } }
+        @media (max-width: 720px) { .dash-charts.cols-4 { grid-template-columns: 1fr; } }
         @media (max-width: 620px) { .dash-kpis { grid-template-columns: 1fr; } }
     </style>
 
@@ -192,7 +194,7 @@
     </div>
 
     {{-- ===== Charts row 2 ===== --}}
-    <div class="dash-charts">
+    <div class="dash-charts cols-4">
         <div class="chart-card">
             <h3>Sales by Channel</h3>
             <p class="subtle">Where your sales come from</p>
@@ -209,6 +211,15 @@
                 <div class="chart-empty">No payments in this period.</div>
             @else
                 <div id="chart-payment"></div>
+            @endif
+        </div>
+        <div class="chart-card">
+            <h3>Payment Accounts</h3>
+            <p class="subtle">Collections by receiving account</p>
+            @if ($charts['paymentAccount']->isEmpty())
+                <div class="chart-empty">No payments in this period.</div>
+            @else
+                <div id="chart-payment-account"></div>
             @endif
         </div>
         <div class="chart-card">
@@ -254,10 +265,11 @@
             revenue: @json($charts['revenue']),
             channel: @json($charts['channel']),
             payment: @json($charts['payment']),
+            paymentAccount: @json($charts['paymentAccount']),
             expense: @json($charts['expense']),
         };
     </script>
     <script src="{{ asset('vendor/apexcharts/apexcharts.min.js') }}"></script>
-    <script src="{{ asset('js/dashboard-charts.js') }}?v=1"></script>
+    <script src="{{ asset('js/dashboard-charts.js') }}?v=2"></script>
     @endif
 </x-layouts.admin>

@@ -150,15 +150,25 @@ final class EnsureDefaultChartOfAccountsAction
     {
         return [
             'General Operations' => 'EXP-6000',
-            'Rent' => 'EXP-6100',
-            'Utilities' => 'EXP-6130',
+            'Freight and Delivery' => 'EXP-5100',
+            'Taxes and Licenses' => 'EXP-5200',
             'Salaries and Wages' => 'EXP-6030',
             'Marketing' => 'EXP-6040',
             'Inventory Adjustments' => 'EXP-6050',
-            'Freight and Delivery' => 'EXP-5100',
-            'Taxes and Licenses' => 'EXP-5200',
+            'Rent' => 'EXP-6100',
+            'Utilities' => 'EXP-6130',
+            'Internet and Phone' => 'EXP-6120',
+            'Fuel and Gas' => 'EXP-6150',
+            'Repairs and Maintenance' => 'EXP-6220',
+            'IT and Software Subscription' => 'EXP-6230',
+            'Office Supplies' => 'EXP-6240',
+            'Insurance' => 'EXP-6250',
+            'Advertising' => 'EXP-6270',
             'Travelling & Transportation' => 'EXP-6300',
+            'Bank, POS and Gateway Charges' => 'EXP-6350',
             'Meals & Entertainment' => 'EXP-6360',
+            'Cash Short and Over' => 'EXP-6370',
+            'Miscellaneous' => 'EXP-6000',
         ];
     }
 }

@@ -79,6 +79,21 @@
         }).render();
     }
 
+    // ---- Payment accounts (donut, money) ----
+    if (el('chart-payment-account') && data.paymentAccount && data.paymentAccount.length) {
+        new ApexCharts(el('chart-payment-account'), {
+            chart: { type: 'donut', height: 280, fontFamily: baseFont.fontFamily },
+            series: data.paymentAccount.map(function (d) { return d.value; }),
+            labels: data.paymentAccount.map(function (d) { return d.label; }),
+            colors: PALETTE,
+            legend: { position: 'bottom', labels: { colors: INK } },
+            plotOptions: { pie: { donut: { size: '60%', labels: { show: true, total: { show: true, label: 'Collected', color: INK, formatter: function (w) { return money(w.globals.seriesTotals.reduce(function (a, b) { return a + b; }, 0)); } } } } } },
+            stroke: { width: 2 },
+            dataLabels: { enabled: true, formatter: function (val) { return Number(val).toFixed(0) + '%'; } },
+            tooltip: { y: { formatter: function (v) { return money(v); } } }
+        }).render();
+    }
+
     // ---- Expense breakdown (horizontal bar, money) ----
     if (el('chart-expense') && data.expense.length) {
         new ApexCharts(el('chart-expense'), {

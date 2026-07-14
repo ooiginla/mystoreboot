@@ -8,6 +8,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Access\Models\Role;
+use Modules\Finance\Actions\EnsureDefaultChartOfAccountsAction;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Plan;
@@ -78,6 +79,8 @@ final class SaveBusinessProfileAction
             ]);
 
             $tenant->save();
+
+            app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
 
             if (is_array($bankDetails)) {
                 $bankDetails = $this->ensureBankDetailAssetAccounts($tenant, $bankDetails);

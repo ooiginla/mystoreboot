@@ -7,6 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Business\Models\Branch;
 use Modules\Catalog\Models\Product;
 use Modules\Catalog\Models\ProductVariant;
+use Modules\Finance\Actions\EnsureDefaultChartOfAccountsAction;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Finance\Models\FinanceBankMovement;
 use Modules\Finance\Models\FinanceExpense;
@@ -22,6 +23,56 @@ use Tests\TestCase;
 class FinanceReportTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_default_expense_categories_are_seeded_for_each_tenant_without_blocking_customization(): void
+    {
+        $tenant = Tenant::query()->create([
+            'name' => 'Default Category Shop',
+            'slug' => 'default-category-shop',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+        ]);
+
+        app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
+
+        $categoryNames = FinanceExpenseCategory::query()
+            ->where('tenant_id', $tenant->id)
+            ->orderBy('name')
+            ->pluck('name')
+            ->all();
+
+        foreach ([
+            'Advertising',
+            'Bank, POS and Gateway Charges',
+            'Fuel and Gas',
+            'Insurance',
+            'Internet and Phone',
+            'Meals & Entertainment',
+            'Miscellaneous',
+            'Office Supplies',
+            'Rent',
+            'Repairs and Maintenance',
+            'Salaries and Wages',
+            'Travelling & Transportation',
+            'Utilities',
+        ] as $expectedCategory) {
+            $this->assertContains($expectedCategory, $categoryNames);
+        }
+
+        $customCategory = FinanceExpenseCategory::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('code', 'office-supplies')
+            ->firstOrFail();
+
+        $customCategory->update(['name' => 'Office Supplies Custom']);
+
+        app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
+
+        $this->assertSame('Office Supplies Custom', $customCategory->refresh()->name);
+    }
 
     public function test_platform_admin_can_generate_financial_reports(): void
     {

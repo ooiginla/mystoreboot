@@ -4,6 +4,12 @@
     $days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
     $hours = old('opening_hours', $tenant?->opening_hours ?? []);
     $paymentMethodOptions = ['Cash', 'Transfer', 'Card', 'Cheque'];
+    $paymentMethodDetails = [
+        'Cash' => ['description' => 'Always available', 'icon' => 'cash'],
+        'Transfer' => ['description' => 'Bank transfer receipt verification', 'icon' => 'transfer'],
+        'Card' => ['description' => 'Integrated card terminal routing', 'icon' => 'card'],
+        'Cheque' => ['description' => 'Physical cheque deposit validation', 'icon' => 'cheque'],
+    ];
     $enabledPaymentMethods = collect($tenant?->settings['payment_methods'] ?? ['Cash', 'Transfer', 'Card', 'Cheque'])
         ->map(fn ($method) => match (true) {
             str_contains(strtolower((string) $method), 'card'), str_contains(strtolower((string) $method), 'pos') => 'Card',
@@ -67,6 +73,12 @@
         'bank_account' => 'Pay via Transfer',
         'place_order' => 'Place Order',
     ];
+    $onlinePaymentDetails = [
+        'pay_on_delivery' => ['description' => 'Collect payment when the order is delivered', 'icon' => 'cash'],
+        'bank_account' => ['description' => 'Show a selected bank account for transfer checkout', 'icon' => 'transfer'],
+        'place_order' => ['description' => 'Allow customers to submit orders before payment', 'icon' => 'order'],
+        'paystack' => ['description' => 'Accept online payments through Paystack', 'icon' => 'card'],
+    ];
     $businessPaymentMethods = $enabledPaymentMethods;
     $openBusinessDays = collect($tenant?->opening_hours ?? [])->filter(fn ($hours) => (bool) ($hours['is_open'] ?? false));
 
@@ -119,6 +131,62 @@
         .radio-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
         .nested-check-list { margin: 10px 0 0 24px; display: grid; grid-template-columns: 1fr; gap: 8px; }
         .nested-check-list[hidden] { display: none; }
+
+        /* Payment method selector */
+        .payment-method-list { display: grid; gap: 12px; }
+        .payment-method-card {
+            position: relative; display: flex; align-items: center; gap: 14px;
+            min-height: 78px; padding: 14px 48px 14px 16px;
+            border: 1px solid var(--brand); border-radius: 12px;
+            background: #fcfffe; color: #172033; cursor: pointer;
+            transition: background .15s, border-color .15s, box-shadow .15s, transform .06s;
+        }
+        .payment-method-card:hover { background: var(--brand-050); box-shadow: 0 8px 18px -16px rgba(0,154,83,.45); }
+        .payment-method-card:active { transform: translateY(.5px); }
+        .payment-method-card:has(input:checked) { background: #fbfffd; }
+        .payment-method-card:has(input:disabled) { opacity: 1; cursor: default; background: #fbfffd; }
+        .payment-method-card input {
+            position: absolute; width: 1px; height: 1px; overflow: hidden;
+            clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+        }
+        .main .payment-method-card input.switch-input {
+            position: absolute; display: block; width: 1px; height: 1px;
+            min-width: 1px; max-width: 1px; padding: 0; margin: 0; border: 0;
+            overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+            background: transparent; box-shadow: none;
+        }
+        .main .payment-method-card input.switch-input::after { display: none; }
+        .payment-method-icon {
+            width: 44px; height: 44px; border-radius: 11px; flex: 0 0 auto;
+            display: grid; place-items: center; background: #009a6a; color: #fff;
+            box-shadow: 0 9px 18px -14px rgba(0,154,83,.85);
+        }
+        .payment-method-icon svg { width: 22px; height: 22px; stroke-width: 2.4; }
+        .payment-method-copy { display: grid; gap: 3px; min-width: 0; }
+        .payment-method-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .payment-method-title { font-size: 16px; line-height: 1.15; font-weight: 900; letter-spacing: 0; text-transform: uppercase; }
+        .payment-method-required {
+            display: inline-flex; align-items: center; min-height: 22px; padding: 3px 9px;
+            border-radius: 999px; background: #d4fae6; color: #008458;
+            font-size: 11px; line-height: 1; font-weight: 900; letter-spacing: .04em;
+        }
+        .payment-method-description { color: #8194b1; font-size: 13px; line-height: 1.35; font-weight: 500; }
+        .payment-method-check {
+            position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+            width: 26px; height: 26px; border-radius: 8px; background: #009a6a; color: #fff;
+            display: grid; place-items: center; opacity: 0; transition: opacity .15s, background .15s;
+        }
+        .payment-method-card:has(input:checked) .payment-method-check { opacity: 1; }
+        .payment-method-check svg { width: 17px; height: 17px; stroke-width: 3.4; }
+        @media (max-width: 700px) {
+            .payment-method-list { gap: 10px; }
+            .payment-method-card { min-height: 72px; gap: 12px; padding: 12px 44px 12px 14px; border-radius: 11px; }
+            .payment-method-icon { width: 40px; height: 40px; border-radius: 10px; }
+            .payment-method-icon svg { width: 20px; height: 20px; }
+            .payment-method-title { font-size: 15px; }
+            .payment-method-description { font-size: 12.5px; }
+            .payment-method-check { right: 14px; width: 24px; height: 24px; border-radius: 8px; }
+        }
 
         /* Semantic status pills */
         .status-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 11px; font-size: 12px; font-weight: 700; border: 1px solid transparent; white-space: nowrap; }
@@ -312,9 +380,37 @@
                                 <form class="mini-form" method="POST" action="{{ route('admin.business.payment-methods.save') }}">
                                     @csrf
                                     <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
-                                    <div class="check-grid">
+                                    <div class="payment-method-list">
                                         @foreach ($paymentMethodOptions as $method)
-                                            <label class="check-card"><input type="checkbox" name="payment_methods[]" value="{{ $method }}" @checked($enabledPaymentMethods->contains($method)) @disabled($method === 'Cash')> <span class="check-card-text"><span>{{ strtoupper($method) }}</span>@if ($method === 'Cash')<small>Always available</small>@endif</span></label>
+                                            @php
+                                                $methodDetails = $paymentMethodDetails[$method];
+                                            @endphp
+                                            <label class="payment-method-card">
+                                                <input type="checkbox" name="payment_methods[]" value="{{ $method }}" @checked($enabledPaymentMethods->contains($method)) @disabled($method === 'Cash')>
+                                                <span class="payment-method-icon" aria-hidden="true">
+                                                    @if ($methodDetails['icon'] === 'cash')
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="1.5"/><circle cx="12" cy="12" r="2"/><path d="M6.5 10h.01M17.5 14h.01"/></svg>
+                                                    @elseif ($methodDetails['icon'] === 'transfer')
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h11M14 3l4 4-4 4M17 17H6M10 13l-4 4 4 4"/></svg>
+                                                    @elseif ($methodDetails['icon'] === 'card')
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg>
+                                                    @else
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h10v18H7z"/><path d="M9 7h6M9 17h6M12 8v8M10.5 10.2c0-1.1.8-1.8 2-1.8 1 0 1.8.4 2.2 1.1M13.5 15.6c-1.3 0-2.3-.5-2.8-1.3"/></svg>
+                                                    @endif
+                                                </span>
+                                                <span class="payment-method-copy">
+                                                    <span class="payment-method-title-row">
+                                                        <span class="payment-method-title">{{ strtoupper($method) }}</span>
+                                                        @if ($method === 'Cash')
+                                                            <span class="payment-method-required">REQUIRED</span>
+                                                        @endif
+                                                    </span>
+                                                    <span class="payment-method-description">{{ $methodDetails['description'] }}</span>
+                                                </span>
+                                                <span class="payment-method-check" aria-hidden="true">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 7"/></svg>
+                                                </span>
+                                            </label>
                                         @endforeach
                                     </div>
                                     <p class="subtle">Cash is always available. Transfer, Card, and Cheque can require a receiving account on POS.</p>
@@ -558,11 +654,26 @@
                                 <div class="setup-section online-store-section-panel" id="online-store-payments" role="tabpanel" data-online-store-section-panel hidden>
                                     <h3 class="setup-section-title">Payment Method</h3>
                                     <p class="subtle">Choose how customers can pay at checkout on your online store.</p>
-                                    <div class="check-list">
+                                    <div class="payment-method-list">
                                         @foreach ($onlinePaymentOptions as $value => $label)
+                                            @php
+                                                $methodDetails = $onlinePaymentDetails[$value];
+                                            @endphp
                                             @if ($value === 'bank_account')
                                                 <div class="check-card-group">
-                                                    <label class="check-card"><input type="checkbox" name="payment_methods[]" value="{{ $value }}" @checked(in_array($value, $onlinePaymentMethods, true))> <span>{{ $label }}</span></label>
+                                                    <label class="payment-method-card">
+                                                        <input type="checkbox" name="payment_methods[]" value="{{ $value }}" @checked(in_array($value, $onlinePaymentMethods, true))>
+                                                        <span class="payment-method-icon" aria-hidden="true">
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h11M14 3l4 4-4 4M17 17H6M10 13l-4 4 4 4"/></svg>
+                                                        </span>
+                                                        <span class="payment-method-copy">
+                                                            <span class="payment-method-title-row"><span class="payment-method-title">{{ $label }}</span></span>
+                                                            <span class="payment-method-description">{{ $methodDetails['description'] }}</span>
+                                                        </span>
+                                                        <span class="payment-method-check" aria-hidden="true">
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 7"/></svg>
+                                                        </span>
+                                                    </label>
                                                     <div class="check-reveal" data-transfer-bank-selector @if (! in_array('bank_account', $onlinePaymentMethods, true)) hidden @endif>
                                                         <div class="field">
                                                             <label>Bank account</label>
@@ -586,11 +697,39 @@
                                                     </div>
                                                 </div>
                                             @else
-                                                <label class="check-card"><input type="checkbox" name="payment_methods[]" value="{{ $value }}" @checked(in_array($value, $onlinePaymentMethods, true))> <span>{{ $label }}</span></label>
+                                                <label class="payment-method-card">
+                                                    <input type="checkbox" name="payment_methods[]" value="{{ $value }}" @checked(in_array($value, $onlinePaymentMethods, true))>
+                                                    <span class="payment-method-icon" aria-hidden="true">
+                                                        @if ($methodDetails['icon'] === 'cash')
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="1.5"/><circle cx="12" cy="12" r="2"/><path d="M6.5 10h.01M17.5 14h.01"/></svg>
+                                                        @else
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4z"/><path d="M8 10h8M8 14h5"/></svg>
+                                                        @endif
+                                                    </span>
+                                                    <span class="payment-method-copy">
+                                                        <span class="payment-method-title-row"><span class="payment-method-title">{{ $label }}</span></span>
+                                                        <span class="payment-method-description">{{ $methodDetails['description'] }}</span>
+                                                    </span>
+                                                    <span class="payment-method-check" aria-hidden="true">
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 7"/></svg>
+                                                    </span>
+                                                </label>
                                             @endif
                                         @endforeach
                                         <div class="check-card-group">
-                                            <label class="check-card"><input type="checkbox" data-paystack-toggle @checked($onlinePaystackMethod !== 'none')> <span>Paystack</span></label>
+                                            <label class="payment-method-card">
+                                                <input type="checkbox" data-paystack-toggle @checked($onlinePaystackMethod !== 'none')>
+                                                <span class="payment-method-icon" aria-hidden="true">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg>
+                                                </span>
+                                                <span class="payment-method-copy">
+                                                    <span class="payment-method-title-row"><span class="payment-method-title">PAYSTACK</span></span>
+                                                    <span class="payment-method-description">{{ $onlinePaymentDetails['paystack']['description'] }}</span>
+                                                </span>
+                                                <span class="payment-method-check" aria-hidden="true">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 7"/></svg>
+                                                </span>
+                                            </label>
                                             <div class="check-reveal" data-paystack-options @if ($onlinePaystackMethod === 'none') hidden @endif>
                                                 <input type="hidden" name="paystack_method" value="none" data-paystack-method-fallback @disabled($onlinePaystackMethod !== 'none')>
                                                 <div class="radio-cards">

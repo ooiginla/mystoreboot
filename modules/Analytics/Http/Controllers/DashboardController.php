@@ -166,6 +166,7 @@ final class DashboardController extends Controller
             ->where('tenant_id', $tenant->id)
             ->when($selectedBranchId, fn ($q) => $q->whereHas('order', fn ($o) => $o->where('branch_id', $selectedBranchId)))
             ->whereBetween('payment_date', [$from->toDateString(), $to->toDateString()])
+            ->with('paymentAccount')
             ->get();
         $paymentChart = $payments
             ->groupBy(fn (SalesOrderPayment $p) => $p->payment_method ?: 'Unspecified')
@@ -173,6 +174,15 @@ final class DashboardController extends Controller
                 'label' => $method,
                 'value' => round($g->sum('amount_minor') / 100, 2),
             ])
+            ->values();
+
+        $paymentAccountChart = $payments
+            ->groupBy(fn (SalesOrderPayment $p) => $p->paymentAccount?->identifier ?: 'Cash / Till')
+            ->map(fn (Collection $g, string $label): array => [
+                'label' => $label,
+                'value' => round($g->sum('amount_minor') / 100, 2),
+            ])
+            ->sortByDesc('value')
             ->values();
 
         $expenseChart = $expenses
@@ -235,6 +245,7 @@ final class DashboardController extends Controller
                 'revenue' => $revenueSeries,
                 'channel' => $channelChart,
                 'payment' => $paymentChart,
+                'paymentAccount' => $paymentAccountChart,
                 'expense' => $expenseChart,
             ],
             'topProducts' => $topProducts,

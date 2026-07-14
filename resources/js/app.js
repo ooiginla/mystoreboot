@@ -58,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (name.endsWith('[]')) return;            // multi-select group
         if (box.closest('.ts-wrapper')) return;      // inside a tom-select control
         if (box.closest('.check-card')) return;      // styled selectable card, keep custom check
+        if (box.closest('.payment-method-card')) return;
         box.classList.add('switch-input');
     });
 });

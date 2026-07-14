@@ -90,6 +90,20 @@
             </div>
         </fieldset>
 
+        @if ($recaptchaEnabled)
+            {{-- Verification --}}
+            <fieldset>
+                <legend class="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-400">
+                    <span class="grid h-5 w-5 place-items-center rounded-full bg-brand-500/15 text-brand-600 dark:text-brand-400">3</span>
+                    Human verification
+                </legend>
+                <div class="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 dark:border-white/10 dark:bg-white/5">
+                    <div class="g-recaptcha" data-sitekey="{{ $recaptchaSiteKey }}"></div>
+                    <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-500">This helps us keep automated signups away.</p>
+                </div>
+            </fieldset>
+        @endif
+
         <button type="submit" class="sb-btn sb-btn-primary w-full py-3 text-base">
             Create account
             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0-6-6m6 6-6 6"/></svg>
@@ -107,3 +121,9 @@
         <a href="{{ route('login') }}" class="font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400">Sign in</a>
     </p>
 @endsection
+
+@if ($recaptchaEnabled)
+    @push('scripts')
+        <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    @endpush
+@endif
