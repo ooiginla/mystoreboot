@@ -26,11 +26,15 @@ use Modules\Business\Models\Branch;
 use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Business\Models\Department;
 use Modules\Business\Models\OnlineStore;
+use Modules\Business\Support\OnlineStoreContentDefaults;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
+use Modules\Subscriptions\Models\Module;
 use Modules\Subscriptions\Models\Plan;
+use Modules\Subscriptions\Models\TenantModuleEntitlement;
 use Modules\Subscriptions\Models\TenantSubscription;
+use Modules\Subscriptions\Support\TenantModuleAccess;
 use Modules\Tenancy\Models\Tenant;
 
 final class BusinessSetupController extends Controller
@@ -62,6 +66,9 @@ final class BusinessSetupController extends Controller
             'tenant' => $tenant,
             'tenants' => $tenants,
             'isPlatformAdmin' => $isPlatformAdmin,
+            'canManageSubscriptionModules' => $tenant
+                ? $this->canManageSubscriptionModules($user, $tenant->id)
+                : false,
             'onlineStoreOnly' => $onlineStoreOnly,
             'plans' => Plan::query()->with('modules')->where('is_active', true)->orderBy('sort_order')->get(),
             'subscriptionStatuses' => SubscriptionStatus::cases(),
@@ -71,6 +78,9 @@ final class BusinessSetupController extends Controller
                     ->where('tenant_id', $tenant->id)
                     ->latest()
                     ->get()
+                : collect(),
+            'subscriptionModuleStates' => $tenant
+                ? app(TenantModuleAccess::class)->states($tenant)
                 : collect(),
             'businessTypes' => BusinessType::options(),
             'branches' => $tenant
@@ -83,7 +93,13 @@ final class BusinessSetupController extends Controller
                 ? $this->businessPaymentAccounts($tenant)
                 : collect(),
             'roles' => $tenant
-                ? Role::query()->where('tenant_id', $tenant->id)->orderByDesc('is_system')->orderBy('name')->get()
+                ? Role::query()
+                    ->where('tenant_id', $tenant->id)
+                    ->withCount('memberships')
+                    ->orderByDesc('is_protected')
+                    ->orderByDesc('is_system')
+                    ->orderBy('name')
+                    ->get()
                 : collect(),
             'memberships' => $tenant
                 ? TenantMembership::query()
@@ -101,6 +117,9 @@ final class BusinessSetupController extends Controller
             'productCategories' => $tenant
                 ? ProductCategory::query()->where('tenant_id', $tenant->id)->orderBy('name')->get()
                 : collect(),
+            'approvableActions' => \Modules\Access\Support\PermissionCatalogue::approvable(),
+            'approvalsEnabled' => (bool) ($tenant->settings['approvals']['enabled'] ?? false),
+            'approvalActions' => (array) ($tenant->settings['approvals']['actions'] ?? []),
         ];
     }
 
@@ -119,7 +138,7 @@ final class BusinessSetupController extends Controller
         $savedTenant = $action->execute($request->validated(), $tenant);
 
         return redirect()
-            ->route('admin.business.index', ['tenant' => $savedTenant->id])
+            ->to(route('admin.business.index', ['tenant' => $savedTenant->id]).'#business-profile')
             ->with('status', "Business profile saved for {$savedTenant->name}.");
     }
 
@@ -147,6 +166,47 @@ final class BusinessSetupController extends Controller
         return redirect()
             ->to(route('admin.business.index', ['tenant' => $tenant->id]).'#payment-accounts')
             ->with('status', 'Payment methods updated.');
+    }
+
+    public function saveApprovals(Request $request): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
+        $tenant = Tenant::query()->findOrFail($request->string('tenant_id')->toString());
+
+        $actionKeys = array_keys(\Modules\Access\Support\PermissionCatalogue::approvable());
+
+        $data = $request->validate([
+            'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            'approvals_enabled' => ['nullable', 'boolean'],
+            'actions' => ['nullable', 'array'],
+            'actions.*' => ['nullable', 'boolean'],
+        ]);
+
+        $enabled = (bool) ($data['approvals_enabled'] ?? false);
+        $actions = [];
+        foreach ($actionKeys as $key) {
+            $actions[$key] = (bool) ($data['actions'][$key] ?? false);
+        }
+
+        $tenant->settings = array_merge($tenant->settings ?? [], [
+            'approvals' => ['enabled' => $enabled, 'actions' => $actions],
+        ]);
+        $tenant->save();
+
+        app(\Modules\Access\Support\AuditLogger::class)->log(
+            $tenant->id,
+            $request->user(),
+            'approvals.settings.changed',
+            'Approval workflows turned '.($enabled ? 'on' : 'off').'.',
+            'approvals',
+            'tenant',
+            $tenant->id,
+            ['enabled' => $enabled, 'actions' => array_keys(array_filter($actions))],
+        );
+
+        return redirect()
+            ->to(route('admin.business.index', ['tenant' => $tenant->id]).'#approvals')
+            ->with('status', 'Approval workflow settings saved.');
     }
 
     public function storePaymentAccount(Request $request): RedirectResponse
@@ -196,7 +256,7 @@ final class BusinessSetupController extends Controller
         $branch = $action->execute($request->validated());
 
         return redirect()
-            ->route('admin.business.index', ['tenant' => $branch->tenant_id])
+            ->to(route('admin.business.index', ['tenant' => $branch->tenant_id]).'#branches')
             ->with('status', "Branch {$branch->name} created.");
     }
 
@@ -220,7 +280,7 @@ final class BusinessSetupController extends Controller
         $department = $action->execute($request->validated());
 
         return redirect()
-            ->route('admin.business.index', ['tenant' => $department->tenant_id])
+            ->to(route('admin.business.index', ['tenant' => $department->tenant_id]).'#departments')
             ->with('status', "Department {$department->name} created.");
     }
 
@@ -230,6 +290,7 @@ final class BusinessSetupController extends Controller
         $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
 
         $store = OnlineStore::query()->firstOrNew(['tenant_id' => $data['tenant_id']]);
+        $isNewStore = ! $store->exists;
         $logoPath = $store->logo_path;
         $heroImagePath = $store->hero_image_path;
 
@@ -254,6 +315,27 @@ final class BusinessSetupController extends Controller
         $selectedBankAccountKey = in_array('bank_account', $data['payment_methods'] ?? [], true)
             ? ($data['bank_account_key'] ?? null)
             : null;
+        $pages = $data['pages'] ?? ($store->pages ?? []);
+        $faqs = $data['faqs'] ?? ($store->faqs ?? []);
+
+        if ($isNewStore) {
+            foreach (OnlineStoreContentDefaults::pages(
+                (string) $data['store_name'],
+                $data['site_email'] ?? null,
+            ) as $key => $defaultContent) {
+                if (trim((string) ($pages[$key] ?? '')) === '') {
+                    $pages[$key] = $defaultContent;
+                }
+            }
+
+            $hasFaqContent = collect($faqs)->contains(
+                fn ($faq): bool => is_array($faq)
+                    && (trim((string) ($faq['question'] ?? '')) !== '' || trim((string) ($faq['answer'] ?? '')) !== ''),
+            );
+            if (! $hasFaqContent) {
+                $faqs = OnlineStoreContentDefaults::faqs((string) $data['store_name']);
+            }
+        }
 
         $store->fill([
             'fulfilment_branch_id' => $data['fulfilment_branch_id'] ?? null,
@@ -292,8 +374,8 @@ final class BusinessSetupController extends Controller
             'bank_accounts' => $this->selectedBusinessBankAccount($data['tenant_id'], $selectedBankAccountKey),
             'shipping_options' => $this->onlineStoreShippingOptions($data['shipping_options'] ?? []),
             'social_accounts' => $data['socials'] ?? [],
-            'pages' => $data['pages'] ?? [],
-            'faqs' => $this->onlineStoreFaqs($data['faqs'] ?? []),
+            'pages' => $pages,
+            'faqs' => $this->onlineStoreFaqs($faqs),
             'is_active' => true,
             'maintenance_mode' => (bool) ($data['maintenance_mode'] ?? false),
         ]);
@@ -360,6 +442,47 @@ final class BusinessSetupController extends Controller
         return redirect()
             ->to(route('admin.business.index', ['tenant' => $subscription->tenant_id]).'#subscriptions')
             ->with('status', 'Tenant subscription updated.');
+    }
+
+    public function updateSubscriptionModule(Request $request, TenantSubscription $subscription, Module $module): RedirectResponse
+    {
+        /** @var User|null $user */
+        $user = $request->user();
+        abort_unless($user && $this->canManageSubscriptionModules($user, $subscription->tenant_id), 403);
+
+        $data = $request->validate([
+            'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            'enabled' => ['required', 'boolean'],
+        ]);
+
+        abort_unless($data['tenant_id'] === $subscription->tenant_id, 403);
+        abort_if($module->is_core || ! $module->is_active, 403);
+
+        TenantModuleEntitlement::query()->updateOrCreate(
+            [
+                'tenant_id' => $subscription->tenant_id,
+                'module_id' => $module->id,
+            ],
+            ['is_enabled' => (bool) $data['enabled']],
+        );
+
+        return redirect()
+            ->to(route('admin.business.index', ['tenant' => $subscription->tenant_id]).'#subscriptions')
+            ->with('status', "{$module->name} module ".($data['enabled'] ? 'enabled' : 'disabled').'.');
+    }
+
+    private function canManageSubscriptionModules(User $user, string $tenantId): bool
+    {
+        if ($user->is_platform_admin) {
+            return true;
+        }
+
+        return TenantMembership::query()
+            ->where('tenant_id', $tenantId)
+            ->where('user_id', $user->id)
+            ->where('status', MembershipStatus::Active->value)
+            ->whereHas('role', fn ($query) => $query->whereIn('slug', ['administrator', 'business-owner']))
+            ->exists();
     }
 
     public function organizations(Request $request): View

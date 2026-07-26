@@ -25,6 +25,55 @@ final class ProcessSalesReturnAction
     ) {}
 
     /**
+     * Compute the refund total for a proposed return without persisting anything.
+     * Used to check the acting user's refund limit before deciding to process or
+     * divert the return into the approval workflow.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function previewRefundMinor(SalesOrder $order, array $data): int
+    {
+        $refundMinor = 0;
+
+        foreach ((array) ($data['items'] ?? []) as $item) {
+            $quantity = (int) ($item['quantity'] ?? 0);
+
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            $orderItem = $order->items()->whereKey($item['sales_order_item_id'] ?? null)->first();
+
+            if ($orderItem) {
+                $refundMinor += (int) round(($orderItem->line_total_minor / max(1, $orderItem->quantity)) * $quantity);
+            }
+        }
+
+        return $refundMinor;
+    }
+
+    /**
+     * A tenant-unique return number. The unique key is (tenant_id, return_number),
+     * so the daily sequence must be scoped to the tenant — not the individual order —
+     * and is probed to guarantee no collision.
+     */
+    private function nextReturnNumber(string $tenantId): string
+    {
+        $prefix = 'RET-'.now()->format('Ymd').'-';
+        $seq = SalesReturn::query()
+            ->where('tenant_id', $tenantId)
+            ->where('return_number', 'like', $prefix.'%')
+            ->count() + 1;
+
+        do {
+            $candidate = $prefix.str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
+            $seq++;
+        } while (SalesReturn::query()->where('tenant_id', $tenantId)->where('return_number', $candidate)->exists());
+
+        return $candidate;
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     public function execute(SalesOrder $order, array $data): SalesReturn
@@ -54,7 +103,7 @@ final class ProcessSalesReturnAction
 
             $salesReturn = $order->returns()->create([
                 'tenant_id' => $order->tenant_id,
-                'return_number' => 'RET-'.now()->format('Ymd').'-'.str_pad((string) ($order->returns()->count() + 1), 4, '0', STR_PAD_LEFT),
+                'return_number' => $this->nextReturnNumber($order->tenant_id),
                 'return_date' => $data['return_date'],
                 'status' => ReturnStatus::Approved->value,
                 'reason' => $data['reason'] ?? null,
@@ -87,7 +136,7 @@ final class ProcessSalesReturnAction
 
                 $orderItem->increment('quantity_returned', $quantity);
 
-                $this->postInventoryMovement->execute([
+                $this->postInventoryMovement->executeFromSource([
                     'tenant_id' => $order->tenant_id,
                     'inventory_location_id' => $inventoryLocationId,
                     'product_variant_id' => $orderItem->product_variant_id,
@@ -95,11 +144,10 @@ final class ProcessSalesReturnAction
                     'stock_condition' => StockCondition::Returned->value,
                     'quantity' => $quantity,
                     'unit_cost' => $orderItem->unit_cost_minor / 100,
-                    'reference_type' => 'sales_return',
                     'reference_number' => $salesReturn->return_number,
                     'notes' => 'Sales return.',
                     'occurred_at' => $data['return_date'],
-                ]);
+                ], 'sales_return', $salesReturn->id);
             }
 
             $order->refresh()->load('items');

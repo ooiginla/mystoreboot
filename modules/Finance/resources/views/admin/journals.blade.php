@@ -69,6 +69,21 @@
     @if ($errors->any())
         <div class="alert errors"><strong>Check the journal details.</strong><ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
     @endif
+    @if ($openingBalanceEquityMinor !== 0)
+        <div class="alert">
+            <div>
+                <strong>Opening Balance Equity still has a {{ $money(abs($openingBalanceEquityMinor)) }} balance.</strong>
+                <div>After all opening assets and liabilities are loaded and verified, clear this temporary balance to the appropriate permanent equity account.</div>
+            </div>
+            <button
+                class="btn secondary"
+                type="button"
+                data-dialog-open="journal-dialog"
+                data-clear-opening-equity
+                data-opening-equity-balance="{{ $openingBalanceEquityMinor }}"
+            >Prepare clearing journal</button>
+        </div>
+    @endif
 
     <div class="stats-grid" style="margin-bottom: 18px;">
         <div class="stat"><span class="subtle">Accounts</span><strong>{{ $accounts->count() }}</strong></div>
@@ -268,6 +283,7 @@
                                         'finance_expense' => 'Expense posting',
                                         'vendor_payment' => 'Vendor payment posting',
                                         'purchase_order' => 'Purchase posting',
+                                        'goods_receipt' => 'Goods receipt posting',
                                         'sales_order' => 'Sales posting',
                                         'sales_payment' => 'Sales payment posting',
                                         'sales_return' => 'Sales return posting',
@@ -446,17 +462,17 @@
                 <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
                 <div class="form-grid">
                     <div class="field"><label>Entry date</label><input name="entry_date" type="date" value="{{ now()->toDateString() }}" required></div>
-                    <div class="field"><label>Memo</label><input name="memo" required></div>
+                    <div class="field"><label>Memo</label><input name="memo" data-journal-memo required></div>
                 </div>
                 <table class="table">
                     <thead><tr><th>Account</th><th>Branch</th><th>Debit</th><th>Credit</th><th>Memo</th></tr></thead>
                     <tbody>
                         @for ($index = 0; $index < 4; $index++)
                             <tr>
-                                <td><select name="lines[{{ $index }}][account_code]"><option value="">Choose account</option>@foreach ($accounts as $account)<option value="{{ $account->code }}">{{ $account->code }} · {{ $account->name }}</option>@endforeach</select></td>
+                                <td><select name="lines[{{ $index }}][account_code]" data-journal-account><option value="">Choose account</option>@foreach ($accounts as $account)<option value="{{ $account->code }}">{{ $account->code }} · {{ $account->name }}</option>@endforeach</select></td>
                                 <td><select name="lines[{{ $index }}][branch_id]"><option value="">Unassigned</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((int) old("lines.{$index}.branch_id", $activeBranchForView?->id) === $branch->id)>{{ $branch->name }}</option>@endforeach</select></td>
-                                <td><input name="lines[{{ $index }}][debit]" inputmode="decimal" data-money-input></td>
-                                <td><input name="lines[{{ $index }}][credit]" inputmode="decimal" data-money-input></td>
+                                <td><input name="lines[{{ $index }}][debit]" inputmode="decimal" data-money-input data-journal-debit></td>
+                                <td><input name="lines[{{ $index }}][credit]" inputmode="decimal" data-money-input data-journal-credit></td>
                                 <td><input name="lines[{{ $index }}][memo]"></td>
                             </tr>
                         @endfor
@@ -469,6 +485,27 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            document.querySelector('[data-clear-opening-equity]')?.addEventListener('click', (event) => {
+                const balanceMinor = Number(event.currentTarget.dataset.openingEquityBalance || 0);
+                const dialog = document.getElementById('journal-dialog');
+                const accounts = dialog?.querySelectorAll('[data-journal-account]');
+                const debits = dialog?.querySelectorAll('[data-journal-debit]');
+                const credits = dialog?.querySelectorAll('[data-journal-credit]');
+                const memo = dialog?.querySelector('[data-journal-memo]');
+                const amount = (Math.abs(balanceMinor) / 100).toFixed(2);
+
+                if (!accounts?.length || !debits?.length || !credits?.length) return;
+
+                dialog.querySelector('form')?.reset();
+                accounts[0].value = '3400';
+                debits[0].value = balanceMinor > 0 ? amount : '';
+                credits[0].value = balanceMinor < 0 ? amount : '';
+                debits[1].value = balanceMinor < 0 ? amount : '';
+                credits[1].value = balanceMinor > 0 ? amount : '';
+                if (memo) memo.value = 'Clear verified Opening Balance Equity';
+                accounts[1].focus();
+            });
+
             const search = document.querySelector('[data-chart-search]');
             const rows = Array.from(document.querySelectorAll('[data-chart-account-row]'));
             const empty = document.querySelector('[data-chart-empty-row]');

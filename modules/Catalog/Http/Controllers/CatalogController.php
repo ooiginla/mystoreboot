@@ -7,14 +7,15 @@ namespace Modules\Catalog\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
 use Modules\Catalog\Actions\CreateCategoryAction;
-use Modules\Catalog\Actions\SaveProductAttributeAction;
 use Modules\Catalog\Actions\SaveProductAction;
+use Modules\Catalog\Actions\SaveProductAttributeAction;
 use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
@@ -30,6 +31,8 @@ use Modules\Catalog\Models\ProductCategory;
 use Modules\Catalog\Models\ProductTag;
 use Modules\Catalog\Models\ProductTax;
 use Modules\Catalog\Models\ProductVariant;
+use Modules\Sales\Enums\DiscountType;
+use Modules\Sales\Models\SalesCoupon;
 use Modules\Tenancy\Models\Tenant;
 
 final class CatalogController extends Controller
@@ -83,9 +86,11 @@ final class CatalogController extends Controller
             'tags' => ProductTag::query()->where('tenant_id', $tenant->id)->orderBy('name')->get(),
             'taxes' => ProductTax::query()->where('tenant_id', $tenant->id)->orderBy('name')->get(),
             'attributes' => ProductAttributeDefinition::query()->with('values')->where('tenant_id', $tenant->id)->orderBy('name')->get(),
+            'coupons' => SalesCoupon::query()->where('tenant_id', $tenant->id)->latest()->get(),
             'productCategories' => $categories->where('category_type', CategoryType::Product),
             'serviceCategories' => $categories->where('category_type', CategoryType::Service),
             'categoryTypes' => CategoryType::options(),
+            'discountTypes' => DiscountType::cases(),
             'productTypes' => ProductType::options(),
             'productStatuses' => ProductStatus::cases(),
             'taxBehaviors' => TaxBehavior::options(),
@@ -124,11 +129,23 @@ final class CatalogController extends Controller
             ->with('status', "{$updatedProduct->name} updated.");
     }
 
-    public function storeCategory(ProductCategoryRequest $request, CreateCategoryAction $action): RedirectResponse
+    public function storeCategory(ProductCategoryRequest $request, CreateCategoryAction $action): JsonResponse|RedirectResponse
     {
         $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
 
         $category = $action->execute($request->validated());
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'category' => [
+                    'id' => $category->id,
+                    'name' => $category->name,
+                    'category_type' => $category->category_type->value,
+                    'parent_id' => $category->parent_id,
+                ],
+                'message' => "Category {$category->name} created.",
+            ], 201);
+        }
 
         return redirect()
             ->to(route('admin.catalog.index', ['tenant' => $category->tenant_id]).'#categories')

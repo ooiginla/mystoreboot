@@ -45,3 +45,7 @@ Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
 Route::post('/admin/active-branch', [ActiveBranchController::class, 'update'])
     ->middleware('auth')
     ->name('admin.active-branch.update');
+
+Route::get('/admin', [\App\Http\Controllers\Admin\AdminHomeController::class, 'index'])
+    ->middleware('auth')
+    ->name('admin.home');

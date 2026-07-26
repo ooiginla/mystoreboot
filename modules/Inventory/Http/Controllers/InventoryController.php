@@ -112,15 +112,87 @@ final class InventoryController extends Controller
             ->with('status', "Inventory location {$location->name} created.");
     }
 
-    public function storeMovement(InventoryMovementRequest $request, PostInventoryMovementAction $action): RedirectResponse
+    public function storeMovement(
+        InventoryMovementRequest $request,
+        PostInventoryMovementAction $action,
+        \Modules\Access\Support\ApprovalService $approvals,
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+        $tenantId = $request->string('tenant_id')->toString();
+        $this->authorizeTenantIdAccess($user, $tenantId);
+
+        $data = $request->validated();
+        $redirect = route('admin.inventory.index', ['tenant' => $tenantId]).'#movements';
+
+        $isAdjustment = in_array($data['movement_type'], [
+            InventoryMovementType::AdjustmentIn->value,
+            InventoryMovementType::AdjustmentOut->value,
+        ], true);
+
+        if ($isAdjustment && ! $user->is_platform_admin) {
+            $tenant = Tenant::query()->findOrFail($tenantId);
+
+            // Adjustments specifically require the adjust permission (route allows any movement perm).
+            abort_unless($user->hasPermission($tenant, 'inventory.adjust'), 403, 'You do not have permission to adjust stock.');
+
+            $valueMinor = $this->estimateAdjustmentValueMinor($tenant, $data);
+            $limit = $user->permissionLimit($tenant, 'inventory.adjustment.max_minor');
+            $overLimit = $limit !== null && $valueMinor > (int) $limit;
+
+            // Divert to approval when the tenant requires it and the user cannot self-approve,
+            // OR when a directly-acting user exceeds their limit and approval is available.
+            $mustDivert = $approvals->shouldDivert($tenant, $user, 'inventory_adjustment', 'inventory.adjustments.approve')
+                || ($overLimit && $approvals->requiresApproval($tenant, 'inventory_adjustment'));
+
+            if ($mustDivert) {
+                $variant = $request->variant();
+                $approvals->create($tenant, $user, 'inventory_adjustment', 'Stock adjustment · '.($variant?->name ?? 'item'), [
+                    'branch_id' => $this->branchIdForLocation($tenant, (int) $data['inventory_location_id']),
+                    'amount_minor' => $valueMinor,
+                    'payload' => $data,
+                    'description' => sprintf('%s of %d unit(s)', $data['movement_type'] === InventoryMovementType::AdjustmentIn->value ? 'Increase' : 'Decrease', (int) $data['quantity']),
+                    'request_note' => $data['notes'] ?? null,
+                ]);
+
+                return redirect()->to($redirect)->with('status', 'This stock adjustment has been sent for approval.');
+            }
+
+            // Acting directly (can self-approve or approvals off): enforce the limit as a hard cap.
+            if ($overLimit) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'quantity' => sprintf('This adjustment is worth %s, above your limit of %s.', $tenant->currency_code.' '.number_format($valueMinor / 100, 2), $tenant->currency_code.' '.number_format((int) $limit / 100, 2)),
+                ]);
+            }
+        }
+
+        $action->execute($data);
+
+        return redirect()->to($redirect)->with('status', 'Inventory movement posted.');
+    }
+
+    /**
+     * Estimate an adjustment's value from the on-hand average cost (adjustments carry no unit cost).
+     */
+    private function estimateAdjustmentValueMinor(Tenant $tenant, array $data): int
     {
-        $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
+        $stock = InventoryStockLevel::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('inventory_location_id', (int) $data['inventory_location_id'])
+            ->where('product_variant_id', (int) $data['product_variant_id'])
+            ->first();
 
-        $action->execute($request->validated());
+        $unitCostMinor = (int) ($stock->average_cost_minor ?? 0);
 
-        return redirect()
-            ->to(route('admin.inventory.index', ['tenant' => $request->string('tenant_id')->toString()]).'#movements')
-            ->with('status', 'Inventory movement posted.');
+        return abs((int) $data['quantity']) * $unitCostMinor;
+    }
+
+    private function branchIdForLocation(Tenant $tenant, int $locationId): ?int
+    {
+        return InventoryLocation::query()
+            ->where('tenant_id', $tenant->id)
+            ->whereKey($locationId)
+            ->value('branch_id');
     }
 
     public function saveReorder(ReorderSettingRequest $request): RedirectResponse

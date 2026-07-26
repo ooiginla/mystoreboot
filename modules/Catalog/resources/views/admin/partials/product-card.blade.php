@@ -35,7 +35,6 @@
             {{ $item->name }}
         </button>
         <div class="product-meta">
-            <span>SKU: <strong>{{ $variant?->sku ?? 'Pending' }}</strong></span>
             @if ($item->brand)
                 <span>Brand: <strong>{{ $item->brand }}</strong></span>
             @endif
@@ -44,7 +43,11 @@
                 <span>Variants: <strong>{{ $item->variants->count() }}</strong></span>
             @endif
             @if ($item->tags->isNotEmpty())
-                <span>Tags: <strong>{{ $item->tags->pluck('name')->join(', ') }}</strong></span>
+                <span class="product-tags">Tags:
+                    @foreach ($item->tags as $tag)
+                        <strong class="product-tag-pill">{{ $tag->name }}</strong>
+                    @endforeach
+                </span>
             @endif
             @if ($item->product_type === \Modules\Catalog\Enums\ProductType::Product)
                 <span>Inventory: <strong>Branch-managed</strong></span>
@@ -60,6 +63,6 @@
             @endif
             {{ $tenant->currency_code }} {{ $money($primaryPrice) }}
         </div>
-        <button class="btn secondary" type="button" data-dialog-open="edit-product-{{ $item->id }}">Edit</button>
+        <button class="btn catalog-edit-button" type="button" data-dialog-open="edit-product-{{ $item->id }}">Edit</button>
     </div>
 </article>

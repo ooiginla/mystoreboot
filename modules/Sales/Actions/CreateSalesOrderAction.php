@@ -39,14 +39,18 @@ final class CreateSalesOrderAction
     {
         return DB::transaction(function () use ($data, $userId): SalesOrder {
             $tenant = Tenant::query()->findOrFail($data['tenant_id']);
-            $tillSession = SalesTillSession::query()
-                ->where('tenant_id', $tenant->id)
-                ->where('user_id', $userId)
-                ->where('branch_id', $data['branch_id'])
-                ->where('status', 'open')
-                ->find($data['sales_till_session_id']);
+            $source = (string) ($data['source'] ?? 'in_store');
+            $requiresTill = ! in_array($source, ['offline', 'online'], true);
+            $tillSession = $requiresTill
+                ? SalesTillSession::query()
+                    ->where('tenant_id', $tenant->id)
+                    ->where('user_id', $userId)
+                    ->where('branch_id', $data['branch_id'])
+                    ->where('status', 'open')
+                    ->find($data['sales_till_session_id'] ?? null)
+                : null;
 
-            if (! $tillSession) {
+            if ($requiresTill && ! $tillSession) {
                 throw ValidationException::withMessages([
                     'sales_till_session_id' => 'Open a till for this branch before creating POS sales.',
                 ]);
@@ -88,6 +92,7 @@ final class CreateSalesOrderAction
             $coupon = $this->coupon($tenant->id, $data['coupon_code'] ?? null);
             $couponDiscountMinor = $coupon ? $this->discountMinor($coupon->discount_type->value, $coupon->discount_type === DiscountType::Percentage ? (float) $coupon->discount_percent : $coupon->discount_value_minor / 100, $subtotalMinor) : 0;
             $adminDiscountMinor = $this->discountMinor((string) ($data['admin_discount_type'] ?? DiscountType::Amount->value), (float) ($data['admin_discount_value'] ?? 0), $subtotalMinor);
+            $this->guardDiscountLimit($userId, $tenant, $subtotalMinor, $adminDiscountMinor);
             $totalMinor = max(0, $subtotalMinor + $taxMinor + $shippingMinor - $couponDiscountMinor - $adminDiscountMinor);
             $amountPaidMinor = $this->moneyToMinor($data['amount_paid'] ?? 0);
             $paidMinor = min($amountPaidMinor, $totalMinor);
@@ -107,8 +112,8 @@ final class CreateSalesOrderAction
                 'branch_id' => $data['branch_id'],
                 'customer_id' => $customer->id,
                 'user_id' => $userId,
-                'sales_till_session_id' => $tillSession->id,
-                'source' => $data['source'] ?? 'in_store',
+                'sales_till_session_id' => $tillSession?->id,
+                'source' => $source,
                 'sales_coupon_id' => $coupon?->id,
                 'order_number' => $this->number('SO', $tenant->id),
                 'invoice_number' => $this->number('INV', $tenant->id),
@@ -146,7 +151,7 @@ final class CreateSalesOrderAction
                     'line_total_minor' => $item['line_subtotal_minor'] + $item['tax_minor'],
                 ]);
 
-                $this->postInventoryMovement->execute([
+                $this->postInventoryMovement->executeFromSource([
                     'tenant_id' => $tenant->id,
                     'inventory_location_id' => $data['inventory_location_id'],
                     'product_variant_id' => $variant->id,
@@ -154,11 +159,10 @@ final class CreateSalesOrderAction
                     'stock_condition' => StockCondition::Sellable->value,
                     'quantity' => $item['quantity'],
                     'unit_cost' => $item['unit_cost_minor'] / 100,
-                    'reference_type' => 'sales_order',
                     'reference_number' => $order->order_number,
                     'notes' => 'Sold through POS.',
                     'occurred_at' => $data['order_date'],
-                ]);
+                ], 'sales_order', $order->id);
             }
 
             $paymentAccount = $paidMinor > 0
@@ -168,7 +172,7 @@ final class CreateSalesOrderAction
             if ($paidMinor > 0) {
                 $order->payments()->create([
                     'tenant_id' => $tenant->id,
-                    'sales_till_session_id' => $tillSession->id,
+                    'sales_till_session_id' => $tillSession?->id,
                     'business_payment_account_id' => $paymentAccount?->id,
                     'payment_date' => $data['order_date'],
                     'payment_method' => $data['payment_method'] ?? 'Cash',
@@ -199,7 +203,7 @@ final class CreateSalesOrderAction
                 'created',
             );
 
-            if ($paidMinor > 0 && $this->isCashMethod($data['payment_method'] ?? 'Cash')) {
+            if ($tillSession && $paidMinor > 0 && $this->isCashMethod($data['payment_method'] ?? 'Cash')) {
                 $this->ensureTillCashLocation($tillSession)->increment('balance_minor', $paidMinor);
             }
 
@@ -220,6 +224,42 @@ final class CreateSalesOrderAction
             ->where(fn ($query) => $query->whereNull('starts_at')->orWhereDate('starts_at', '<=', now()))
             ->where(fn ($query) => $query->whereNull('expires_at')->orWhereDate('expires_at', '>=', now()))
             ->first();
+    }
+
+    /**
+     * Enforce the acting user's role discount cap (sales.discount.max_percent).
+     * Platform admins and roles without a configured cap are unlimited.
+     */
+    private function guardDiscountLimit(int $userId, Tenant $tenant, int $subtotalMinor, int $adminDiscountMinor): void
+    {
+        if ($adminDiscountMinor <= 0 || $subtotalMinor <= 0) {
+            return;
+        }
+
+        $user = \App\Models\User::find($userId);
+
+        if (! $user || $user->is_platform_admin) {
+            return;
+        }
+
+        $limit = $user->permissionLimit($tenant, 'sales.discount.max_percent');
+
+        if ($limit === null) {
+            return;
+        }
+
+        $appliedPercent = $adminDiscountMinor / $subtotalMinor * 100;
+
+        // Small tolerance for rounding when the discount was entered as a money amount.
+        if ($appliedPercent > (float) $limit + 0.001) {
+            throw ValidationException::withMessages([
+                'admin_discount_value' => sprintf(
+                    'This discount is %s%% of the sale, above your %s%% limit for this role.',
+                    number_format($appliedPercent, 1),
+                    rtrim(rtrim(number_format((float) $limit, 2, '.', ''), '0'), '.'),
+                ),
+            ]);
+        }
     }
 
     private function discountMinor(string $type, float $value, int $subtotalMinor): int
@@ -271,10 +311,12 @@ final class CreateSalesOrderAction
             : 0;
     }
 
-    private function cashAccountFor(?string $paymentMethod, SalesTillSession $tillSession, ?BusinessPaymentAccount $paymentAccount = null): string
+    private function cashAccountFor(?string $paymentMethod, ?SalesTillSession $tillSession, ?BusinessPaymentAccount $paymentAccount = null): string
     {
         if ($this->isCashMethod($paymentMethod)) {
-            return $this->ensureTillCashLocation($tillSession)->financeAccount->code;
+            return $tillSession
+                ? $this->ensureTillCashLocation($tillSession)->financeAccount->code
+                : '1000';
         }
 
         if ($paymentAccount?->financeAccount) {

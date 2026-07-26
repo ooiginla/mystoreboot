@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Procurement\Http\Requests;
 
+use App\Support\Geo;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -41,7 +42,7 @@ final class VendorRequest extends FormRequest
             'bank_accounts.*.bank_name' => ['nullable', 'string', 'max:140'],
             'bank_accounts.*.account_name' => ['nullable', 'string', 'max:160'],
             'bank_accounts.*.account_number' => ['nullable', 'string', 'max:80'],
-            'bank_accounts.*.currency_code' => ['nullable', 'string', 'size:3'],
+            'bank_accounts.*.currency_code' => ['nullable', 'string', Rule::in(array_keys(Geo::currencies()))],
             'bank_accounts.*.is_primary' => ['nullable', 'boolean'],
         ];
     }

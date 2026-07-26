@@ -23,10 +23,12 @@ final class SalesPaymentRequest extends FormRequest
 
     public function rules(): array
     {
-        $tenantId = $this->route('order')?->tenant_id;
+        $order = $this->route('order');
+        $tenantId = $order?->tenant_id;
+        $requiresTill = ! in_array($order?->source, ['offline', 'online'], true);
 
         return [
-            'sales_till_session_id' => ['required', 'integer', Rule::exists('sales_till_sessions', 'id')->where('tenant_id', $tenantId)->where('status', 'open')],
+            'sales_till_session_id' => ['nullable', Rule::requiredIf($requiresTill), 'integer', Rule::exists('sales_till_sessions', 'id')->where('tenant_id', $tenantId)->where('status', 'open')],
             'payment_date' => ['required', 'date'],
             'payment_method' => ['required', 'string', 'max:80'],
             'business_payment_account_id' => ['nullable', 'integer', Rule::exists('business_payment_accounts', 'id')->where('tenant_id', $tenantId)->where('status', 'active')],

@@ -42,6 +42,7 @@
         .detail-table th { width: 34%; color: #3a4350; background: #fff; }
         .detail-table td { background: var(--fill); color: #232b38; }
         .report-section { margin-top: 38px; }
+        .report-formula { margin: -4px 0 12px; color: var(--muted); font-size: 12px; font-weight: 700; }
         .report-table th, .report-table td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; font-size: 13px; overflow-wrap: anywhere; }
         .report-table th { color: var(--muted); font-size: 12px; font-weight: 700; }
         .report-table tbody tr:nth-child(odd) td { background: var(--fill); }
@@ -121,22 +122,24 @@
 
         <section class="report-section">
             <h2 class="section-title">Sales Details</h2>
+            <p class="report-formula">Reconciliation: Subtotal − Discount + Tax + Shipping = Total</p>
             <div class="table-scroll">
                 <table class="report-table">
                     <thead>
                         <tr>
-                            <th style="width: 8%;">Date</th>
-                            <th style="width: 13%;">Reference</th>
-                            <th style="width: 12%;">Customer</th>
-                            <th style="width: 11%;">Branch</th>
-                            <th style="width: 10%;">Payment</th>
-                            <th style="width: 9%;" class="status">Payment Status</th>
-                            <th style="width: 9%;" class="money">Subtotal</th>
-                            <th style="width: 8%;" class="money">Discount</th>
-                            <th style="width: 7%;" class="money">Tax</th>
-                            <th style="width: 9%;" class="money">Total</th>
-                            <th style="width: 9%;" class="money">Paid</th>
-                            <th style="width: 9%;" class="money">Balance</th>
+                            <th style="width: 7%;">Date</th>
+                            <th style="width: 11%;">Reference</th>
+                            <th style="width: 10%;">Customer</th>
+                            <th style="width: 9%;">Branch</th>
+                            <th style="width: 8%;">Payment</th>
+                            <th style="width: 8%;" class="status">Payment Status</th>
+                            <th style="width: 8%;" class="money">Subtotal</th>
+                            <th style="width: 7%;" class="money">Discount</th>
+                            <th style="width: 6%;" class="money">Tax</th>
+                            <th style="width: 7%;" class="money">Shipping</th>
+                            <th style="width: 7%;" class="money">Total</th>
+                            <th style="width: 6%;" class="money">Paid</th>
+                            <th style="width: 6%;" class="money">Balance</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -152,12 +155,13 @@
                                 <td class="money">{{ $money($order->subtotal_minor) }}</td>
                                 <td class="money">{{ $money($discountMinor) }}</td>
                                 <td class="money">{{ $money($order->tax_minor) }}</td>
+                                <td class="money">{{ $money($order->shipping_minor) }}</td>
                                 <td class="money">{{ $money($order->total_minor) }}</td>
                                 <td class="money">{{ $money($order->paid_minor) }}</td>
                                 <td class="money">{{ $money($order->balance_minor) }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="12"><div class="empty">No sales records for this period.</div></td></tr>
+                            <tr><td colspan="13"><div class="empty">No sales records for this period.</div></td></tr>
                         @endforelse
                     </tbody>
                     <tfoot>
@@ -166,6 +170,7 @@
                             <td class="money">{{ $money($totals['subtotal_minor']) }}</td>
                             <td class="money">{{ $money($totals['discount_minor']) }}</td>
                             <td class="money">{{ $money($totals['tax_minor']) }}</td>
+                            <td class="money">{{ $money($totals['shipping_minor']) }}</td>
                             <td class="money">{{ $money($totals['sales_minor']) }}</td>
                             <td class="money">{{ $money($totals['paid_minor']) }}</td>
                             <td class="money">{{ $money($totals['balance_minor']) }}</td>

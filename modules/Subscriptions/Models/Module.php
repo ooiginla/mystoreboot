@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Subscriptions\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 final class Module extends Model
 {
@@ -18,5 +19,10 @@ final class Module extends Model
             'is_core' => 'boolean',
             'is_active' => 'boolean',
         ];
+    }
+
+    public function tenantEntitlements(): HasMany
+    {
+        return $this->hasMany(TenantModuleEntitlement::class);
     }
 }

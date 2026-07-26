@@ -44,6 +44,70 @@
         .status-tag.warning { background: #fffaeb; color: #b54708; }
         .status-tag.danger { background: #fef3f2; color: #b42318; }
         .danger-text { color: var(--danger); font-weight: 800; }
+        .vendor-dialog-tabs {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--line);
+        }
+        .vendor-dialog-tabs a {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            border: 1px solid #a6f4c5;
+            border-radius: 9px;
+            background: var(--brand-050);
+            color: var(--brand-strong);
+            padding: 7px 11px;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.2;
+            transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
+        }
+        .vendor-dialog-tabs a:hover { border-color: var(--brand); background: var(--brand-100); color: #05603a; }
+        .vendor-dialog-tabs a.active { border-color: var(--brand); background: var(--brand); color: #fff; box-shadow: 0 3px 9px -3px rgba(6,193,104,.5); }
+        .vendor-dialog-tabs svg { width: 15px; height: 15px; flex: 0 0 auto; }
+        .vendor-dialog-tabs .badge { padding: 1px 6px; font-size: 11px; }
+        .vendor-dialog-tabs a.active .badge { background: rgba(255,255,255,.22); color: #fff; }
+        .vendor-row-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
+        .vendor-row-actions .btn { gap: 5px; padding: 6px 9px; border-radius: 8px; font-size: 12.5px; }
+        .vendor-row-actions .vendor-view-action { border-color: #a6f4c5; background: var(--brand-050); color: var(--brand-strong); box-shadow: none; }
+        .vendor-row-actions .vendor-view-action:hover { border-color: var(--brand); background: var(--brand-100); color: #05603a; }
+        .vendor-row-actions .vendor-edit-action { border-color: var(--brand); background: var(--brand); color: #fff; box-shadow: 0 3px 9px -3px rgba(6,193,104,.5); }
+        .vendor-row-actions .vendor-edit-action:hover { border-color: var(--brand-strong); background: var(--brand-strong); }
+        .vendor-lead-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            border: 1px solid #a6f4c5;
+            border-radius: 999px;
+            background: var(--brand-050);
+            color: var(--brand-strong);
+            padding: 4px 9px;
+            font-size: 12px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .vendor-lead-badge svg { width: 13px; height: 13px; }
+        .summary-item strong .vendor-lead-tag {
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            margin: 0;
+            border: 1px solid #a6f4c5;
+            border-radius: 999px;
+            background: var(--brand-050);
+            color: var(--brand-strong);
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 750;
+            line-height: 1.25;
+            letter-spacing: 0;
+            text-transform: none;
+        }
         .printable-receipt { border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 12px; }
         @media print {
             body:has(dialog[open]) .shell { display: block; }
@@ -127,10 +191,19 @@
                                         <div class="subtle">{{ $vendor->bankAccounts->count() }} bank account(s) · Primary: {{ $vendor->bankAccounts->firstWhere('is_primary', true)?->bank_name ?? $vendor->bankAccounts->first()->bank_name }}</div>
                                     @endif
                                 </div>
-                                <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
-                                    <span class="badge neutral">{{ $vendor->lead_time_days }} day lead</span>
-                                    <button class="btn secondary" type="button" data-dialog-open="vendor-view-{{ $vendor->id }}">View</button>
-                                    <button class="btn secondary" type="button" data-dialog-open="vendor-edit-{{ $vendor->id }}">Edit</button>
+                                <div class="vendor-row-actions">
+                                    <span class="vendor-lead-badge">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                                        {{ $vendor->lead_time_days }}-day lead
+                                    </span>
+                                    <button class="btn vendor-view-action" type="button" data-dialog-open="vendor-view-{{ $vendor->id }}">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+                                        <span>View</span>
+                                    </button>
+                                    <button class="btn vendor-edit-action" type="button" data-dialog-open="vendor-edit-{{ $vendor->id }}">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
+                                        <span>Edit</span>
+                                    </button>
                                 </div>
                             </div>
                         @empty

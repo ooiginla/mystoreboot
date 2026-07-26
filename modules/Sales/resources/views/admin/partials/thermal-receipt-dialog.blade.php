@@ -30,6 +30,10 @@
     }
 </style>
 @endonce
+@php
+    $receiptCurrencySymbols = ['NGN' => '₦', 'USD' => '$', 'GHS' => '₵', 'KES' => 'KSh', 'ZAR' => 'R', 'GBP' => '£', 'EUR' => '€', 'GHc' => '₵'];
+    $receiptCurrencySymbol = $currencySymbol ?? $currency ?? ($receiptCurrencySymbols[$tenant->currency_code] ?? $tenant->currency_code);
+@endphp
 <dialog class="dialog thermal-receipt-dialog" id="sales-receipt-{{ $order->id }}">
     <div class="dialog-header">
         <div>
@@ -71,7 +75,7 @@
                         <tr>
                             <td>
                                 <strong>{{ $item->item_name }}</strong>
-                                <span>@ {{ $tenant->currency_code }} {{ $money($item->unit_price_minor) }}</span>
+                                <span>@ {{ $receiptCurrencySymbol }} {{ $money($item->unit_price_minor) }}</span>
                             </td>
                             <td>{{ $item->quantity }}</td>
                             <td>{{ $money($item->line_total_minor) }}</td>
@@ -83,13 +87,13 @@
             <div class="receipt-rule"></div>
 
             <div class="receipt-totals">
-                <span>Subtotal</span><strong>{{ $tenant->currency_code }} {{ $money($order->subtotal_minor) }}</strong>
-                <span>Tax</span><strong>{{ $tenant->currency_code }} {{ $money($order->tax_minor) }}</strong>
-                <span>Delivery</span><strong>{{ $tenant->currency_code }} {{ $money($order->shipping_minor) }}</strong>
-                <span>Discount</span><strong>-{{ $tenant->currency_code }} {{ $money($order->coupon_discount_minor + $order->admin_discount_minor) }}</strong>
-                <span class="receipt-grand-total">Total</span><strong class="receipt-grand-total">{{ $tenant->currency_code }} {{ $money($order->total_minor) }}</strong>
-                <span>Paid</span><strong>{{ $tenant->currency_code }} {{ $money($order->paid_minor) }}</strong>
-                <span>Balance</span><strong>{{ $tenant->currency_code }} {{ $money($order->balance_minor) }}</strong>
+                <span>Subtotal</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->subtotal_minor) }}</strong>
+                <span>Tax</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->tax_minor) }}</strong>
+                <span>Delivery</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->shipping_minor) }}</strong>
+                <span>Discount</span><strong>-{{ $receiptCurrencySymbol }} {{ $money($order->coupon_discount_minor + $order->admin_discount_minor) }}</strong>
+                <span class="receipt-grand-total">Total</span><strong class="receipt-grand-total">{{ $receiptCurrencySymbol }} {{ $money($order->total_minor) }}</strong>
+                <span>Paid</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->paid_minor) }}</strong>
+                <span>Balance</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->balance_minor) }}</strong>
             </div>
 
             <div class="receipt-rule"></div>

@@ -43,7 +43,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $adminRoutes = $this->modulePath('routes/admin.php');
 
         if (file_exists($adminRoutes)) {
-            Route::middleware(['web', 'auth'])
+            Route::middleware(['web', 'auth', \Modules\Access\Http\Middleware\EnforcePermissions::class])
                 ->prefix('admin/'.$this->routePrefix())
                 ->name('admin.'.$this->routePrefix().'.')
                 ->group($adminRoutes);

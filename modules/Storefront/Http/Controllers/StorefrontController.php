@@ -504,7 +504,16 @@ final class StorefrontController extends Controller
         $categoryIds = $store->categories->pluck('id');
 
         return Product::query()
-            ->with(['category', 'images', 'variants.optionValues.option', 'tags', 'taxes'])
+            ->with([
+                'category',
+                'images',
+                'variants' => fn ($query) => $query
+                    ->where('status', ProductStatus::Active->value)
+                    ->oldest('id')
+                    ->with('optionValues.option'),
+                'tags',
+                'taxes',
+            ])
             ->where('tenant_id', $store->tenant_id)
             ->where('status', ProductStatus::Active->value)
             ->where('product_type', $type->value)
@@ -527,7 +536,17 @@ final class StorefrontController extends Controller
             404,
         );
 
-        $product->load(['category', 'images', 'variants.optionValues.option', 'tags', 'taxes', 'attributeValues.definition']);
+        $product->load([
+            'category',
+            'images',
+            'variants' => fn ($query) => $query
+                ->where('status', ProductStatus::Active->value)
+                ->oldest('id')
+                ->with('optionValues.option'),
+            'tags',
+            'taxes',
+            'attributeValues.definition',
+        ]);
 
         $related = $this->productsFor($store, $type)
             ->whereKeyNot($product->id)

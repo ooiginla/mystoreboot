@@ -14,4 +14,6 @@ Route::post('/follow-ups', [CustomerRelationshipController::class, 'storeFollowU
 Route::post('/follow-ups/{followUp}/complete', [CustomerRelationshipController::class, 'completeFollowUp'])->name('follow-ups.complete');
 Route::post('/tickets', [CustomerRelationshipController::class, 'storeTicket'])->name('tickets.store');
 Route::put('/tickets/{ticket}', [CustomerRelationshipController::class, 'updateTicket'])->name('tickets.update');
+Route::patch('/tickets/{ticket}/status', [CustomerRelationshipController::class, 'updateTicketStatus'])->name('tickets.status.update');
+Route::post('/tickets/{ticket}/claim', [CustomerRelationshipController::class, 'claimTicket'])->name('tickets.claim');
 Route::post('/tickets/{ticket}/responses', [CustomerRelationshipController::class, 'storeTicketResponse'])->name('tickets.responses.store');

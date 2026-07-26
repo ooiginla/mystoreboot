@@ -3,6 +3,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <meta name="theme-color" content="#06c168">
+<link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
 
 {{-- Set theme before paint to avoid a flash of the wrong theme. --}}
 <script>

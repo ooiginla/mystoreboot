@@ -9,6 +9,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use Modules\Finance\Actions\EnsureDefaultChartOfAccountsAction;
 use Modules\Finance\Models\FinanceAccount;
+use Modules\Finance\Support\PaymentSourceAccounts;
 
 final class PayrollRunRequest extends FormRequest
 {
@@ -46,8 +47,8 @@ final class PayrollRunRequest extends FormRequest
                 ->where('code', $this->string('funding_account_code')->toString())
                 ->first();
 
-            if (! $account || ! $account->is_active || $account->type !== 'asset') {
-                $validator->errors()->add('funding_account_code', 'Select an active asset account to pay wages from.');
+            if (! PaymentSourceAccounts::allows($account, $this->string('tenant_id')->toString())) {
+                $validator->errors()->add('funding_account_code', 'Select an active cash, bank, or business payment account to pay wages from.');
             }
         });
     }

@@ -25,14 +25,17 @@ final class RecordSalesPaymentAction
     public function execute(SalesOrder $order, array $data, int $userId): SalesOrderPayment
     {
         return DB::transaction(function () use ($order, $data, $userId): SalesOrderPayment {
-            $tillSession = SalesTillSession::query()
-                ->where('tenant_id', $order->tenant_id)
-                ->where('branch_id', $order->branch_id)
-                ->where('user_id', $userId)
-                ->where('status', 'open')
-                ->find($data['sales_till_session_id']);
+            $requiresTill = ! in_array($order->source, ['offline', 'online'], true);
+            $tillSession = $requiresTill
+                ? SalesTillSession::query()
+                    ->where('tenant_id', $order->tenant_id)
+                    ->where('branch_id', $order->branch_id)
+                    ->where('user_id', $userId)
+                    ->where('status', 'open')
+                    ->find($data['sales_till_session_id'] ?? null)
+                : null;
 
-            if (! $tillSession) {
+            if ($requiresTill && ! $tillSession) {
                 throw ValidationException::withMessages([
                     'sales_till_session_id' => 'Open a till for this order branch before collecting payment.',
                 ]);
@@ -49,7 +52,7 @@ final class RecordSalesPaymentAction
 
             $payment = $order->payments()->create([
                 'tenant_id' => $order->tenant_id,
-                'sales_till_session_id' => $tillSession->id,
+                'sales_till_session_id' => $tillSession?->id,
                 'business_payment_account_id' => $paymentAccount?->id,
                 'payment_date' => $data['payment_date'],
                 'payment_method' => $data['payment_method'],
@@ -85,7 +88,7 @@ final class RecordSalesPaymentAction
                 'received',
             );
 
-            if ($this->isCashMethod($data['payment_method'])) {
+            if ($tillSession && $this->isCashMethod($data['payment_method'])) {
                 $this->ensureTillCashLocation($tillSession)->increment('balance_minor', $amountMinor);
             }
 
@@ -98,10 +101,12 @@ final class RecordSalesPaymentAction
         return (int) round(((float) (is_string($value) ? str_replace(',', '', $value) : ($value ?: 0))) * 100);
     }
 
-    private function cashAccountFor(?string $paymentMethod, SalesTillSession $tillSession, ?BusinessPaymentAccount $paymentAccount = null): string
+    private function cashAccountFor(?string $paymentMethod, ?SalesTillSession $tillSession, ?BusinessPaymentAccount $paymentAccount = null): string
     {
         if ($this->isCashMethod($paymentMethod)) {
-            return $this->ensureTillCashLocation($tillSession)->financeAccount->code;
+            return $tillSession
+                ? $this->ensureTillCashLocation($tillSession)->financeAccount->code
+                : '1000';
         }
 
         if ($paymentAccount?->financeAccount) {

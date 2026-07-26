@@ -6,11 +6,14 @@ namespace Modules\Sales\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\ActiveBranchManager;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
@@ -46,7 +49,7 @@ use Modules\Tenancy\Models\Tenant;
 
 final class SalesController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, ActiveBranchManager $branchManager): View
     {
         /** @var User $user */
         $user = $request->user();
@@ -58,6 +61,7 @@ final class SalesController extends Controller
         $walkInCustomer = $this->walkInCustomer($tenant);
         $orderSearch = trim($request->string('order_search')->toString());
         $branches = Branch::query()->where('tenant_id', $tenant->id)->orderByDesc('is_primary')->orderBy('name')->get();
+        $recordSaleBranch = $branchManager->stateForRequest($request, $user)['activeBranch'] ?? $branches->first();
         $locations = InventoryLocation::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
         $activeTill = SalesTillSession::query()
             ->with(['branch', 'user', 'cashLocation.financeAccount', 'vaultCashLocation.financeAccount', 'movements.user', 'payments.order.customer'])
@@ -100,6 +104,7 @@ final class SalesController extends Controller
             'isPlatformAdmin' => $user->is_platform_admin,
             'walkInCustomer' => $walkInCustomer,
             'branches' => $branches,
+            'recordSaleBranch' => $recordSaleBranch,
             'locations' => $locations,
             'activeTill' => $activeTill,
             'activeTillRows' => $activeTillRows,
@@ -111,17 +116,10 @@ final class SalesController extends Controller
             'coupons' => $coupons,
             'orderSearch' => $orderSearch,
             'paymentMethods' => $tenant->settings['payment_methods'] ?? ['Cash', 'Bank transfer', 'POS/Card', 'Cheque'],
-            'paymentAccounts' => $this->paymentAccountsFor($tenant->id, $activeTill?->branch_id),
+            'paymentAccounts' => $this->paymentAccountsFor($tenant->id, $recordSaleBranch?->id),
             'deliveryMethods' => $branches->flatMap(fn (Branch $branch) => collect($branch->settings['delivery_methods'] ?? []))->where('status', 'active')->values(),
-            'discountTypes' => DiscountType::cases(),
             'orderStatuses' => SalesOrderStatus::cases(),
             'paymentStatuses' => SalesPaymentStatus::cases(),
-            'stats' => [
-                'orders' => $allOrders->count(),
-                'revenue_minor' => $allOrders->sum('paid_minor'),
-                'credit_minor' => $allOrders->sum(fn (SalesOrder $order): int => $order->balance_minor),
-                'returns_minor' => $allOrders->sum('refunded_minor'),
-            ],
         ]);
     }
 
@@ -133,11 +131,14 @@ final class SalesController extends Controller
         $target = $order->source === 'retail_pos'
             ? route('admin.sales.retail-pos', ['tenant' => $order->tenant_id])
             : route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders';
+        $completionDialogKey = $order->source === 'retail_pos'
+            ? 'receipt_order_id'
+            : 'invoice_order_id';
 
         return redirect()
             ->to($target)
             ->with('status', "Sales order {$order->order_number} created.")
-            ->with('receipt_order_id', $order->id);
+            ->with($completionDialogKey, $order->id);
     }
 
     public function retailPos(Request $request): View
@@ -223,15 +224,28 @@ final class SalesController extends Controller
 
     public function storeQuickCustomer(Request $request): \Illuminate\Http\JsonResponse
     {
-        $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
+        $tenantId = $request->string('tenant_id')->toString();
+        $this->authorizeTenantIdAccess($request->user(), $tenantId);
+        $request->merge([
+            'phone' => preg_replace('/\s+/', '', $request->string('phone')->toString()),
+        ]);
 
-        $data = $request->validate([
+        $validator = Validator::make($request->all(), [
             'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
             'first_name' => ['required', 'string', 'max:120'],
             'last_name' => ['nullable', 'string', 'max:120'],
-            'phone' => ['nullable', 'string', 'max:40'],
+            'phone' => ['required', 'string', 'max:40', Rule::unique('customers', 'phone')->where('tenant_id', $tenantId)],
             'email' => ['nullable', 'email', 'max:180'],
         ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Check the customer details and try again.',
+                'errors' => $validator->errors()->toArray(),
+            ], 422);
+        }
+
+        $data = $validator->validated();
 
         $customer = Customer::query()->create([
             'tenant_id' => $data['tenant_id'],
@@ -258,7 +272,7 @@ final class SalesController extends Controller
             'discount_percent' => $data['discount_type'] === DiscountType::Percentage->value ? $data['discount_value'] : null,
         ]);
 
-        return redirect()->to(route('admin.sales.index', ['tenant' => $coupon->tenant_id]).'#coupons')->with('status', "Coupon {$coupon->code} created.");
+        return redirect()->to(route('admin.catalog.index', ['tenant' => $coupon->tenant_id]).'#coupons')->with('status', "Coupon {$coupon->code} created.");
     }
 
     public function storePayment(SalesPaymentRequest $request, SalesOrder $order, RecordSalesPaymentAction $action): RedirectResponse
@@ -309,57 +323,45 @@ final class SalesController extends Controller
         return redirect()->to(route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Order {$order->order_number} cancelled.");
     }
 
-    public function markOrderRefunded(Request $request, SalesOrder $order, PostJournalEntryAction $postJournalEntry): RedirectResponse
-    {
-        $this->authorizeTenantIdAccess($request->user(), $order->tenant_id);
+    public function markOrderRefunded(
+        Request $request,
+        SalesOrder $order,
+        \Modules\Sales\Actions\RefundCancelledOrderAction $refundAction,
+        \Modules\Access\Support\ApprovalService $approvals,
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+        $this->authorizeTenantIdAccess($user, $order->tenant_id);
 
-        DB::transaction(function () use ($order, $postJournalEntry): void {
-            $lockedOrder = SalesOrder::query()
-                ->with(['payments.tillSession.cashLocation.financeAccount'])
-                ->lockForUpdate()
-                ->findOrFail($order->id);
+        $redirect = route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders';
+        $refundMinor = $refundAction->refundableMinor($order->loadMissing('payments'));
 
-            if ($lockedOrder->order_status !== SalesOrderStatus::Cancelled) {
+        // Role refund cap: over the limit either routes to approval (if enabled) or is blocked.
+        if ($refundMinor > 0 && ! $user->is_platform_admin) {
+            $tenant = Tenant::query()->findOrFail($order->tenant_id);
+            $limit = $user->permissionLimit($tenant, 'sales.refund.max_minor');
+
+            if ($limit !== null && $refundMinor > (int) $limit) {
+                if ($approvals->requiresApproval($tenant, 'refund')) {
+                    $approvals->create($tenant, $user, 'refund', 'Refund · order '.$order->order_number, [
+                        'branch_id' => $order->branch_id,
+                        'amount_minor' => $refundMinor,
+                        'payload' => ['order_id' => $order->id],
+                        'description' => 'Refund of a cancelled order to customer credit.',
+                    ]);
+
+                    return redirect()->to($redirect)->with('status', "Refund for {$order->order_number} exceeds your limit and has been sent for approval.");
+                }
+
                 throw ValidationException::withMessages([
-                    'order' => 'Only cancelled orders can be marked as refunded.',
+                    'order' => sprintf('This refund (%s) is above your limit of %s.', $tenant->currency_code.' '.number_format($refundMinor / 100, 2), $tenant->currency_code.' '.number_format((int) $limit / 100, 2)),
                 ]);
             }
+        }
 
-            $refundMinor = max(0, (int) $lockedOrder->paid_minor - (int) $lockedOrder->refunded_minor);
+        $refundAction->execute($order);
 
-            if ($refundMinor <= 0) {
-                throw ValidationException::withMessages([
-                    'order' => 'There is no customer credit left to refund for this order.',
-                ]);
-            }
-
-            $refundAccountCode = $this->refundAccountCodeFor($lockedOrder);
-            $lockedOrder->update([
-                'refunded_minor' => (int) $lockedOrder->paid_minor,
-                'payment_status' => SalesPaymentStatus::Refunded->value,
-            ]);
-
-            $postJournalEntry->execute(
-                $lockedOrder->tenant_id,
-                now()->toDateString(),
-                'Refund for cancelled order '.$lockedOrder->order_number,
-                [
-                    ['account_code' => '2300', 'branch_id' => $lockedOrder->branch_id, 'debit_minor' => $refundMinor, 'party_type' => 'customer', 'party_id' => $lockedOrder->customer_id],
-                    ['account_code' => $refundAccountCode, 'branch_id' => $lockedOrder->branch_id, 'credit_minor' => $refundMinor, 'party_type' => 'customer', 'party_id' => $lockedOrder->customer_id],
-                ],
-                'sales_order',
-                $lockedOrder->id,
-                'refunded_cancelled_order',
-            );
-
-            $cashPayment = $lockedOrder->payments->first(fn ($payment): bool => $this->isCashMethod($payment->payment_method));
-
-            if ($cashPayment?->tillSession?->cashLocation) {
-                $cashPayment->tillSession->cashLocation->decrement('balance_minor', $refundMinor);
-            }
-        });
-
-        return redirect()->to(route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Order {$order->order_number} marked as refunded.");
+        return redirect()->to($redirect)->with('status', "Order {$order->order_number} marked as refunded.");
     }
 
     public function settlements(Request $request): View
@@ -897,10 +899,65 @@ final class SalesController extends Controller
         return redirect()->to(route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Delivery status updated for {$order->order_number}.");
     }
 
-    public function storeReturn(SalesReturnRequest $request, SalesOrder $order, ProcessSalesReturnAction $action): RedirectResponse
-    {
-        $this->authorizeTenantIdAccess($request->user(), $order->tenant_id);
-        $salesReturn = $action->execute($order->load('items.variant', 'customer', 'branch'), $request->validated());
+    public function storeReturn(
+        SalesReturnRequest $request,
+        SalesOrder $order,
+        ProcessSalesReturnAction $action,
+        \Modules\Access\Support\ApprovalService $approvals,
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+        $this->authorizeTenantIdAccess($user, $order->tenant_id);
+
+        $order->load('items.variant', 'customer', 'branch');
+        $data = $request->validated();
+        $ordersUrl = route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders';
+
+        if (! $user->is_platform_admin) {
+            $tenant = Tenant::query()->findOrFail($order->tenant_id);
+            $refundMinor = $action->previewRefundMinor($order, $data);
+            $approvalsOn = $approvals->requiresApproval($tenant, 'refund');
+            $mustApprove = false;
+
+            if ($user->hasPermission($tenant, 'sales.refunds.issue')) {
+                // Can issue directly — but a refund over the role cap needs approval (if enabled) or is blocked.
+                $limit = $user->permissionLimit($tenant, 'sales.refund.max_minor');
+
+                if ($limit !== null && $refundMinor > (int) $limit) {
+                    if ($approvalsOn) {
+                        $mustApprove = true;
+                    } else {
+                        throw ValidationException::withMessages([
+                            'items' => sprintf('This return (%s) is above your refund limit of %s.', $tenant->currency_code.' '.number_format($refundMinor / 100, 2), $tenant->currency_code.' '.number_format((int) $limit / 100, 2)),
+                        ]);
+                    }
+                }
+            } elseif ($user->hasPermission($tenant, 'sales.refunds.request')) {
+                // Requester: can only submit for approval, and only when approvals are enabled.
+                if (! $approvalsOn) {
+                    throw ValidationException::withMessages([
+                        'items' => 'You can request returns, but a manager must issue them. Ask an owner to enable refund approvals.',
+                    ]);
+                }
+                $mustApprove = true;
+            } else {
+                abort(403, 'You do not have permission to process returns.');
+            }
+
+            if ($mustApprove) {
+                $approvals->create($tenant, $user, 'refund', 'Return · order '.$order->order_number, [
+                    'branch_id' => $order->branch_id,
+                    'amount_minor' => $refundMinor,
+                    'payload' => ['kind' => 'return', 'order_id' => $order->id, 'data' => $data],
+                    'description' => 'Product return to customer credit.',
+                    'request_note' => $data['reason'] ?? null,
+                ]);
+
+                return redirect()->to($ordersUrl)->with('status', 'Return submitted for approval.');
+            }
+        }
+
+        $salesReturn = $action->execute($order, $data);
 
         return redirect()->to(route('admin.sales.index', ['tenant' => $salesReturn->tenant_id]).'#returns')->with('status', "Return {$salesReturn->return_number} processed.");
     }

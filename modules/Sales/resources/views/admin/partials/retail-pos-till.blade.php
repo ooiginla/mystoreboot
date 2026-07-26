@@ -6,7 +6,7 @@
     .till-action-button.cash-in { background: #009a53; }
     .till-action-button.cash-out { background: #b42318; }
     .till-action-button.petty-cash-withdrawal { background: #9a3412; }
-    .till-action-button.cash-deposit { background: #1d4ed8; }
+    .till-action-button.cash-deposit { background: var(--brand-strong); }
     .till-action-button:hover { filter: brightness(.94); }
     .till-variance { font-weight: 800; }
     .till-variance.ok { color: #067647; }
@@ -94,7 +94,7 @@
 
             <div class="field"><label>Closing note</label><textarea name="closing_note" rows="2" placeholder="Optional"></textarea></div>
             <div class="button-row">
-                <button class="btn secondary" type="button" data-dialog-open="till-breakdown-dialog" style="border-color:#bfdbfe; background:#eff6ff; color:#1d4ed8;">
+                <button class="btn secondary" type="button" data-dialog-open="till-breakdown-dialog" style="border-color:#a6f4c5; background:var(--brand-050); color:var(--brand-strong);">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v18h18M7 14l3-3 3 3 5-6"/></svg>
                     View breakdown
                 </button>

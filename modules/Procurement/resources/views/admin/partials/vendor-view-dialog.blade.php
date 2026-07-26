@@ -24,12 +24,23 @@
         <div class="summary-grid" style="margin-top: 16px;">
             <div class="summary-item"><span>Code</span><strong>{{ $vendor->code ?: 'Not set' }}</strong></div>
             <div class="summary-item"><span>Tax number</span><strong>{{ $vendor->tax_number ?: 'Not set' }}</strong></div>
-            <div class="summary-item"><span>Lead time</span><strong>{{ $vendor->lead_time_days }} day(s)</strong></div>
+            <div class="summary-item"><span>Lead time</span><strong><span class="vendor-lead-tag">{{ $vendor->lead_time_days }}-day lead</span></strong></div>
         </div>
 
-        <nav class="pill-nav" style="position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 16px;" aria-label="Vendor sections">
-            <a href="#vendor-orders-{{ $vendor->id }}" class="active" data-local-tab-target="vendor-orders-{{ $vendor->id }}">Purchase orders</a>
-            <a href="#vendor-payments-{{ $vendor->id }}" data-local-tab-target="vendor-payments-{{ $vendor->id }}">Payments</a>
+        <nav class="vendor-dialog-tabs" role="tablist" aria-label="Vendor sections">
+            <a href="#vendor-orders-{{ $vendor->id }}" class="active" role="tab" data-local-tab-target="vendor-orders-{{ $vendor->id }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4"/></svg>
+                <span>Purchase orders</span>
+            </a>
+            <a href="#vendor-payments-{{ $vendor->id }}" role="tab" data-local-tab-target="vendor-payments-{{ $vendor->id }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h3"/></svg>
+                <span>Payments</span>
+            </a>
+            <a href="#vendor-bank-accounts-{{ $vendor->id }}" role="tab" data-local-tab-target="vendor-bank-accounts-{{ $vendor->id }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 20h18"/></svg>
+                <span>Bank accounts</span>
+                <span class="badge neutral">{{ $vendor->bankAccounts->count() }}</span>
+            </a>
         </nav>
 
         <section data-local-tab-panel id="vendor-orders-{{ $vendor->id }}" style="margin-top: 16px;">
@@ -72,6 +83,31 @@
                         </tr>
                     @empty
                         <tr><td colspan="5"><div class="empty">No payments for this vendor yet.</div></td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </section>
+
+        <section data-local-tab-panel id="vendor-bank-accounts-{{ $vendor->id }}" style="margin-top: 16px;" hidden>
+            <table class="table">
+                <thead><tr><th>Bank</th><th>Account name</th><th>Account number</th><th>Currency</th><th>Status</th></tr></thead>
+                <tbody>
+                    @forelse ($vendor->bankAccounts as $account)
+                        <tr>
+                            <td>{{ $account->bank_name }}</td>
+                            <td>{{ $account->account_name }}</td>
+                            <td>{{ $account->account_number }}</td>
+                            <td>{{ $account->currency_code ?: $tenant->currency_code }}</td>
+                            <td>
+                                @if ($account->is_primary)
+                                    <span class="status-tag success">Primary</span>
+                                @else
+                                    <span class="status-tag neutral">Additional</span>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="5"><div class="empty">No bank accounts have been added for this vendor.</div></td></tr>
                     @endforelse
                 </tbody>
             </table>

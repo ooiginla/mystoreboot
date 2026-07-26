@@ -8,9 +8,38 @@
     </div>
     <div class="dialog-body">
         <div class="summary-grid">
-            <div class="summary-item"><span>Type</span><strong>{{ $ticket->type->label() }}</strong></div>
-            <div class="summary-item"><span>Priority</span><strong>{{ $ticket->priority->label() }}</strong></div>
-            <div class="summary-item"><span>Status</span><strong>{{ $ticket->status->label() }}</strong></div>
+            <div class="summary-item"><span>Type</span><strong><span class="tag {{ $statusTag($ticket->type->value) }}">{{ $ticket->type->label() }}</span></strong></div>
+            <div class="summary-item"><span>Priority</span><strong><span class="tag {{ $statusTag($ticket->priority->value) }}">{{ $ticket->priority->label() }}</span></strong></div>
+            <div class="summary-item"><span>Status</span><strong><span class="tag {{ $statusTag($ticket->status->value) }}">{{ $ticket->status->label() }}</span></strong></div>
+        </div>
+        <div class="ticket-quick-actions">
+            <div class="ticket-quick-action">
+                <div class="ticket-assignment">
+                    <span>Assigned to</span>
+                    <strong>{{ $ticket->assignee?->name ?? 'Unassigned' }}</strong>
+                </div>
+                @if (! $ticket->assigned_to)
+                    <form method="POST" action="{{ route('admin.customers.tickets.claim', $ticket) }}">
+                        @csrf
+                        <button class="btn primary" type="submit">Claim ticket</button>
+                    </form>
+                @elseif ($ticket->assigned_to === auth()->id())
+                    <span class="tag success">Assigned to you</span>
+                @endif
+            </div>
+            <form class="ticket-quick-action ticket-status-form" method="POST" action="{{ route('admin.customers.tickets.status.update', $ticket) }}">
+                @csrf
+                @method('PATCH')
+                <div class="field">
+                    <label>Status</label>
+                    <select name="status" required>
+                        @foreach ($ticketStatuses as $ticketStatus)
+                            <option value="{{ $ticketStatus->value }}" @selected($ticket->status === $ticketStatus)>{{ $ticketStatus->label() }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <button class="btn primary" type="submit">Update status</button>
+            </form>
         </div>
         <div style="margin-top: 16px;">
             <strong>Description</strong>

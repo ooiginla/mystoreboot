@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Business\Http\Requests;
 
+use App\Support\Geo;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -74,7 +75,7 @@ final class OnlineStoreRequest extends FormRequest
             'address' => ['nullable', 'string', 'max:1000'],
             'city' => ['nullable', 'string', 'max:120'],
             'state' => ['nullable', 'string', 'max:120'],
-            'country' => ['nullable', 'string', 'max:120'],
+            'country' => ['nullable', 'string', 'max:120', Rule::in(collect(Geo::countries())->pluck('name')->all())],
             'site_email' => ['nullable', 'email:rfc', 'max:160'],
             'store_phone' => ['nullable', 'string', 'max:40'],
             'store_whatsapp' => ['nullable', 'string', 'max:40'],

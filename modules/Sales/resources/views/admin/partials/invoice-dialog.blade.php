@@ -21,15 +21,15 @@
             </div>
             <table class="table">
                 <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
-                <tbody>@foreach ($order->items as $item)<tr><td>{{ $item->item_name }}</td><td>{{ $item->quantity }}</td><td>{{ $tenant->currency_code }} {{ $money($item->unit_price_minor) }}</td><td>{{ $tenant->currency_code }} {{ $money($item->line_total_minor) }}</td></tr>@endforeach</tbody>
+                <tbody>@foreach ($order->items as $item)<tr><td>{{ $item->item_name }}</td><td>{{ $item->quantity }}</td><td>{{ $currencySymbol }} {{ $money($item->unit_price_minor) }}</td><td>{{ $currencySymbol }} {{ $money($item->line_total_minor) }}</td></tr>@endforeach</tbody>
             </table>
             <div class="summary-grid">
-                <div class="summary-item"><span>Subtotal</span><strong>{{ $tenant->currency_code }} {{ $money($order->subtotal_minor) }}</strong></div>
-                <div class="summary-item"><span>Tax</span><strong>{{ $tenant->currency_code }} {{ $money($order->tax_minor) }}</strong></div>
-                <div class="summary-item"><span>Delivery</span><strong>{{ $tenant->currency_code }} {{ $money($order->shipping_minor) }}</strong></div>
-                <div class="summary-item"><span>Discount</span><strong>{{ $tenant->currency_code }} {{ $money($order->coupon_discount_minor + $order->admin_discount_minor) }}</strong></div>
-                <div class="summary-item"><span>Total</span><strong>{{ $tenant->currency_code }} {{ $money($order->total_minor) }}</strong></div>
-                <div class="summary-item"><span>Balance</span><strong>{{ $tenant->currency_code }} {{ $money($order->balance_minor) }}</strong></div>
+                <div class="summary-item"><span>Subtotal</span><strong>{{ $currencySymbol }} {{ $money($order->subtotal_minor) }}</strong></div>
+                <div class="summary-item"><span>Tax</span><strong>{{ $currencySymbol }} {{ $money($order->tax_minor) }}</strong></div>
+                <div class="summary-item"><span>Delivery</span><strong>{{ $currencySymbol }} {{ $money($order->shipping_minor) }}</strong></div>
+                <div class="summary-item"><span>Discount</span><strong>{{ $currencySymbol }} {{ $money($order->coupon_discount_minor + $order->admin_discount_minor) }}</strong></div>
+                <div class="summary-item"><span>Total</span><strong>{{ $currencySymbol }} {{ $money($order->total_minor) }}</strong></div>
+                <div class="summary-item"><span>Balance</span><strong>{{ $currencySymbol }} {{ $money($order->balance_minor) }}</strong></div>
             </div>
         </div>
         <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Close</button><button class="btn primary" type="button" data-print-dialog>Print / Save PDF</button></div>

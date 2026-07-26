@@ -8,6 +8,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use Modules\Finance\Models\FinanceAccount;
+use Modules\Finance\Support\PaymentSourceAccounts;
 use Modules\Procurement\Models\PurchaseOrder;
 
 final class VendorPaymentRequest extends FormRequest
@@ -79,8 +80,8 @@ final class VendorPaymentRequest extends FormRequest
             ->where('code', $this->string('payment_account_code')->toString())
             ->first();
 
-        if (! $account || ! $account->is_active || $account->type !== 'asset' || $account->category !== 'Current Assets') {
-            $validator->errors()->add('payment_account_code', 'Select an active current asset account for the vendor payment.');
+        if (! PaymentSourceAccounts::allows($account, $this->string('tenant_id')->toString())) {
+            $validator->errors()->add('payment_account_code', 'Select an active cash, bank, or business payment account for the vendor payment.');
         }
     }
 }

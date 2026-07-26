@@ -16,7 +16,7 @@ use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
 use Modules\Finance\Actions\EnsureDefaultChartOfAccountsAction;
 use Modules\Finance\Actions\PostJournalEntryAction;
-use Modules\Finance\Models\FinanceAccount;
+use Modules\Finance\Support\PaymentSourceAccounts;
 use Modules\HrPayroll\Http\Requests\PayrollRunRequest;
 use Modules\HrPayroll\Http\Requests\StaffDeductionRequest;
 use Modules\HrPayroll\Http\Requests\StaffRequest;
@@ -44,10 +44,7 @@ final class HrPayrollController extends Controller
         $activeStaff = $staff->where('status', 'active')->values();
         $deductions = HrStaffDeduction::query()->with('staff.branch')->where('tenant_id', $tenant->id)->latest('deduction_date')->get();
         app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
-        $payrollFundingAccounts = FinanceAccount::query()
-            ->where('tenant_id', $tenant->id)
-            ->where('type', 'asset')
-            ->where('is_active', true)
+        $payrollFundingAccounts = PaymentSourceAccounts::query($tenant->id)
             ->orderBy('code')
             ->get();
         $savedPayroll = HrPayrollRun::query()
@@ -163,88 +160,26 @@ final class HrPayrollController extends Controller
         return redirect()->to(route('admin.hr-payroll.index', ['tenant' => $deduction->tenant_id, 'payroll_month' => $deduction->deduction_month]).'#deductions')->with('status', 'Staff deduction posted.');
     }
 
-    public function storePayrollRun(PayrollRunRequest $request, PostJournalEntryAction $postJournalEntry): RedirectResponse
+    public function storePayrollRun(PayrollRunRequest $request, \Modules\HrPayroll\Actions\RunPayrollAction $runPayroll, \Modules\Access\Support\ApprovalService $approvals): RedirectResponse
     {
-        $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
+        /** @var User $user */
+        $user = $request->user();
+        $this->authorizeTenantIdAccess($user, $request->string('tenant_id')->toString());
         $data = $request->validated();
+        $tenant = Tenant::query()->findOrFail($data['tenant_id']);
 
-        $payrollRun = DB::transaction(function () use ($request, $data, $postJournalEntry): HrPayrollRun {
-            $existing = HrPayrollRun::query()
-                ->where('tenant_id', $data['tenant_id'])
-                ->where('payroll_month', $data['payroll_month'])
-                ->first();
-
-            abort_if($existing, 422, 'Payroll has already been posted for this month.');
-
-            $staff = HrStaff::query()
-                ->with('deductions')
-                ->where('tenant_id', $data['tenant_id'])
-                ->where('status', 'active')
-                ->orderBy('first_name')
-                ->get();
-            $rows = $this->salarySchedule($staff, $data['payroll_month']);
-
-            $run = HrPayrollRun::query()->create([
-                'tenant_id' => $data['tenant_id'],
-                'payroll_month' => $data['payroll_month'],
-                'posted_at' => now()->toDateString(),
-                'gross_salary_minor' => $rows->sum('gross_minor'),
-                'deduction_minor' => $rows->sum('deduction_minor'),
-                'net_salary_minor' => $rows->sum('net_minor'),
-                'posted_by' => $request->user()?->id,
-                'notes' => $data['notes'] ?? null,
+        if ($approvals->shouldDivert($tenant, $user, 'payroll', 'payroll.approve')) {
+            $approvals->create($tenant, $user, 'payroll', 'Payroll · '.$data['payroll_month'], [
+                'amount_minor' => $runPayroll->projectedNetMinor($data),
+                'payload' => ['data' => $data],
+                'description' => 'Monthly payroll run for '.$data['payroll_month'].'.',
+                'request_note' => $data['notes'] ?? null,
             ]);
 
-            foreach ($rows as $row) {
-                $run->items()->create([
-                    'tenant_id' => $run->tenant_id,
-                    'hr_staff_id' => $row['staff']->id,
-                    'branch_id' => $row['staff']->branch_id,
-                    'gross_salary_minor' => $row['gross_minor'],
-                    'deduction_minor' => $row['deduction_minor'],
-                    'net_salary_minor' => $row['net_minor'],
-                    'deduction_breakdown' => $row['deductions']->map(fn (HrStaffDeduction $deduction): array => [
-                        'id' => $deduction->id,
-                        'type' => $deduction->deduction_type,
-                        'amount_minor' => $deduction->amount_minor,
-                        'reason' => $deduction->reason,
-                    ])->values()->all(),
-                ]);
+            return redirect()->to(route('admin.hr-payroll.index', ['tenant' => $data['tenant_id']]).'#salaries')->with('status', 'Payroll submitted for approval.');
+        }
 
-                HrStaffDeduction::query()
-                    ->whereIn('id', $row['deductions']->pluck('id'))
-                    ->update(['status' => 'applied']);
-            }
-
-            $payrollLines = $rows
-                ->groupBy(fn (array $row): string => (string) ($row['staff']->branch_id ?? ''))
-                ->flatMap(function ($branchRows, string $branchId) use ($data) {
-                    $branchIdValue = $branchId !== '' ? (int) $branchId : null;
-                    $branchSalaryAdvanceMinor = $branchRows->sum(fn (array $row): int => (int) $row['deductions']->where('deduction_type', 'salary_advance')->sum('amount_minor'));
-                    $branchDeductionReceivableMinor = $branchRows->sum(fn (array $row): int => (int) $row['deductions']->whereIn('deduction_type', ['fine', 'other'])->sum('amount_minor'));
-
-                    return [
-                        ['account_code' => 'EXP-6030', 'branch_id' => $branchIdValue, 'debit_minor' => $branchRows->sum('gross_minor'), 'memo' => 'Gross salaries and wages'],
-                        ['account_code' => $data['funding_account_code'], 'branch_id' => $branchIdValue, 'credit_minor' => $branchRows->sum('net_minor'), 'memo' => 'Net wages paid from funding account'],
-                        ['account_code' => '1300', 'branch_id' => $branchIdValue, 'credit_minor' => $branchSalaryAdvanceMinor, 'memo' => 'Clear salary advances'],
-                        ['account_code' => '1310', 'branch_id' => $branchIdValue, 'credit_minor' => $branchDeductionReceivableMinor, 'memo' => 'Clear staff deduction receivables'],
-                    ];
-                })
-                ->values()
-                ->all();
-
-            $postJournalEntry->execute(
-                $run->tenant_id,
-                $run->posted_at->toDateString(),
-                'Payroll posting '.$run->payroll_month,
-                $payrollLines,
-                'hr_payroll_run',
-                $run->id,
-                'posted',
-            );
-
-            return $run;
-        });
+        $payrollRun = $runPayroll->execute($data, $user?->id);
 
         return redirect()->to(route('admin.hr-payroll.index', ['tenant' => $payrollRun->tenant_id, 'payroll_month' => $payrollRun->payroll_month]).'#salaries')->with('status', 'Monthly payroll posted.');
     }

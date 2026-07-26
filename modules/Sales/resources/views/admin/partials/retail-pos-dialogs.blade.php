@@ -22,9 +22,9 @@
         <div style="margin-top:16px; border-top:1px solid var(--line); padding-top:14px;">
             <p style="font-weight:700; margin:0 0 10px;">New customer</p>
             <div class="form-grid">
-                <div class="field"><label>First name</label><input data-newc-first placeholder="e.g. Amaka"></div>
+                <div class="field"><label>First name</label><input data-newc-first placeholder="e.g. Amaka" required></div>
                 <div class="field"><label>Last name</label><input data-newc-last placeholder="Optional"></div>
-                <div class="field"><label>Phone</label><input data-newc-phone inputmode="tel" placeholder="e.g. 0803..."></div>
+                <div class="field"><label>Phone</label><input data-newc-phone inputmode="tel" placeholder="e.g. 0803..." required></div>
                 <div class="field"><label>Email</label><input data-newc-email type="email" placeholder="Optional"></div>
             </div>
             <div class="button-row"><button class="btn primary" type="button" data-create-customer>Create &amp; select</button></div>

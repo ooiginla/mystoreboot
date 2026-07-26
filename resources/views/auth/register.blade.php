@@ -6,7 +6,14 @@
 @section('content')
     <div class="mb-8">
         <h1 class="font-display text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">Create your workspace</h1>
-        <p class="mt-2 text-zinc-600 dark:text-zinc-400">Start your free 14-day trial. No card required — verify your email and you're in.</p>
+        <p class="mt-2 text-zinc-600 dark:text-zinc-400">
+            Start your free 14-day trial. No card required
+            @if ($localSignupBypassEnabled)
+                — local accounts are activated automatically.
+            @else
+                — verify your email and you're in.
+            @endif
+        </p>
     </div>
 
     @if ($errors->any())

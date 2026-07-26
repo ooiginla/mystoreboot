@@ -32,6 +32,7 @@ use Modules\Finance\Models\FinanceExpense;
 use Modules\Finance\Models\FinanceExpenseCategory;
 use Modules\Finance\Models\FinanceJournalEntry;
 use Modules\Finance\Models\FinanceJournalLine;
+use Modules\Finance\Support\PaymentSourceAccounts;
 use Modules\Inventory\Models\InventoryStockLevel;
 use Modules\Procurement\Enums\PurchaseOrderStatus;
 use Modules\Procurement\Models\PurchaseOrder;
@@ -424,6 +425,7 @@ final class FinanceReportController extends Controller
             'bankMovementSources' => $bankMovementSources,
             'bankAccounts' => $bankAccounts,
             'bankMovements' => $bankMovements,
+            'openingBalanceEquityMinor' => $this->accountBalance($tenant->id, '3400'),
             'ledgerDateFrom' => $ledgerDateFrom->toDateString(),
             'ledgerDateTo' => $ledgerDateTo->toDateString(),
             'selectedBranch' => $ledgerBranch,
@@ -467,10 +469,7 @@ final class FinanceReportController extends Controller
             ->unique()
             ->sort()
             ->values();
-        $assetAccounts = FinanceAccount::query()
-            ->where('tenant_id', $tenant->id)
-            ->where('type', 'asset')
-            ->where('is_active', true)
+        $paymentSourceAccounts = PaymentSourceAccounts::query($tenant->id)
             ->orderBy('code')
             ->get();
 
@@ -483,7 +482,7 @@ final class FinanceReportController extends Controller
             'expenseFilters' => $expenseFilters,
             'expenseAccounts' => $expenseAccounts,
             'expenseAccountCategories' => $expenseAccountCategories,
-            'assetAccounts' => $assetAccounts,
+            'paymentSourceAccounts' => $paymentSourceAccounts,
             'branches' => Branch::query()->where('tenant_id', $tenant->id)->orderBy('name')->get(),
             'pettyCashBalanceMinor' => $this->accountBalance($tenant->id, '1010'),
         ]);
@@ -574,71 +573,51 @@ final class FinanceReportController extends Controller
         return redirect()->to(route('admin.finance.journals', ['tenant' => $category->tenant_id]).'#expense-categories')->with('status', 'Expense category updated.');
     }
 
-    public function storeExpense(ExpenseRequest $request, PostJournalEntryAction $postJournalEntry): RedirectResponse
+    public function storeExpense(ExpenseRequest $request, \Modules\Finance\Actions\RecordExpenseAction $recordExpense, \Modules\Access\Support\ApprovalService $approvals): RedirectResponse
     {
-        $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
+        /** @var \App\Models\User $user */
+        $user = $request->user();
+        $this->authorizeTenantIdAccess($user, $request->string('tenant_id')->toString());
         $data = $request->validated();
-        $expenseAccount = FinanceAccount::query()->where('tenant_id', $data['tenant_id'])->where('code', $data['expense_account_code'])->firstOrFail();
-        $category = FinanceExpenseCategory::query()->firstOrCreate([
-            'tenant_id' => $data['tenant_id'],
-            'code' => Str::slug($data['expense_category']),
-        ], [
-            'finance_account_id' => $expenseAccount->id,
-            'name' => $data['expense_category'],
-            'description' => 'Expense category for '.$data['expense_category'].'.',
-            'is_active' => true,
-        ]);
-        $amountMinor = $this->moneyToMinor($data['amount']);
-        $paidMinor = match ($data['payment_status']) {
-            'paid' => $amountMinor,
-            'unpaid' => 0,
-            default => min($amountMinor, $this->moneyToMinor($data['paid_amount'] ?? 0)),
-        };
-        $paymentAccount = $paidMinor > 0
-            ? FinanceAccount::query()->where('tenant_id', $data['tenant_id'])->where('code', $data['payment_account_code'])->firstOrFail()
-            : null;
+        $tenant = \Modules\Tenancy\Models\Tenant::query()->findOrFail($data['tenant_id']);
 
-        $expense = DB::transaction(function () use ($data, $category, $expenseAccount, $paymentAccount, $amountMinor, $paidMinor, $postJournalEntry): FinanceExpense {
-            $expense = FinanceExpense::query()->create([
-                'tenant_id' => $data['tenant_id'],
-                'finance_expense_category_id' => $category->id,
-                'finance_account_id' => $expenseAccount->id,
-                'payment_finance_account_id' => $paymentAccount?->id,
-                'expense_number' => $this->number('EXP', $data['tenant_id'], FinanceExpense::class),
-                'expense_date' => $data['expense_date'],
-                'payee_name' => $data['payee_name'] ?? null,
-                'payment_method' => $paymentAccount?->code ?? 'Unpaid',
-                'payment_status' => $data['payment_status'],
-                'amount_minor' => $amountMinor,
-                'paid_minor' => $paidMinor,
-                'reference_number' => $data['reference_number'] ?? null,
-                'description' => $data['description'] ?? null,
+        if ($approvals->shouldDivert($tenant, $user, 'expense', 'finance.expenses.approve')) {
+            $approvals->create($tenant, $user, 'expense', 'Expense · '.($data['payee_name'] ?? $data['expense_category']), [
+                'branch_id' => $data['branch_id'] ?? null,
+                'amount_minor' => $recordExpense->amountMinor($data),
+                'payload' => ['data' => $data],
+                'description' => ($data['expense_category'] ?? 'Expense').' dated '.$data['expense_date'].'.',
+                'request_note' => $data['description'] ?? null,
             ]);
 
-            $postJournalEntry->execute(
-                $expense->tenant_id,
-                $expense->expense_date->toDateString(),
-                'Operational expense '.$expense->expense_number,
-                [
-                    ['account_code' => $expenseAccount->code, 'branch_id' => $data['branch_id'] ?? null, 'debit_minor' => $amountMinor, 'memo' => $expense->description],
-                    ['account_code' => $paymentAccount?->code ?? '1000', 'branch_id' => $data['branch_id'] ?? null, 'credit_minor' => $paidMinor, 'memo' => $paymentAccount?->name],
-                    ['account_code' => '2000', 'branch_id' => $data['branch_id'] ?? null, 'credit_minor' => max(0, $amountMinor - $paidMinor), 'party_type' => 'payee', 'memo' => $expense->payee_name],
-                ],
-                'finance_expense',
-                $expense->id,
-                'recorded',
-            );
+            return redirect()->to(route('admin.finance.expenses', ['tenant' => $data['tenant_id']]).'#expense-list')->with('status', 'Expense submitted for approval.');
+        }
 
-            return $expense;
-        });
+        $expense = $recordExpense->execute($data);
 
         return redirect()->to(route('admin.finance.expenses', ['tenant' => $expense->tenant_id]).'#expense-list')->with('status', 'Expense recorded and journal posted.');
     }
 
-    public function storeJournalEntry(ManualJournalEntryRequest $request, PostJournalEntryAction $postJournalEntry): RedirectResponse
+    public function storeJournalEntry(ManualJournalEntryRequest $request, PostJournalEntryAction $postJournalEntry, \Modules\Access\Support\ApprovalService $approvals): RedirectResponse
     {
-        $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
+        /** @var \App\Models\User $user */
+        $user = $request->user();
+        $this->authorizeTenantIdAccess($user, $request->string('tenant_id')->toString());
         $data = $request->validated();
+
+        $tenant = \Modules\Tenancy\Models\Tenant::query()->findOrFail($data['tenant_id']);
+
+        if ($approvals->shouldDivert($tenant, $user, 'journal', 'finance.journals.post')) {
+            $amountMinor = collect($data['lines'])->sum(fn (array $line): int => $this->moneyToMinor($line['debit'] ?? 0));
+            $approvals->create($tenant, $user, 'journal', 'Journal · '.$data['memo'], [
+                'branch_id' => $data['lines'][0]['branch_id'] ?? null,
+                'amount_minor' => $amountMinor,
+                'payload' => ['data' => $data],
+                'description' => count($data['lines']).' line(s), dated '.$data['entry_date'].'.',
+            ]);
+
+            return redirect()->to(route('admin.finance.journals', ['tenant' => $data['tenant_id']]).'#journal-entries')->with('status', 'Journal entry submitted for approval.');
+        }
 
         $postJournalEntry->execute(
             $data['tenant_id'],
@@ -1404,6 +1383,7 @@ final class FinanceReportController extends Controller
                 .'<td>'.e($money($order->subtotal_minor)).'</td>'
                 .'<td>'.e($money($discountMinor)).'</td>'
                 .'<td>'.e($money($order->tax_minor)).'</td>'
+                .'<td>'.e($money($order->shipping_minor)).'</td>'
                 .'<td>'.e($money($order->total_minor)).'</td>'
                 .'<td>'.e($money($order->paid_minor)).'</td>'
                 .'<td>'.e($money($order->balance_minor)).'</td>'
@@ -1411,7 +1391,7 @@ final class FinanceReportController extends Controller
         }
 
         if ($rows === '') {
-            $rows = '<tr><td colspan="12">No sales records for this period.</td></tr>';
+            $rows = '<tr><td colspan="13">No sales records for this period.</td></tr>';
         }
 
         return '<!doctype html><html><head><meta charset="utf-8"><title>Sales Report</title></head><body>'
@@ -1419,8 +1399,9 @@ final class FinanceReportController extends Controller
             .'<p><strong>Company:</strong> '.e($data['tenant']->name).'</p>'
             .'<p><strong>Branch:</strong> '.e($data['selectedBranch']?->name ?? 'All branches').'</p>'
             .'<p><strong>Period:</strong> '.e($data['dateFrom']->format('M j, Y')).' to '.e($data['dateTo']->format('M j, Y')).'</p>'
-            .'<table border="1" cellspacing="0" cellpadding="6"><thead><tr><th>Date</th><th>Reference</th><th>Customer</th><th>Branch</th><th>Payment Method</th><th>Payment Status</th><th>Subtotal</th><th>Discount</th><th>Tax</th><th>Total</th><th>Paid</th><th>Balance</th></tr></thead><tbody>'.$rows.'</tbody></table>'
-            .'<p><strong>Total Sales:</strong> '.e($money($data['totals']['sales_minor'])).' <strong>Total Paid:</strong> '.e($money($data['totals']['paid_minor'])).' <strong>Total Balance:</strong> '.e($money($data['totals']['balance_minor'])).'</p>'
+            .'<p><strong>Reconciliation:</strong> Subtotal - Discount + Tax + Shipping = Total</p>'
+            .'<table border="1" cellspacing="0" cellpadding="6"><thead><tr><th>Date</th><th>Reference</th><th>Customer</th><th>Branch</th><th>Payment Method</th><th>Payment Status</th><th>Subtotal</th><th>Discount</th><th>Tax</th><th>Shipping</th><th>Total</th><th>Paid</th><th>Balance</th></tr></thead><tbody>'.$rows.'</tbody></table>'
+            .'<p><strong>Total Shipping:</strong> '.e($money($data['totals']['shipping_minor'])).' <strong>Total Sales:</strong> '.e($money($data['totals']['sales_minor'])).' <strong>Total Paid:</strong> '.e($money($data['totals']['paid_minor'])).' <strong>Total Balance:</strong> '.e($money($data['totals']['balance_minor'])).'</p>'
             .'</body></html>';
     }
 
@@ -1626,6 +1607,7 @@ final class FinanceReportController extends Controller
             'Branch: '.($data['selectedBranch']?->name ?? 'All branches'),
             'Period: '.$data['dateFrom']->format('M j, Y').' to '.$data['dateTo']->format('M j, Y'),
             'Orders: '.$data['totals']['orders'],
+            'Total Shipping: '.$money($data['totals']['shipping_minor']),
             'Total Sales: '.$money($data['totals']['sales_minor']),
             'Total Paid: '.$money($data['totals']['paid_minor']),
             'Total Balance: '.$money($data['totals']['balance_minor']),
@@ -1844,7 +1826,7 @@ final class FinanceReportController extends Controller
     }
 
     /**
-     * @return array{date_from: string, date_to: string, category: string, status: string, expense_account: string, payment_account: string, payee: string, reference: string}
+     * @return array{date_from: string, date_to: string, category: string, status: string, expense_account: string, payment_account: string}
      */
     private function expenseFilters(Request $request): array
     {
@@ -1855,13 +1837,11 @@ final class FinanceReportController extends Controller
             'status' => $request->string('expense_payment_status')->toString(),
             'expense_account' => $request->string('expense_account_code')->toString(),
             'payment_account' => $request->string('expense_payment_account_code')->toString(),
-            'payee' => $request->string('expense_payee')->toString(),
-            'reference' => $request->string('expense_reference')->toString(),
         ];
     }
 
     /**
-     * @param  array{date_from: string, date_to: string, category: string, status: string, expense_account: string, payment_account: string, payee: string, reference: string}  $expenseFilters
+     * @param  array{date_from: string, date_to: string, category: string, status: string, expense_account: string, payment_account: string}  $expenseFilters
      */
     private function expensesQuery(string $tenantId, array $expenseFilters)
     {
@@ -1874,16 +1854,6 @@ final class FinanceReportController extends Controller
             ->when($expenseFilters['status'] !== '', fn ($query) => $query->where('payment_status', $expenseFilters['status']))
             ->when($expenseFilters['expense_account'] !== '', fn ($query) => $query->whereHas('expenseAccount', fn ($accountQuery) => $accountQuery->where('code', $expenseFilters['expense_account'])))
             ->when($expenseFilters['payment_account'] !== '', fn ($query) => $query->whereHas('paymentAccount', fn ($accountQuery) => $accountQuery->where('code', $expenseFilters['payment_account'])))
-            ->when($expenseFilters['payee'] !== '', fn ($query) => $query->where('payee_name', 'like', '%'.$expenseFilters['payee'].'%'))
-            ->when($expenseFilters['reference'] !== '', function ($query) use ($expenseFilters): void {
-                $search = '%'.$expenseFilters['reference'].'%';
-
-                $query->where(function ($inner) use ($search): void {
-                    $inner->where('reference_number', 'like', $search)
-                        ->orWhere('expense_number', 'like', $search)
-                        ->orWhere('description', 'like', $search);
-                });
-            })
             ->latest('expense_date')
             ->latest('id');
     }
@@ -1934,6 +1904,7 @@ final class FinanceReportController extends Controller
             'finance_expense' => 'Expense posting',
             'vendor_payment' => 'Vendor payment posting',
             'purchase_order' => 'Purchase posting',
+            'goods_receipt' => 'Goods receipt posting',
             'sales_order' => 'Sales posting',
             'sales_payment' => 'Sales payment posting',
             'sales_return' => 'Sales return posting',

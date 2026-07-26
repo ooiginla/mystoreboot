@@ -17,9 +17,12 @@ use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Modules\Access\Actions\EnsureSystemRolesAction;
+use Modules\Access\Actions\SyncPermissionCatalogueAction;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\Role;
 use Modules\Access\Models\TenantMembership;
+use Modules\Business\Actions\CreateBranchAction;
 use Modules\Business\Enums\BusinessType;
 use Modules\Finance\Actions\EnsureDefaultChartOfAccountsAction;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
@@ -38,11 +41,14 @@ final class RegisteredTenantController extends Controller
             'countries' => $this->countries(),
             'recaptchaSiteKey' => config('services.recaptcha.site_key'),
             'recaptchaEnabled' => $this->recaptchaEnabled(),
+            'localSignupBypassEnabled' => $this->localSignupBypassEnabled(),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
+        $localSignupBypassEnabled = $this->localSignupBypassEnabled();
+
         $data = $request->validate([
             'business_name' => ['required', 'string', 'max:160'],
             'business_category' => ['required', Rule::in(array_column(BusinessType::cases(), 'value'))],
@@ -63,7 +69,7 @@ final class RegisteredTenantController extends Controller
             ],
         ]);
 
-        [$tenant, $user] = DB::transaction(function () use ($data): array {
+        [$tenant, $user] = DB::transaction(function () use ($data, $localSignupBypassEnabled): array {
             $tenant = Tenant::query()->create([
                 'name' => $data['business_name'],
                 'slug' => $this->uniqueTenantSlug($data['business_name']),
@@ -75,6 +81,8 @@ final class RegisteredTenantController extends Controller
                 'settings' => [
                     'city' => $data['city'],
                     'signup_source' => 'self_service',
+                    'rbac_enforced' => true,
+                    'approvals' => ['enabled' => false, 'actions' => []],
                 ],
                 'trial_ends_at' => now()->addDays(14),
             ]);
@@ -86,12 +94,19 @@ final class RegisteredTenantController extends Controller
                 'is_platform_admin' => false,
             ]);
 
-            $role = Role::query()->create([
-                'tenant_id' => $tenant->id,
-                'name' => 'Administrator',
-                'slug' => 'administrator',
-                'is_system' => true,
-            ]);
+            if ($localSignupBypassEnabled) {
+                $user->forceFill(['email_verified_at' => now()])->save();
+            }
+
+            // Seed the atomic permission catalogue and every system role template,
+            // then make the founding user a protected Business Owner.
+            app(SyncPermissionCatalogueAction::class)->execute();
+            app(EnsureSystemRolesAction::class)->execute($tenant->id, $tenant->currency_code);
+
+            $role = Role::query()
+                ->where('tenant_id', $tenant->id)
+                ->where('slug', 'business-owner')
+                ->firstOrFail();
 
             TenantMembership::query()->create([
                 'tenant_id' => $tenant->id,
@@ -99,6 +114,16 @@ final class RegisteredTenantController extends Controller
                 'role_id' => $role->id,
                 'status' => MembershipStatus::Active,
                 'joined_at' => now(),
+            ]);
+
+            app(CreateBranchAction::class)->execute([
+                'tenant_id' => $tenant->id,
+                'name' => 'Head Office',
+                'code' => 'HO',
+                'timezone' => $tenant->timezone,
+                'currency_code' => $tenant->currency_code,
+                'is_primary' => true,
+                'status' => 'active',
             ]);
 
             TenantSubscription::query()->create([
@@ -117,11 +142,19 @@ final class RegisteredTenantController extends Controller
         });
 
         Mail::to($user->email)->send(new TenantWelcomeMail($tenant, $user));
-        Mail::to($user->email)->send(new VerifyEmailMail($user, $this->verificationUrl($user)));
+
+        if (! $localSignupBypassEnabled) {
+            Mail::to($user->email)->send(new VerifyEmailMail($user, $this->verificationUrl($user)));
+        }
 
         return redirect()
             ->route('login')
-            ->with('status', 'Your Storeboot account has been created. We sent a welcome email and a verification email. Please verify your email before signing in.');
+            ->with(
+                'status',
+                $localSignupBypassEnabled
+                    ? 'Your Storeboot account has been created and activated. You can now sign in.'
+                    : 'Your Storeboot account has been created. We sent a welcome email and a verification email. Please verify your email before signing in.',
+            );
     }
 
     public function verify(Request $request, User $user): RedirectResponse
@@ -167,7 +200,14 @@ final class RegisteredTenantController extends Controller
 
     private function recaptchaEnabled(): bool
     {
-        return filled(config('services.recaptcha.site_key')) && filled(config('services.recaptcha.secret_key'));
+        return ! $this->localSignupBypassEnabled()
+            && filled(config('services.recaptcha.site_key'))
+            && filled(config('services.recaptcha.secret_key'));
+    }
+
+    private function localSignupBypassEnabled(): bool
+    {
+        return app()->environment('local');
     }
 
     private function verifyRecaptcha(Request $request, string $token): bool
@@ -229,6 +269,7 @@ final class RegisteredTenantController extends Controller
             'catalog' => 'Products & Services',
             'inventory' => 'Inventory Management',
             'sales' => 'Sales & Invoicing',
+            'retail-pos' => 'Retail POS',
             'customers' => 'Customers & CRM',
             'procurement' => 'Vendors & Procurement',
             'finance' => 'Expenses & Accounting',

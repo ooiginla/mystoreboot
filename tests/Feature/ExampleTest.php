@@ -21,7 +21,10 @@ class ExampleTest extends TestCase
     {
         $response = $this->get('/');
 
-        $response->assertRedirect(route('admin.business.index'));
+        $response
+            ->assertOk()
+            ->assertSee('Run your', false)
+            ->assertSee('whole business', false);
 
         $this->get(route('admin.business.index'))
             ->assertRedirect(route('login'));
@@ -29,6 +32,10 @@ class ExampleTest extends TestCase
         $user = User::factory()->create([
             'is_platform_admin' => true,
         ]);
+
+        $this->actingAs($user)
+            ->get('/')
+            ->assertRedirect(route('admin.analytics.index'));
 
         $this->actingAs($user)
             ->get(route('admin.business.index'))

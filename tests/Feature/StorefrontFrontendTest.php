@@ -11,6 +11,8 @@ use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\Product;
 use Modules\Catalog\Models\ProductCategory;
+use Modules\Catalog\Models\ProductOption;
+use Modules\Catalog\Models\ProductOptionValue;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Customers\Models\Customer;
 use Modules\Customers\Models\SupportTicket;
@@ -64,6 +66,8 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('Free delivery today')
             ->assertSee('All Categories')
             ->assertSee('Footwear')
+            ->assertSee('data-mobile-nav-toggle', false)
+            ->assertSee('id="store-mobile-nav"', false)
             ->assertSee('Launch collection')
             ->assertSee('Bulk delivery made easy')
             ->assertSee('data-store-hero-slider', false)
@@ -114,6 +118,94 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('Reviews')
             ->assertSee('Share this product')
             ->assertSee('YOU MIGHT ALSO LIKE');
+    }
+
+    public function test_variant_products_show_from_price_and_expose_live_detail_pricing(): void
+    {
+        [$tenant, $store] = $this->storeFixture();
+        $category = ProductCategory::query()->create([
+            'tenant_id' => $tenant->id,
+            'category_type' => CategoryType::Product->value,
+            'name' => 'Clothing',
+            'slug' => 'clothing',
+            'status' => ProductStatus::Active->value,
+        ]);
+        $store->categories()->attach($category->id);
+        $product = Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'category_id' => $category->id,
+            'name' => 'Everyday Shirt',
+            'slug' => 'everyday-shirt',
+            'product_type' => ProductType::Product->value,
+            'has_variants' => true,
+            'status' => ProductStatus::Active->value,
+            'base_price_minor' => 999999,
+        ]);
+        $option = ProductOption::query()->create([
+            'product_id' => $product->id,
+            'name' => 'Size',
+            'sort_order' => 0,
+        ]);
+        $small = ProductOptionValue::query()->create([
+            'product_option_id' => $option->id,
+            'value' => 'Small',
+            'sort_order' => 0,
+        ]);
+        $medium = ProductOptionValue::query()->create([
+            'product_option_id' => $option->id,
+            'value' => 'Medium',
+            'sort_order' => 1,
+        ]);
+        $large = ProductOptionValue::query()->create([
+            'product_option_id' => $option->id,
+            'value' => 'Large',
+            'sort_order' => 2,
+        ]);
+
+        $variantRows = [
+            ['name' => 'Small', 'sku' => 'SHIRT-S', 'price' => 120000, 'compare' => null, 'status' => ProductStatus::Active, 'value' => $small],
+            ['name' => 'Medium', 'sku' => 'SHIRT-M', 'price' => 180000, 'compare' => 200000, 'status' => ProductStatus::Active, 'value' => $medium],
+            ['name' => 'Large', 'sku' => 'SHIRT-L', 'price' => 240000, 'compare' => null, 'status' => ProductStatus::Active, 'value' => $large],
+            ['name' => 'Discontinued', 'sku' => 'SHIRT-X', 'price' => 50000, 'compare' => null, 'status' => ProductStatus::Discontinued, 'value' => $large],
+        ];
+
+        foreach ($variantRows as $row) {
+            $variant = ProductVariant::query()->create([
+                'tenant_id' => $tenant->id,
+                'product_id' => $product->id,
+                'variant_name' => $row['name'],
+                'sku' => $row['sku'],
+                'selling_price_minor' => $row['price'],
+                'compare_at_price_minor' => $row['compare'],
+                'cost_price_minor' => 50000,
+                'status' => $row['status']->value,
+            ]);
+            $variant->optionValues()->attach($row['value']->id);
+        }
+
+        $detailsUrl = route('storefront.storefront.store.products.show', [$store, $product->slug]);
+
+        $this->get(route('storefront.storefront.store.home', $store))
+            ->assertOk()
+            ->assertSee('From ₦1,200.00')
+            ->assertSee('data-variant-price-mode="from"', false)
+            ->assertSee('Choose options')
+            ->assertSee($detailsUrl, false)
+            ->assertDontSee('₦9,999.99')
+            ->assertDontSee('₦500.00');
+
+        $this->get($detailsUrl)
+            ->assertOk()
+            ->assertSee('data-variant-option', false)
+            ->assertSee('Small · SKU SHIRT-S')
+            ->assertSee('"priceMinor":120000', false)
+            ->assertSee('"priceMinor":180000', false)
+            ->assertSee('"priceMinor":240000', false)
+            ->assertSee('"compareMinor":200000', false)
+            ->assertSee('data-variant-cart-button', false)
+            ->assertDontSee('SHIRT-X')
+            ->assertDontSee('"priceMinor":50000', false)
+            ->assertDontSee('₦9,999.99');
     }
 
     public function test_services_are_moved_to_services_menu_and_excluded_from_product_listing(): void
@@ -222,7 +314,26 @@ class StorefrontFrontendTest extends TestCase
 
     public function test_contact_page_creates_customer_support_ticket(): void
     {
-        [, $store] = $this->storeFixture();
+        [, $store] = $this->storeFixture([
+            'hero_image_path' => 'tenants/demo/online-store/heroes/contact-banner.jpg',
+            'site_email' => 'hello@demo-store.test',
+            'address' => '10 Market Road',
+            'city' => 'Lagos',
+            'country' => 'Nigeria',
+        ]);
+
+        $this->get(route('storefront.storefront.store.contact', $store))
+            ->assertOk()
+            ->assertSee('Home')
+            ->assertSee('Contact Us')
+            ->assertSee('Get in touch with us')
+            ->assertSee('contact-layout', false)
+            ->assertSee('/storage/tenants/demo/online-store/heroes/contact-banner.jpg', false)
+            ->assertSee('08010000000')
+            ->assertSee('hello@demo-store.test')
+            ->assertSee('10 Market Road, Lagos, Nigeria')
+            ->assertSee('Send us a message')
+            ->assertSee('Your message here...');
 
         $this->post(route('storefront.storefront.store.contact.submit', $store), [
             'name' => 'Ada Lovelace',

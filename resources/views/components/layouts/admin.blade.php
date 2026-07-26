@@ -4,6 +4,8 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
+        <meta name="theme-color" content="#009a53">
+        <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
 
         <title>{{ $title ?? 'Storeboot Admin' }}</title>
 
@@ -82,6 +84,7 @@
             .logout { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(255,255,255,.14); border-radius: 9px; background: transparent; color: #eef2f0; padding: 9px 11px; cursor: pointer; font-weight: 600; font-size: 13px; transition: background .15s; }
             .logout:hover { background: var(--sb-hover); }
             .logout svg { width: 16px; height: 16px; }
+            .admin-mobile-header, .admin-sidebar-backdrop, .admin-sidebar-close { display: none; }
 
             /* ---------- Main + headings ---------- */
             .main { padding: 26px 30px 60px; max-width: 1560px; }
@@ -109,7 +112,7 @@
 
             /* ---------- Forms ---------- */
             .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-            .field { display: grid; gap: 7px; min-width: 0; }
+            .field { display: grid; align-content: start; gap: 7px; min-width: 0; }
             .field.full { grid-column: 1 / -1; }
             label { color: var(--ink-soft); font-size: 13px; font-weight: 600; }
             input, select, textarea {
@@ -133,6 +136,21 @@
             }
             input:focus, select:focus, textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3.5px var(--brand-ring); }
             input:disabled, select:disabled, textarea:disabled { background: var(--panel-soft); color: var(--muted); cursor: not-allowed; }
+
+            /* ---------- Searchable product variant picker ---------- */
+            .variant-search-picker { position: relative; }
+            .variant-search-control { display: grid; grid-template-columns: minmax(0, 1fr) 48px; border: 1px solid #d4ddd8; border-radius: var(--radius-sm); background: #fff; overflow: hidden; transition: border-color .15s, box-shadow .15s; }
+            .variant-search-control:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3.5px var(--brand-ring); }
+            .variant-search-control input { min-width: 0; border: 0; border-radius: 0; box-shadow: none; }
+            .variant-search-control input:focus { border: 0; box-shadow: none; }
+            .variant-search-button { display: grid; place-items: center; border: 0; border-left: 1px solid var(--brand-strong); background: var(--brand); color: #fff; cursor: pointer; }
+            .variant-search-button:hover { background: var(--brand-strong); }
+            .variant-search-button svg { width: 22px; height: 22px; }
+            .variant-search-options { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; right: 0; max-height: 280px; overflow-y: auto; border: 1px solid #d4ddd8; border-radius: var(--radius-sm); background: #fff; padding: 6px; box-shadow: 0 14px 30px -10px rgba(16,24,40,.28); }
+            .variant-search-options[hidden] { display: none; }
+            .variant-search-option { width: 100%; display: block; border: 0; border-radius: 7px; background: #fff; color: var(--ink); padding: 11px 12px; cursor: pointer; text-align: left; font-size: 14px; font-weight: 700; line-height: 1.35; }
+            .variant-search-option:hover, .variant-search-option.active { background: var(--brand-050); color: var(--brand-strong); }
+            .variant-search-empty { padding: 12px; color: var(--muted); font-size: 13.5px; text-align: center; }
 
             /* Switch toggle (added to boolean checkboxes via JS).
                High specificity (.main input.switch-input) so page-local
@@ -163,8 +181,8 @@
             .btn svg { width: 16px; height: 16px; }
             .btn.primary { background: var(--brand); color: #fff; box-shadow: 0 4px 12px -2px rgba(6,193,104,.35); }
             .btn.primary:hover { background: var(--brand-strong); }
-            .btn.accent { background: var(--accent); color: #fff; box-shadow: 0 6px 16px rgba(37, 99, 235, .22); }
-            .btn.accent:hover { background: var(--accent-dark); }
+            .btn.accent { background: var(--brand); color: #fff; box-shadow: 0 4px 12px -2px rgba(6,193,104,.35); }
+            .btn.accent:hover { background: var(--brand-strong); }
             .btn.danger, .btn.destructive { background: #fff; color: var(--danger); border-color: var(--danger-border); }
             .btn.danger:hover, .btn.destructive:hover { background: var(--danger); color: #fff; border-color: var(--danger); box-shadow: 0 4px 12px -2px rgba(220,38,38,.35); }
             .btn.secondary { background: #fff; color: var(--ink-soft); border-color: var(--line); box-shadow: var(--shadow-sm); }
@@ -244,17 +262,38 @@
             .icon-btn { width: 36px; height: 36px; display: inline-grid; place-items: center; border: 1px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer; font-weight: 700; color: var(--ink-soft); transition: background .15s, border-color .15s; line-height: 0; }
             .icon-btn:hover { background: var(--panel-soft); border-color: #d4ddd8; }
 
-            /* ---------- Tom Select (searchable dropdowns) ---------- */
-            .ts-wrapper { min-width: 0; }
-            .ts-control { border: 1px solid #d4ddd8 !important; border-radius: var(--radius-sm) !important; padding: 7px 12px !important; box-shadow: none !important; background: #fff !important; min-height: 44px; }
-            .ts-wrapper.focus .ts-control { border-color: var(--brand) !important; box-shadow: 0 0 0 3.5px var(--brand-ring) !important; }
-            .ts-dropdown { border: 1px solid var(--line) !important; border-radius: 10px !important; box-shadow: var(--shadow) !important; overflow: hidden; margin-top: 6px; }
-            .ts-dropdown .active { background: var(--brand-050) !important; color: var(--brand-strong) !important; }
-            .ts-dropdown .option { padding: 9px 12px !important; }
-
             @media (max-width: 960px) {
                 .shell { grid-template-columns: 1fr; }
-                .sidebar { position: static; height: auto; flex-direction: column; }
+                body.admin-nav-open { overflow: hidden; }
+                .admin-mobile-header {
+                    position: sticky; top: 0; z-index: 50; min-height: 64px; padding: 10px 16px;
+                    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+                    background: rgba(255,255,255,.96); border-bottom: 1px solid var(--line);
+                    box-shadow: var(--shadow-sm); backdrop-filter: blur(10px);
+                }
+                .admin-mobile-brand { display: flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 800; font-size: 17px; }
+                .admin-mobile-header .brand-mark { width: 34px; height: 34px; }
+                .admin-menu-toggle, .admin-sidebar-close {
+                    width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 10px;
+                    background: #fff; color: var(--ink); cursor: pointer; place-items: center;
+                }
+                .admin-menu-toggle { display: grid; }
+                .admin-menu-toggle:hover, .admin-sidebar-close:hover { background: var(--brand-050); border-color: var(--brand-100); color: var(--brand-strong); }
+                .admin-menu-toggle svg, .admin-sidebar-close svg { width: 23px; height: 23px; }
+                .admin-sidebar-close { display: grid; margin-left: auto; border-color: rgba(255,255,255,.16); background: transparent; color: #fff; }
+                .admin-sidebar-close:hover { background: var(--sb-hover); border-color: rgba(255,255,255,.25); color: #fff; }
+                .sidebar {
+                    position: fixed; inset: 0 auto 0 0; z-index: 70; width: min(300px, 86vw); height: 100dvh;
+                    flex-direction: column; transform: translateX(-105%); transition: transform .22s ease;
+                    box-shadow: 20px 0 45px rgba(6, 23, 16, .26);
+                }
+                .sidebar.is-open { transform: translateX(0); }
+                .admin-sidebar-backdrop {
+                    position: fixed; inset: 0; z-index: 60; width: 100%; height: 100%; padding: 0;
+                    display: block; border: 0; background: rgba(4, 15, 10, .56); opacity: 0;
+                    pointer-events: none; transition: opacity .22s ease;
+                }
+                .admin-sidebar-backdrop.is-open { opacity: 1; pointer-events: auto; }
                 .main { padding: 20px 16px 48px; }
                 .admin-context-bar { justify-content: stretch; }
                 .branch-switcher { width: 100%; }
@@ -267,6 +306,9 @@
                 .form-grid { grid-template-columns: 1fr; }
                 .hour-row { grid-template-columns: 1fr 1fr; }
             }
+            @media (prefers-reduced-motion: reduce) {
+                .sidebar, .admin-sidebar-backdrop { transition: none; }
+            }
         </style>
     </head>
     <body>
@@ -277,6 +319,24 @@
             $activeBranch = $activeBranchState['activeBranch'];
             $shouldPromptForBranch = $activeBranchState['shouldPrompt'];
             $activeTenantRouteParams = $activeBranchTenant ? ['tenant' => $activeBranchTenant->id] : [];
+            $tenantModuleStates = $activeBranchTenant
+                ? app(\Modules\Subscriptions\Support\TenantModuleAccess::class)->states($activeBranchTenant)
+                : collect();
+            $knownTenantModules = $tenantModuleStates->map(fn (array $state): string => $state['module']->slug);
+            $enabledTenantModules = $tenantModuleStates
+                ->filter(fn (array $state): bool => $state['enabled'])
+                ->map(fn (array $state): string => $state['module']->slug);
+            $hasTenantModule = fn (string $slug): bool => ! $activeBranchTenant
+                || ! $knownTenantModules->contains($slug)
+                || $enabledTenantModules->contains($slug);
+
+            $approvalTypes = ($activeBranchTenant && auth()->user())
+                ? app(\Modules\Access\Support\ApprovalService::class)->typesApprovableBy(auth()->user(), $activeBranchTenant)
+                : [];
+            $canApproveAny = $approvalTypes !== [];
+            $pendingApprovalCount = $canApproveAny
+                ? app(\Modules\Access\Support\ApprovalService::class)->pendingForApprover($activeBranchTenant, auth()->user())->count()
+                : 0;
         @endphp
         <svg width="0" height="0" style="position:absolute" aria-hidden="true">
             <defs>
@@ -300,34 +360,105 @@
             </defs>
         </svg>
 
+        <header class="admin-mobile-header">
+            <div class="admin-mobile-brand">
+                <span class="brand-mark"><svg viewBox="0 0 24 24"><use href="#i-spark"/></svg></span>
+                <span>Storeboot</span>
+            </div>
+            <button class="admin-menu-toggle" type="button" data-admin-menu-toggle aria-controls="admin-sidebar" aria-expanded="false" aria-label="Open admin menu">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+        </header>
+        <button class="admin-sidebar-backdrop" type="button" data-admin-sidebar-backdrop aria-label="Close admin menu" tabindex="-1"></button>
         <div class="shell">
-            <aside class="sidebar">
+            <aside class="sidebar" id="admin-sidebar" data-admin-sidebar>
                 <div class="brand">
                     <span class="brand-mark"><svg viewBox="0 0 24 24"><use href="#i-spark"/></svg></span>
                     <span>Storeboot</span>
+                    <button class="admin-sidebar-close" type="button" data-admin-menu-close aria-label="Close admin menu">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                    </button>
                 </div>
                 <nav class="nav" aria-label="Admin navigation">
-                    <a class="{{ request()->routeIs('admin.analytics.*') ? 'active' : '' }}" href="{{ route('admin.analytics.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg><span>Dashboard</span></a>
-                    <a class="{{ request()->routeIs('admin.business.*') && ! request()->routeIs('admin.business.organizations.*') && ! request()->routeIs('admin.business.online-store.*') ? 'active' : '' }}" href="{{ route('admin.business.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-store"/></svg><span>Business setup</span></a>
-
-                    <div class="nav-group">Operations</div>
-                    <a class="{{ request()->routeIs('admin.catalog.*') ? 'active' : '' }}" href="{{ route('admin.catalog.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-package"/></svg><span>Product &amp; Services</span></a>
-                    <a class="{{ request()->routeIs('admin.business.online-store.*') ? 'active' : '' }}" href="{{ route('admin.business.online-store.index', $activeTenantRouteParams) }}#online-store"><svg viewBox="0 0 24 24"><use href="#i-store"/></svg><span>Online Store</span></a>
-                    <a class="{{ request()->routeIs('admin.inventory.*') ? 'active' : '' }}" href="{{ route('admin.inventory.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-layers"/></svg><span>Inventory &amp; Stock</span></a>
-                    <a class="{{ request()->routeIs('admin.procurement.*') ? 'active' : '' }}" href="{{ route('admin.procurement.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-truck"/></svg><span>Purchasing &amp; Suppliers</span></a>
-                    <a class="{{ request()->routeIs('admin.customers.*') ? 'active' : '' }}" href="{{ route('admin.customers.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-users"/></svg><span>Customers &amp; Support</span></a>
-                    <a class="{{ request()->routeIs('admin.sales.retail-pos') ? 'active' : '' }}" href="{{ route('admin.sales.retail-pos', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-pos"/></svg><span>Retail POS</span></a>
-                    <a class="{{ request()->routeIs('admin.sales.index') ? 'active' : '' }}" href="{{ route('admin.sales.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-cart"/></svg><span>Record Sale</span></a>
-
-                    <div class="nav-group">Finance</div>
-                    <a class="{{ request()->routeIs('admin.sales.settlements.*') ? 'active' : '' }}" href="{{ route('admin.sales.settlements.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-wallet"/></svg><span>Business Settlements</span></a>
-                    @if (auth()->user()?->is_platform_admin)
-                        <a class="{{ request()->routeIs('admin.sales.admin-settlements.*') ? 'active' : '' }}" href="{{ route('admin.sales.admin-settlements.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-shield"/></svg><span>Admin Settlements</span></a>
+                    @if ($hasTenantModule('analytics'))
+                        @permission('dashboard.view')
+                        <a class="{{ request()->routeIs('admin.analytics.*') ? 'active' : '' }}" href="{{ route('admin.analytics.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-grid"/></svg><span>Dashboard</span></a>
+                        @endpermission
                     @endif
-                    <a class="{{ request()->routeIs('admin.hr-payroll.*') ? 'active' : '' }}" href="{{ route('admin.hr-payroll.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-badge"/></svg><span>HR &amp; Payroll</span></a>
-                    <a class="{{ request()->routeIs('admin.finance.expenses') || request()->routeIs('admin.finance.expenses.*') || request()->routeIs('admin.finance.petty-cash.*') ? 'active' : '' }}" href="{{ route('admin.finance.expenses', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-receipt"/></svg><span>Expenses</span></a>
-                    <a class="{{ request()->routeIs('admin.finance.journals') || request()->routeIs('admin.finance.journals.*') || request()->routeIs('admin.finance.expense-categories.*') || request()->routeIs('admin.finance.chart-of-accounts') ? 'active' : '' }}" href="{{ route('admin.finance.journals', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-book"/></svg><span>Journals</span></a>
-                    <a class="{{ request()->routeIs('admin.finance.index') ? 'active' : '' }}" href="{{ route('admin.finance.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-chart"/></svg><span>Report</span></a>
+                    @if (\Illuminate\Support\Facades\Gate::any(['business.settings.manage', 'branches.manage', 'users.manage', 'roles.manage', 'subscriptions.manage']))
+                        <a class="{{ request()->routeIs('admin.business.*') && ! request()->routeIs('admin.business.organizations.*') && ! request()->routeIs('admin.business.online-store.*') ? 'active' : '' }}" href="{{ route('admin.business.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-store"/></svg><span>Business setup</span></a>
+                    @endif
+                    @if ($canApproveAny)
+                        <a class="{{ request()->routeIs('admin.access.approvals.*') ? 'active' : '' }}" href="{{ route('admin.access.approvals.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-shield"/></svg><span>Approvals</span>@if ($pendingApprovalCount > 0)<span class="badge" style="margin-left:auto;">{{ $pendingApprovalCount }}</span>@endif</a>
+                    @endif
+                    @if (\Illuminate\Support\Facades\Gate::any(['roles.manage', 'users.manage']))
+                        <a class="{{ request()->routeIs('admin.access.review.*') ? 'active' : '' }}" href="{{ route('admin.access.review.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-badge"/></svg><span>Access review</span></a>
+                    @endif
+
+                    @if (\Illuminate\Support\Facades\Gate::any(['catalog.view', 'storefront.manage', 'inventory.view', 'procurement.view', 'customers.view', 'sales.create', 'sales.view']))
+                        <div class="nav-group">Operations</div>
+                    @endif
+                    @if ($hasTenantModule('catalog'))
+                        @permission('catalog.view')
+                        <a class="{{ request()->routeIs('admin.catalog.*') ? 'active' : '' }}" href="{{ route('admin.catalog.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-package"/></svg><span>Product &amp; Services</span></a>
+                        @endpermission
+                    @endif
+                    @if ($hasTenantModule('storefront'))
+                        @permission('storefront.manage')
+                        <a class="{{ request()->routeIs('admin.business.online-store.*') ? 'active' : '' }}" href="{{ route('admin.business.online-store.index', $activeTenantRouteParams) }}#online-store"><svg viewBox="0 0 24 24"><use href="#i-store"/></svg><span>Online Store</span></a>
+                        @endpermission
+                    @endif
+                    @if ($hasTenantModule('inventory'))
+                        @permission('inventory.view')
+                        <a class="{{ request()->routeIs('admin.inventory.*') ? 'active' : '' }}" href="{{ route('admin.inventory.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-layers"/></svg><span>Inventory &amp; Stock</span></a>
+                        @endpermission
+                    @endif
+                    @if ($hasTenantModule('procurement'))
+                        @permission('procurement.view')
+                        <a class="{{ request()->routeIs('admin.procurement.*') ? 'active' : '' }}" href="{{ route('admin.procurement.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-truck"/></svg><span>Purchasing &amp; Suppliers</span></a>
+                        @endpermission
+                    @endif
+                    @if ($hasTenantModule('customers'))
+                        @permission('customers.view')
+                        <a class="{{ request()->routeIs('admin.customers.*') ? 'active' : '' }}" href="{{ route('admin.customers.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-users"/></svg><span>Customers &amp; Support</span></a>
+                        @endpermission
+                    @endif
+                    @if ($hasTenantModule('retail-pos'))
+                        @permission('sales.create')
+                        <a class="{{ request()->routeIs('admin.sales.retail-pos') ? 'active' : '' }}" href="{{ route('admin.sales.retail-pos', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-pos"/></svg><span>Retail POS</span></a>
+                        @endpermission
+                    @endif
+                    @if ($hasTenantModule('sales'))
+                        @permission('sales.view')
+                        <a class="{{ request()->routeIs('admin.sales.index') ? 'active' : '' }}" href="{{ route('admin.sales.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-cart"/></svg><span>Record Sale</span></a>
+                        @endpermission
+                    @endif
+
+                    @if (\Illuminate\Support\Facades\Gate::any(['settlements.view', 'hr.staff.view', 'finance.view']))
+                        <div class="nav-group">Finance</div>
+                    @endif
+                    @if ($hasTenantModule('sales'))
+                        @permission('settlements.view')
+                        <a class="{{ request()->routeIs('admin.sales.settlements.*') ? 'active' : '' }}" href="{{ route('admin.sales.settlements.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-wallet"/></svg><span>Business Settlements</span></a>
+                        @endpermission
+                        @if (auth()->user()?->is_platform_admin)
+                            <a class="{{ request()->routeIs('admin.sales.admin-settlements.*') ? 'active' : '' }}" href="{{ route('admin.sales.admin-settlements.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-shield"/></svg><span>Admin Settlements</span></a>
+                        @endif
+                    @endif
+                    @if ($hasTenantModule('hrpayroll'))
+                        @permission('hr.staff.view')
+                        <a class="{{ request()->routeIs('admin.hr-payroll.*') ? 'active' : '' }}" href="{{ route('admin.hr-payroll.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-badge"/></svg><span>HR &amp; Payroll</span></a>
+                        @endpermission
+                    @endif
+                    @if ($hasTenantModule('finance'))
+                        @permission('finance.view')
+                        <a class="{{ request()->routeIs('admin.finance.expenses') || request()->routeIs('admin.finance.expenses.*') || request()->routeIs('admin.finance.petty-cash.*') ? 'active' : '' }}" href="{{ route('admin.finance.expenses', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-receipt"/></svg><span>Expenses</span></a>
+                        <a class="{{ request()->routeIs('admin.finance.journals') || request()->routeIs('admin.finance.journals.*') || request()->routeIs('admin.finance.expense-categories.*') || request()->routeIs('admin.finance.chart-of-accounts') ? 'active' : '' }}" href="{{ route('admin.finance.journals', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-book"/></svg><span>Journals</span></a>
+                        @endpermission
+                        @permission('finance.reports.view')
+                        <a class="{{ request()->routeIs('admin.finance.index') ? 'active' : '' }}" href="{{ route('admin.finance.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-chart"/></svg><span>Report</span></a>
+                        @endpermission
+                    @endif
 
                     @if (auth()->user()?->is_platform_admin)
                         <div class="nav-group">Platform</div>
@@ -402,6 +533,45 @@
         </div>
         <script>
             document.addEventListener('DOMContentLoaded', () => {
+                const adminSidebar = document.querySelector('[data-admin-sidebar]');
+                const adminSidebarBackdrop = document.querySelector('[data-admin-sidebar-backdrop]');
+                const adminMenuToggle = document.querySelector('[data-admin-menu-toggle]');
+
+                const setAdminMenu = (open) => {
+                    if (!adminSidebar || !adminSidebarBackdrop || !adminMenuToggle) return;
+
+                    adminSidebar.classList.toggle('is-open', open);
+                    adminSidebarBackdrop.classList.toggle('is-open', open);
+                    document.body.classList.toggle('admin-nav-open', open);
+                    adminMenuToggle.setAttribute('aria-expanded', String(open));
+                    adminMenuToggle.setAttribute('aria-label', open ? 'Close admin menu' : 'Open admin menu');
+
+                    if (open) {
+                        adminSidebar.querySelector('a, button')?.focus();
+                    } else if (window.innerWidth <= 960) {
+                        adminMenuToggle.focus();
+                    }
+                };
+
+                adminMenuToggle?.addEventListener('click', () => {
+                    setAdminMenu(adminMenuToggle.getAttribute('aria-expanded') !== 'true');
+                });
+                document.querySelector('[data-admin-menu-close]')?.addEventListener('click', () => setAdminMenu(false));
+                adminSidebarBackdrop?.addEventListener('click', () => setAdminMenu(false));
+                adminSidebar?.querySelectorAll('nav a').forEach((link) => {
+                    link.addEventListener('click', () => setAdminMenu(false));
+                });
+                document.addEventListener('keydown', (event) => {
+                    if (event.key === 'Escape' && adminSidebar?.classList.contains('is-open')) {
+                        setAdminMenu(false);
+                    }
+                });
+                window.addEventListener('resize', () => {
+                    if (window.innerWidth > 960 && adminSidebar?.classList.contains('is-open')) {
+                        setAdminMenu(false);
+                    }
+                });
+
                 const activeBranchDialog = document.querySelector('[data-active-branch-dialog]');
                 if (activeBranchDialog instanceof HTMLDialogElement) {
                     activeBranchDialog.showModal();
@@ -457,6 +627,121 @@
                     });
                 });
 
+                const variantOptionsFor = (search) => {
+                    const optionsId = search?.dataset.variantOptionsId || search?.getAttribute('list') || '';
+                    return Array.from(document.getElementById(optionsId)?.options || []);
+                };
+                const selectedVariantOption = (search) => variantOptionsFor(search)
+                    .find((option) => option.value === search?.value);
+
+                document.querySelectorAll('[data-variant-search-picker]').forEach((searchPicker, pickerIndex) => {
+                    const search = searchPicker.querySelector('[data-variant-search]');
+                    const panel = searchPicker.querySelector('[data-variant-search-options]');
+                    const toggle = searchPicker.querySelector('[data-variant-search-toggle]');
+                    if (!search || !panel || !toggle) return;
+
+                    const panelId = `variant-search-options-${pickerIndex}`;
+                    let activeIndex = -1;
+                    panel.id = panelId;
+                    search.setAttribute('aria-controls', panelId);
+
+                    const close = () => {
+                        panel.hidden = true;
+                        search.setAttribute('aria-expanded', 'false');
+                        activeIndex = -1;
+                    };
+                    const activate = (index) => {
+                        const rows = Array.from(panel.querySelectorAll('[data-variant-search-option]'));
+                        if (!rows.length) return;
+                        activeIndex = Math.max(0, Math.min(index, rows.length - 1));
+                        rows.forEach((row, rowIndex) => row.classList.toggle('active', rowIndex === activeIndex));
+                        rows[activeIndex].scrollIntoView({ block: 'nearest' });
+                    };
+                    const select = (option) => {
+                        if (!option) return;
+                        search.value = option.value;
+                        search.dispatchEvent(new Event('input', { bubbles: true }));
+                        search.dispatchEvent(new Event('change', { bubbles: true }));
+                        close();
+                        search.focus();
+                    };
+                    const render = (showAll = false) => {
+                        const query = showAll ? '' : search.value.trim().toLowerCase();
+                        const matches = variantOptionsFor(search)
+                            .filter((option) => !query
+                                || option.value.toLowerCase().includes(query)
+                                || (option.dataset.sku || '').toLowerCase().includes(query)
+                                || (option.dataset.barcode || '').toLowerCase().includes(query))
+                            .slice(0, 60);
+
+                        panel.innerHTML = '';
+                        if (!matches.length) {
+                            const empty = document.createElement('div');
+                            empty.className = 'variant-search-empty';
+                            empty.textContent = 'No matching product variants';
+                            panel.append(empty);
+                        } else {
+                            matches.forEach((option, index) => {
+                                const row = document.createElement('button');
+                                row.type = 'button';
+                                row.setAttribute('role', 'option');
+                                row.className = 'variant-search-option';
+                                row.dataset.variantSearchOption = String(index);
+                                row.textContent = option.value;
+                                row.addEventListener('mousedown', (event) => event.preventDefault());
+                                row.addEventListener('click', () => select(option));
+                                panel.append(row);
+                            });
+                        }
+
+                        panel.hidden = false;
+                        search.setAttribute('aria-expanded', 'true');
+                        activeIndex = -1;
+                    };
+
+                    search.addEventListener('focus', () => render(Boolean(selectedVariantOption(search))));
+                    search.addEventListener('input', () => render(false));
+                    search.addEventListener('keydown', (event) => {
+                        if (event.key === 'Escape') {
+                            close();
+                            return;
+                        }
+
+                        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                            event.preventDefault();
+                            if (panel.hidden) render(false);
+                            activate(activeIndex + (event.key === 'ArrowDown' ? 1 : -1));
+                            return;
+                        }
+
+                        if (event.key === 'Enter' && !panel.hidden && activeIndex >= 0) {
+                            event.preventDefault();
+                            panel.querySelectorAll('[data-variant-search-option]')[activeIndex]?.click();
+                        }
+                    });
+                    toggle.addEventListener('click', () => {
+                        if (panel.hidden) {
+                            render(true);
+                            search.focus();
+                        } else {
+                            close();
+                        }
+                    });
+                    searchPicker.addEventListener('focusout', (event) => {
+                        if (!searchPicker.contains(event.relatedTarget)) close();
+                    });
+                });
+
+                document.addEventListener('click', (event) => {
+                    document.querySelectorAll('[data-variant-search-picker]').forEach((searchPicker) => {
+                        if (searchPicker.contains(event.target)) return;
+                        const search = searchPicker.querySelector('[data-variant-search]');
+                        const panel = searchPicker.querySelector('[data-variant-search-options]');
+                        if (panel) panel.hidden = true;
+                        if (search) search.setAttribute('aria-expanded', 'false');
+                    });
+                });
+
                 document.addEventListener('input', (event) => {
                     const search = event.target.closest('[data-variant-search]');
 
@@ -464,7 +749,7 @@
 
                     const picker = search.closest('[data-variant-picker]');
                     const value = picker?.querySelector('[data-variant-value]');
-                    const option = Array.from(search.list?.options || []).find((item) => item.value === search.value);
+                    const option = selectedVariantOption(search);
 
                     if (value) {
                         value.value = option?.dataset.variantId || '';

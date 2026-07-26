@@ -98,7 +98,7 @@
         .rpos-act svg { width: 19px; height: 19px; }
         .rpos-act.c-coupon { background: #f5f3ff; color: #6d28d9; border-color: #e6e0ff; }
         .rpos-act.c-discount { background: #fff7ed; color: #c2410c; border-color: #ffe6d0; }
-        .rpos-act.c-delivery { background: #eff6ff; color: #1d4ed8; border-color: #dbeafe; }
+        .rpos-act.c-delivery { background: var(--brand-050); color: var(--brand-strong); border-color: #a6f4c5; }
         .rpos-act.c-note { background: #ecfeff; color: #0e7490; border-color: #cffafe; }
         .rpos-act.c-hold { background: #fefce8; color: #a16207; border-color: #fef08a; }
         .rpos-act.void { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
@@ -154,13 +154,13 @@
         .pay-methods { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
         .pay-method { border: 1.5px solid #d4ddd8; background: #fff; border-radius: 12px; padding: 14px 10px; font-weight: 800; cursor: pointer; text-align: center; font-size: 14px; transition: transform .1s, box-shadow .1s; }
         .pay-methods .pay-method:nth-child(1) { border-color: #a6f4c5; color: #027a45; background: #f0fdf4; }
-        .pay-methods .pay-method:nth-child(2) { border-color: #bfdbfe; color: #1d4ed8; background: #eff6ff; }
+        .pay-methods .pay-method:nth-child(2) { border-color: #a6f4c5; color: var(--brand-strong); background: var(--brand-050); }
         .pay-methods .pay-method:nth-child(3) { border-color: #e6e0ff; color: #6d28d9; background: #f5f3ff; }
         .pay-methods .pay-method:nth-child(4) { border-color: #fde68a; color: #b45309; background: #fffbeb; }
         .pay-methods .pay-method:nth-child(5) { border-color: #fbcfe8; color: #be185d; background: #fdf2f8; }
         .pay-method.active { color: #fff !important; border-color: transparent !important; box-shadow: 0 8px 16px -6px rgba(16,24,40,.4); transform: translateY(-1px); }
         .pay-methods .pay-method:nth-child(5n+1).active { background: #059669 !important; }
-        .pay-methods .pay-method:nth-child(5n+2).active { background: #2563eb !important; }
+        .pay-methods .pay-method:nth-child(5n+2).active { background: var(--brand-strong) !important; }
         .pay-methods .pay-method:nth-child(5n+3).active { background: #7c3aed !important; }
         .pay-methods .pay-method:nth-child(5n+4).active { background: #d97706 !important; }
         .pay-methods .pay-method:nth-child(5n+5).active { background: #db2777 !important; }

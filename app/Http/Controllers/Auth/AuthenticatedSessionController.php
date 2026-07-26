@@ -45,7 +45,7 @@ final class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('admin.analytics.index'));
+        return redirect()->intended(route('admin.home'));
     }
 
     public function destroy(Request $request): RedirectResponse

@@ -127,8 +127,9 @@
                     </div>
                     <div class="field">
                         <label>Category</label>
-                        <select name="category_id">
+                        <select name="category_id" data-product-category-select>
                             <option value="">Uncategorized</option>
+                            <option value="__add_new__" data-add-category-option>+ Add new category</option>
                             @foreach ($categoryOptions as $option)
                                 <option value="{{ $option['category']->id }}" @selected((string) old('category_id', $product?->category_id) === (string) $option['category']->id)>{{ $option['label'] }}</option>
                             @endforeach
@@ -148,7 +149,11 @@
                     </div>
                     <div class="field">
                         <label>Main Image</label>
-                        <input name="image" type="file" accept="image/*">
+                        <label class="catalog-main-image-control" data-main-image-control>
+                            <input name="image" type="file" accept="image/*" data-main-image-input>
+                            <span class="catalog-main-image-button">Upload</span>
+                            <span class="catalog-main-image-name" data-main-image-name>No file selected</span>
+                        </label>
                         @if ($product?->image_path && $imageUrl($product->image_path))
                             <span class="subtle">Current image</span>
                             <div class="product-thumb" style="width: 140px; height: 110px;">
@@ -331,7 +336,7 @@
                                     <strong>Create new attribute</strong>
                                 </div>
                                 <div class="variant-row-editor">
-                                    <div class="variant-grid">
+                                    <div class="variant-grid catalog-new-attribute-grid">
                                         <div class="field">
                                             <label>Attribute name</label>
                                             <input type="text" value="" placeholder="Material" data-new-attribute-name data-inline-add-input>
@@ -339,9 +344,12 @@
                                         <div class="field" style="grid-column: span 2;">
                                             <label>Values</label>
                                             <div class="catalog-inline-add-row">
-                                                <input type="text" value="" placeholder="Cotton, Linen, Polyester" data-new-attribute-values data-inline-add-input>
+                                                <div class="catalog-value-tag-input" data-attribute-value-tag-input>
+                                                    <input type="text" value="" placeholder="Type a value" data-new-attribute-values autocomplete="off">
+                                                </div>
                                                 <button class="btn inline-add" type="button" data-add-inline-attribute>Add</button>
                                             </div>
+                                            <span class="subtle">Press Enter or type a comma after each value.</span>
                                         </div>
                                     </div>
                                 </div>
@@ -451,6 +459,38 @@
             <div class="button-row">
                 <button class="btn secondary" type="button" data-dialog-close>Cancel</button>
                 <button class="btn primary" type="submit">{{ $isEdit ? 'Save changes' : ($isService ? 'Add service' : 'Add product') }}</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<dialog class="dialog" id="{{ $dialogId }}-category-dialog" data-product-category-dialog>
+    <div class="dialog-header">
+        <div>
+            <h2 class="panel-title">Add new category</h2>
+            <p class="subtle">Create a {{ $isService ? 'service' : 'product' }} category and select it for this {{ $isService ? 'service' : 'product' }}.</p>
+        </div>
+        <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
+    </div>
+    <div class="dialog-body">
+        <form
+            class="mini-form"
+            method="POST"
+            action="{{ route('admin.catalog.categories.store') }}"
+            data-product-category-form
+            data-product-dialog-id="{{ $dialogId }}"
+        >
+            @csrf
+            <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+            <input type="hidden" name="category_type" value="{{ $isService ? \Modules\Catalog\Enums\CategoryType::Service->value : \Modules\Catalog\Enums\CategoryType::Product->value }}">
+            <div class="field">
+                <label for="{{ $dialogId }}-category-name">Category name</label>
+                <input id="{{ $dialogId }}-category-name" name="name" maxlength="140" required autofocus>
+            </div>
+            <p class="catalog-category-dialog-feedback" data-category-dialog-feedback aria-live="polite"></p>
+            <div class="button-row">
+                <button class="btn secondary" type="button" data-dialog-close>Cancel</button>
+                <button class="btn primary" type="submit">Add category</button>
             </div>
         </form>
     </div>

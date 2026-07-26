@@ -9,6 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Modules\Access\Models\TenantMembership;
+use Modules\Business\Models\Branch;
 use Modules\Finance\Models\FinanceExpenseCategory;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\TenantSubscription;
@@ -19,6 +20,47 @@ use Tests\TestCase;
 class TenantSignupTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_local_signup_bypasses_recaptcha_and_is_activated_automatically(): void
+    {
+        Mail::fake();
+        $this->app->detectEnvironment(fn (): string => 'local');
+        $this->withSession(['_token' => 'local-test-token']);
+        config([
+            'services.recaptcha.site_key' => 'configured-site-key',
+            'services.recaptcha.secret_key' => 'configured-secret-key',
+        ]);
+
+        $response = $this->post(route('register.store'), [
+            '_token' => 'local-test-token',
+            'business_name' => 'Local Retail',
+            'business_category' => 'retail',
+            'city' => 'Lagos',
+            'country' => 'NG',
+            'name' => 'Local Owner',
+            'email' => 'local@bootup.test',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $response
+            ->assertRedirect(route('login'))
+            ->assertSessionHas('status', 'Your Storeboot account has been created and activated. You can now sign in.');
+
+        $user = User::query()->where('email', 'local@bootup.test')->firstOrFail();
+
+        $this->assertNotNull($user->email_verified_at);
+        Http::assertNothingSent();
+        Mail::assertNotSent(VerifyEmailMail::class);
+
+        $this->post(route('login.store'), [
+            '_token' => 'local-test-token',
+            'email' => 'local@bootup.test',
+            'password' => 'password123',
+        ])->assertRedirect(route('admin.analytics.index'));
+
+        $this->assertAuthenticatedAs($user);
+    }
 
     public function test_new_tenant_can_sign_up_and_verify_email(): void
     {
@@ -55,6 +97,16 @@ class TenantSignupTest extends TestCase
         $this->assertSame('Lagos', $tenant->settings['city']);
         $this->assertNull($user->email_verified_at);
         $this->assertTrue(TenantMembership::query()->where('tenant_id', $tenant->id)->where('user_id', $user->id)->exists());
+        $this->assertDatabaseHas(Branch::class, [
+            'tenant_id' => $tenant->id,
+            'name' => 'Head Office',
+            'code' => 'HO',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+            'is_primary' => true,
+            'status' => 'active',
+        ]);
+        $this->assertSame(1, Branch::query()->where('tenant_id', $tenant->id)->count());
         $this->assertSame(SubscriptionStatus::Trialing, $subscription->status);
         $this->assertGreaterThan(0, $subscription->plan->modules->count());
         $this->assertTrue(FinanceExpenseCategory::query()->where('tenant_id', $tenant->id)->where('code', 'office-supplies')->exists());
@@ -108,16 +160,16 @@ class TenantSignupTest extends TestCase
         ]);
 
         $this->post(route('register.store'), [
-                'business_name' => 'Bot Retail',
-                'business_category' => 'retail',
-                'city' => 'Lagos',
-                'country' => 'NG',
-                'name' => 'Bot Owner',
-                'email' => 'bot@bootup.test',
-                'password' => 'password123',
-                'password_confirmation' => 'password123',
-                'g-recaptcha-response' => 'invalid-token',
-            ])
+            'business_name' => 'Bot Retail',
+            'business_category' => 'retail',
+            'city' => 'Lagos',
+            'country' => 'NG',
+            'name' => 'Bot Owner',
+            'email' => 'bot@bootup.test',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'g-recaptcha-response' => 'invalid-token',
+        ])
             ->assertSessionHasErrors('g-recaptcha-response');
 
         $this->assertFalse(User::query()->where('email', 'bot@bootup.test')->exists());

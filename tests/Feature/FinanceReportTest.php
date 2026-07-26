@@ -125,11 +125,11 @@ class FinanceReportTest extends TestCase
             'order_date' => '2026-06-02',
             'subtotal_minor' => 100000,
             'tax_minor' => 5000,
-            'shipping_minor' => 0,
+            'shipping_minor' => 5000,
             'coupon_discount_minor' => 10000,
             'admin_discount_minor' => 0,
-            'total_minor' => 95000,
-            'paid_minor' => 95000,
+            'total_minor' => 100000,
+            'paid_minor' => 100000,
             'refunded_minor' => 0,
             'payment_method' => 'POS',
         ]);
@@ -298,13 +298,16 @@ class FinanceReportTest extends TestCase
             ->assertSee('Payment Status')
             ->assertSee('Subtotal')
             ->assertSee('Discount')
+            ->assertSee('Shipping')
+            ->assertSee('Subtotal − Discount + Tax + Shipping = Total')
             ->assertSee('Total Sales')
             ->assertSee('SO-SALES-001')
             ->assertDontSee('INV-SALES-001')
             ->assertSee('INV-ONLY-002')
             ->assertSee('POS')
-            ->assertSee('₦950.00')
-            ->assertDontSee('NGN 950.00');
+            ->assertSee('₦50.00')
+            ->assertSee('₦1,000.00')
+            ->assertDontSee('NGN 1,000.00');
 
         $this->actingAs($user)
             ->get(route('admin.finance.reports.show', [
@@ -331,7 +334,10 @@ class FinanceReportTest extends TestCase
         $salesExport->assertSee('SO-SALES-001');
         $salesExport->assertDontSee('INV-SALES-001');
         $salesExport->assertSee('INV-ONLY-002');
-        $salesExport->assertSee('₦950.00');
+        $salesExport->assertSee('Shipping');
+        $salesExport->assertSee('Total Shipping');
+        $salesExport->assertSee('₦50.00');
+        $salesExport->assertSee('₦1,000.00');
 
         $this->actingAs($user)
             ->get(route('admin.finance.reports.show', [
@@ -463,6 +469,8 @@ class FinanceReportTest extends TestCase
             ->assertSee('Petty cash')
             ->assertSee('Log expense')
             ->assertSee('Filter by date')
+            ->assertDontSee('name="expense_payee"', false)
+            ->assertDontSee('name="expense_reference"', false)
             ->assertDontSee('Expense Categories')
             ->assertDontSee('Journal Entries')
             ->assertDontSee('Petty cash management')

@@ -1,7 +1,7 @@
 <dialog class="dialog" id="order-return-{{ $order->id }}">
     <div class="dialog-header"><div><h2 class="panel-title">Sales return</h2><p class="subtle">Return items and calculate refund for {{ $order->order_number }}.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
     <div class="dialog-body">
-        <form class="mini-form" method="POST" action="{{ route('admin.sales.orders.returns.store', $order) }}">
+        <form class="mini-form" method="POST" action="{{ route('admin.sales.orders.returns.store', $order) }}" onsubmit="return confirm('Process this return? This will update inventory and calculate the refund for the selected items.');">
             @csrf
             <div class="form-grid">
                 <div class="field"><label>Return date</label><input name="return_date" type="date" value="{{ now()->toDateString() }}" required></div>

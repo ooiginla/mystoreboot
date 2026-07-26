@@ -4,6 +4,8 @@
     $vendorAccounts = $selectedVendor?->bankAccounts?->values() ?? collect();
     $vendorAccounts = $vendorAccounts->isNotEmpty() ? $vendorAccounts : collect([null]);
     $vendorFormAction = $selectedVendor ? route('admin.procurement.vendors.update', $selectedVendor) : route('admin.procurement.vendors.store');
+    $currencyOptions = \App\Support\Geo::currencies();
+    $defaultCurrency = strtoupper($tenant->currency_code);
 @endphp
 
 <dialog class="dialog" id="{{ $dialogId }}">
@@ -36,7 +38,14 @@
                                 <div class="field"><label>Bank name</label><input name="bank_accounts[{{ $index }}][bank_name]" value="{{ $account?->bank_name }}"></div>
                                 <div class="field"><label>Account name</label><input name="bank_accounts[{{ $index }}][account_name]" value="{{ $account?->account_name }}"></div>
                                 <div class="field"><label>Account number</label><input name="bank_accounts[{{ $index }}][account_number]" value="{{ $account?->account_number }}"></div>
-                                <div class="field"><label>Currency</label><input name="bank_accounts[{{ $index }}][currency_code]" maxlength="3" value="{{ $account?->currency_code ?? $tenant->currency_code }}"></div>
+                                <div class="field">
+                                    <label>Currency</label>
+                                    <select name="bank_accounts[{{ $index }}][currency_code]">
+                                        @foreach ($currencyOptions as $currencyCode => $currencyName)
+                                            <option value="{{ $currencyCode }}" @selected(strtoupper($account?->currency_code ?? $defaultCurrency) === $currencyCode)>{{ $currencyCode }} — {{ $currencyName }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
                             </div>
                             <label><input type="checkbox" name="bank_accounts[{{ $index }}][is_primary]" value="1" @checked($account?->is_primary ?? $index === 0)> Primary account</label>
                         </div>
@@ -52,6 +61,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     if (window.storebootVendorDialogBound) return;
     window.storebootVendorDialogBound = true;
+    const defaultCurrency = @js($defaultCurrency);
 
     document.addEventListener('click', (event) => {
         const addButton = event.target.closest('[data-add-bank-account]');
@@ -64,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.querySelectorAll('[name]').forEach((field) => {
                 field.name = field.name.replace(/bank_accounts\[\d+\]/, `bank_accounts[${index}]`);
                 if (field.type === 'checkbox') field.checked = false;
-                else field.value = field.name.endsWith('[currency_code]') ? '{{ $tenant->currency_code }}' : '';
+                else field.value = field.name.endsWith('[currency_code]') ? defaultCurrency : '';
             });
             list.appendChild(row);
             return;
@@ -78,9 +88,9 @@ document.addEventListener('DOMContentLoaded', () => {
             row.remove();
             return;
         }
-        row?.querySelectorAll('input').forEach((field) => {
+        row?.querySelectorAll('input, select').forEach((field) => {
             if (field.type === 'checkbox') field.checked = true;
-            else field.value = field.name.endsWith('[currency_code]') ? '{{ $tenant->currency_code }}' : '';
+            else field.value = field.name.endsWith('[currency_code]') ? defaultCurrency : '';
         });
     });
 });

@@ -20,6 +20,7 @@ final class StorebootPlanSeeder extends Seeder
             ['name' => 'Products & Services', 'slug' => 'catalog', 'is_core' => false],
             ['name' => 'Inventory Management', 'slug' => 'inventory', 'is_core' => false],
             ['name' => 'Sales & Invoicing', 'slug' => 'sales', 'is_core' => false],
+            ['name' => 'Retail POS', 'slug' => 'retail-pos', 'is_core' => false],
             ['name' => 'Customers & CRM', 'slug' => 'customers', 'is_core' => false],
             ['name' => 'Vendors & Procurement', 'slug' => 'procurement', 'is_core' => false],
             ['name' => 'Expenses & Accounting', 'slug' => 'finance', 'is_core' => false],
@@ -51,7 +52,7 @@ final class StorebootPlanSeeder extends Seeder
                 'monthly_price_minor' => 0,
                 'yearly_price_minor' => 0,
                 'limits' => ['trial' => true],
-                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'customers', 'procurement', 'finance', 'hrpayroll', 'analytics', 'storefront'],
+                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'retail-pos', 'customers', 'procurement', 'finance', 'hrpayroll', 'analytics', 'storefront'],
             ],
             [
                 'name' => 'Starter',
@@ -60,7 +61,7 @@ final class StorebootPlanSeeder extends Seeder
                 'monthly_price_minor' => 0,
                 'yearly_price_minor' => 0,
                 'limits' => ['branches' => 1, 'users' => 2, 'products' => 100, 'invoices_per_month' => 100],
-                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'finance'],
+                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'retail-pos', 'finance'],
             ],
             [
                 'name' => 'Growth',
@@ -69,7 +70,7 @@ final class StorebootPlanSeeder extends Seeder
                 'monthly_price_minor' => 1500000,
                 'yearly_price_minor' => 15000000,
                 'limits' => ['branches' => 3, 'users' => 10, 'products' => 1000, 'invoices_per_month' => 1000],
-                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'customers', 'procurement', 'finance', 'analytics'],
+                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'retail-pos', 'customers', 'procurement', 'finance', 'analytics'],
             ],
             [
                 'name' => 'Pro',
@@ -78,7 +79,7 @@ final class StorebootPlanSeeder extends Seeder
                 'monthly_price_minor' => 3500000,
                 'yearly_price_minor' => 35000000,
                 'limits' => ['branches' => 10, 'users' => 30, 'products' => 10000, 'invoices_per_month' => 10000],
-                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'customers', 'procurement', 'finance', 'hrpayroll', 'analytics', 'storefront'],
+                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'retail-pos', 'customers', 'procurement', 'finance', 'hrpayroll', 'analytics', 'storefront'],
             ],
             [
                 'name' => 'Enterprise',
@@ -87,7 +88,7 @@ final class StorebootPlanSeeder extends Seeder
                 'monthly_price_minor' => 0,
                 'yearly_price_minor' => 0,
                 'limits' => ['custom' => true],
-                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'customers', 'procurement', 'finance', 'hrpayroll', 'analytics', 'storefront'],
+                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'retail-pos', 'customers', 'procurement', 'finance', 'hrpayroll', 'analytics', 'storefront'],
             ],
         ];
 

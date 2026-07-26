@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">
+  <defs>
+    <linearGradient id="tile" x1="6" y1="4" x2="34" y2="36" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22dd85"/>
+      <stop offset=".55" stop-color="#06c168"/>
+      <stop offset="1" stop-color="#009a53"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="12" y1="28" x2="30" y2="10" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff"/>
+      <stop offset="1" stop-color="#eafff4"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="36" height="36" rx="11" fill="url(#tile)"/>
+  <rect x="2" y="2" width="36" height="36" rx="11" fill="#000" opacity=".06"/>
+  <rect x="10.5" y="22.5" width="4.4" height="8" rx="2" fill="#fff" opacity=".9"/>
+  <rect x="17.8" y="18" width="4.4" height="12.5" rx="2" fill="#fff" opacity=".9"/>
+  <rect x="25.1" y="13.5" width="4.4" height="17" rx="2" fill="#fff" opacity=".55"/>
+  <path d="m11 24.5 9-7.5 7.5 3 3.5-8.5" stroke="url(#spark)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M26 11h5.5v5.5" stroke="url(#spark)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

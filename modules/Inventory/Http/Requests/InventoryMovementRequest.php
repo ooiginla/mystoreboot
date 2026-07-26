@@ -23,8 +23,16 @@ final class InventoryMovementRequest extends FormRequest
     public function rules(): array
     {
         $tenantId = $this->string('tenant_id')->toString();
+        $movementType = $this->string('movement_type')->toString();
+        $requiresUnitCost = in_array($movementType, [
+            InventoryMovementType::OpeningStock->value,
+            InventoryMovementType::StockIn->value,
+        ], true);
         $movementTypes = collect(InventoryMovementType::cases())
-            ->reject(fn (InventoryMovementType $type): bool => $type === InventoryMovementType::TransferIn)
+            ->reject(fn (InventoryMovementType $type): bool => in_array($type, [
+                InventoryMovementType::TransferIn,
+                InventoryMovementType::Returned,
+            ], true))
             ->pluck('value')
             ->all();
 
@@ -46,10 +54,21 @@ final class InventoryMovementRequest extends FormRequest
             'movement_type' => ['required', Rule::in($movementTypes)],
             'stock_condition' => ['required', Rule::in(array_column(StockCondition::cases(), 'value'))],
             'quantity' => ['required', 'integer', 'min:1', 'max:999999999'],
-            'unit_cost' => ['nullable', 'numeric', 'min:0', 'max:999999999'],
+            'unit_cost' => [
+                Rule::requiredIf($requiresUnitCost),
+                'nullable',
+                'numeric',
+                Rule::when($requiresUnitCost, ['gt:0'], ['min:0']),
+                'max:999999999',
+            ],
             'batch_number' => ['nullable', 'string', 'max:120'],
             'expiry_date' => ['nullable', 'date'],
-            'reference_type' => ['nullable', 'string', 'max:80'],
+            'reference_type' => [
+                'nullable',
+                'string',
+                'max:80',
+                Rule::notIn(['goods_receipt', 'sales_order', 'sales_return']),
+            ],
             'reference_number' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'occurred_at' => ['nullable', 'date'],
@@ -58,8 +77,15 @@ final class InventoryMovementRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $acceptsUnitCost = in_array($this->string('movement_type')->toString(), [
+            InventoryMovementType::OpeningStock->value,
+            InventoryMovementType::StockIn->value,
+        ], true);
+
         $this->merge([
-            'unit_cost' => is_string($this->input('unit_cost')) ? str_replace(',', '', $this->input('unit_cost')) : $this->input('unit_cost'),
+            'unit_cost' => $acceptsUnitCost
+                ? (is_string($this->input('unit_cost')) ? str_replace(',', '', $this->input('unit_cost')) : $this->input('unit_cost'))
+                : null,
         ]);
 
         if ($this->string('movement_type')->toString() === InventoryMovementType::Damaged->value) {

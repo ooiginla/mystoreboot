@@ -21,6 +21,12 @@
         ->values();
     $maintenanceMode = (bool) old('maintenance_mode', $tenant?->settings['maintenance_mode'] ?? false);
     $useEstimatedCostForCogs = (bool) old('use_estimated_cost_for_cogs', $tenant?->settings['use_estimated_cost_for_cogs'] ?? false);
+    $onlineStoreCountries = collect(\App\Support\Geo::countries());
+    $storedOnlineStoreCountry = old('country', $onlineStore?->country ?? $tenant?->country_code);
+    $selectedOnlineStoreCountry = $onlineStoreCountries
+        ->first(fn (array $country): bool => strcasecmp($country['code'], (string) $storedOnlineStoreCountry) === 0
+            || strcasecmp($country['name'], (string) $storedOnlineStoreCountry) === 0)['name']
+        ?? (string) $storedOnlineStoreCountry;
     $selectedPlan = $plans->firstWhere('id', (int) old('plan_id', $selectedPlanId));
     $selectedPlanHasInventory = $selectedPlan?->modules?->contains(fn ($module) => $module->slug === 'inventory' && (bool) ($module->pivot->is_enabled ?? true)) ?? false;
     $rawOnlinePaymentMethods = old('payment_methods', $onlineStore?->payment_methods ?? []);
@@ -47,7 +53,17 @@
     $selectedOnlineBankAccountKey = old('bank_account_key', $onlineStore?->payment_settings['bank_account_key'] ?? $storedOnlineBankAccountKey);
     $onlineShippingOptions = collect(old('shipping_options', $onlineStore?->shipping_options ?? []));
     $onlineShippingOptions = $onlineShippingOptions->isNotEmpty() ? $onlineShippingOptions : collect([null]);
-    $onlineFaqs = collect(old('faqs', $onlineStore?->faqs ?? []));
+    $defaultOnlinePages = \Modules\Business\Support\OnlineStoreContentDefaults::pages(
+        $onlineStore?->store_name ?? $tenant?->name ?? 'Our Store',
+        $onlineStore?->site_email ?? $tenant?->email,
+    );
+    $defaultOnlineFaqs = \Modules\Business\Support\OnlineStoreContentDefaults::faqs(
+        $onlineStore?->store_name ?? $tenant?->name ?? 'Our Store',
+    );
+    $submittedOnlineFaqs = old('faqs');
+    $onlineFaqs = collect(is_array($submittedOnlineFaqs)
+        ? $submittedOnlineFaqs
+        : ($onlineStore ? ($onlineStore->faqs ?? []) : $defaultOnlineFaqs));
     $onlineFaqs = $onlineFaqs->isNotEmpty() ? $onlineFaqs : collect([null]);
     $onlineSlides = collect(old('slides', $onlineStore?->slides ?? []))
         ->filter(fn ($slide) => is_array($slide));
@@ -61,7 +77,10 @@
         ]]);
     }
 
-    $onlinePages = old('pages', $onlineStore?->pages ?? []);
+    $submittedOnlinePages = old('pages');
+    $onlinePages = is_array($submittedOnlinePages)
+        ? $submittedOnlinePages
+        : ($onlineStore ? ($onlineStore->pages ?? []) : $defaultOnlinePages);
     $onlineSocials = old('socials', $onlineStore?->social_accounts ?? []);
     $onlinePaystack = old('paystack', $onlineStore?->payment_settings['paystack'] ?? []);
     $onlineSettlementBank = old('settlement_bank_account', $onlineStore?->payment_settings['settlement_bank_account'] ?? []);
@@ -126,6 +145,13 @@
         .check-card input:disabled { cursor: not-allowed; }
         .check-card .check-card-text { display: grid; gap: 2px; min-width: 0; }
         .check-card .check-card-text small { font-weight: 500; color: var(--muted); font-size: 12px; }
+        .store-menu-category-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(190px, 240px));
+            gap: 10px;
+            justify-content: start;
+        }
+        .store-menu-category-grid .check-card { min-height: 44px; padding: 10px 12px; }
         .check-reveal { margin: 10px 0 0 6px; padding: 14px; border: 1px solid var(--line); border-left: 3px solid var(--brand); border-radius: 11px; background: var(--panel-soft); display: grid; gap: 12px; }
         .check-reveal[hidden] { display: none; }
         .radio-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -203,12 +229,46 @@
         .table .cell-sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
         .table-actions { display: inline-flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
         .table-actions form { display: inline-flex; margin: 0; }
+        .subscription-modules { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 20px; }
+        .subscription-modules-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 12px; }
+        .subscription-modules-head h3 { margin: 0; font-size: 16px; color: var(--ink); }
+        .subscription-modules-head p { margin: 4px 0 0; }
+        .subscription-module-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .subscription-module-item { min-width: 0; display: flex; justify-content: space-between; align-items: center; gap: 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; padding: 12px 14px; }
+        .subscription-module-copy { min-width: 0; }
+        .subscription-module-copy strong { display: block; color: var(--ink); font-size: 13.5px; }
+        .subscription-module-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; color: var(--muted); font-size: 12px; }
+        .subscription-module-control { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 12px; font-weight: 700; }
+        .subscription-module-control input:disabled { opacity: .6; cursor: not-allowed; }
+        @media (max-width: 760px) { .subscription-module-list { grid-template-columns: 1fr; } }
 
         .form-grid[hidden] { display: none !important; }
         .online-store-section-nav { display: flex; gap: 6px; overflow-x: auto; padding: 5px; background: var(--panel-soft); border: 1px solid var(--line); border-radius: 12px; }
         .online-store-section-nav button.secondary { white-space: nowrap; border: 1px solid transparent; background: transparent; color: var(--ink-soft); box-shadow: none; border-radius: 8px; transition: background .15s, border-color .15s, color .15s; }
         .online-store-section-nav button.secondary:not(.active):hover { background: #fff; border-color: var(--line); color: var(--ink); }
         .online-store-section-nav button.secondary.active { background: var(--brand); color: #fff; border-color: var(--brand); box-shadow: 0 6px 14px -6px rgba(6,193,104,.55); }
+
+        /* Public storefront URL */
+        .store-url-card { margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 22px; border: 1px solid var(--line); border-radius: 18px; background: #fff; box-shadow: 0 2px 6px rgba(16, 24, 40, .08); }
+        .store-url-details { min-width: 0; display: flex; align-items: center; gap: 16px; }
+        .store-url-icon { width: 48px; height: 48px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 13px; background: var(--brand-050); color: var(--brand); }
+        .store-url-icon svg { width: 25px; height: 25px; }
+        .store-url-copy { min-width: 0; }
+        .store-url-label { display: block; margin-bottom: 2px; color: var(--muted); font-size: 13.5px; font-weight: 600; }
+        .store-url-link { display: block; overflow: hidden; color: #172033; font-size: 16px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+        .store-url-link:hover { color: var(--brand-strong); text-decoration: underline; text-underline-offset: 3px; }
+        .store-url-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
+        .store-url-actions .btn { min-height: 42px; padding-inline: 16px; }
+        .store-url-actions .btn svg { width: 18px; height: 18px; }
+        .store-url-actions .store-visit-btn { border-color: var(--brand); background: var(--brand); color: #fff; }
+        .store-url-actions .store-visit-btn:hover { border-color: var(--brand-strong); background: var(--brand-strong); }
+        .store-share-status { color: var(--brand-strong); font-size: 12px; font-weight: 700; }
+        @media (max-width: 700px) {
+            .store-url-card { align-items: stretch; flex-direction: column; padding: 17px; }
+            .store-url-actions { display: grid; grid-template-columns: 1fr 1fr; }
+            .store-url-actions .btn { width: 100%; }
+            .store-share-status { grid-column: 1 / -1; text-align: center; }
+        }
 
         /* Styled file upload */
         .file-upload { position: relative; display: flex; align-items: center; gap: 14px; border: 1.5px dashed #cbd5cf; border-radius: 12px; background: #f8faf9; padding: 14px 16px; cursor: pointer; transition: border-color .15s, background .15s; }
@@ -235,6 +295,10 @@
         .upload-preview.hero img { max-width: 360px; height: 120px; object-fit: cover; }
         .setup-empty-line { border: 1px dashed var(--line); border-radius: 8px; padding: 14px; color: #667085; background: #f8fafc; }
         .setup-row-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .faq-icon-action { width: 32px; height: 32px; border-radius: 8px; }
+        .faq-icon-action svg { width: 15px; height: 15px; }
+        .faq-icon-action.delete { border-color: var(--danger-border); color: var(--danger); }
+        .faq-icon-action.delete:hover { border-color: var(--danger); background: var(--danger-bg); color: var(--danger-strong); }
         .setup-list-toolbar { margin-bottom: 12px; }
         .setup-accordion { border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden; box-shadow: var(--shadow-sm); }
         .setup-accordion + .setup-accordion { margin-top: 12px; }
@@ -253,7 +317,33 @@
         .online-slide-photo img { width: 100%; height: 100%; min-height: 160px; object-fit: cover; border-radius: 6px; }
         .online-slide-photo input { display: none; }
         .online-slide-form { display: grid; gap: 12px; }
-        @media (max-width: 700px) { .check-grid, .online-slide-card, .radio-cards { grid-template-columns: 1fr; } }
+        @media (max-width: 700px) { .check-grid, .store-menu-category-grid, .online-slide-card, .radio-cards { grid-template-columns: 1fr; } }
+
+        /* Role cards */
+        .btn.btn-sm { padding: 6px 12px; font-size: 12.5px; }
+        .role-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+        @media (max-width: 640px) { .role-card-grid { grid-template-columns: 1fr; } }
+        .role-card { border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; padding: 16px; display: flex; flex-direction: column; gap: 10px; transition: border-color .15s, box-shadow .15s; }
+        .role-card:hover { border-color: #d4ddd8; box-shadow: var(--shadow-sm); }
+        .role-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .role-card-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .role-card-name { font-weight: 800; font-size: 15px; color: var(--ink); }
+        .role-card-users { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 13px; font-weight: 700; flex: 0 0 auto; }
+        .role-card-summary { color: var(--ink-soft); font-size: 13px; line-height: 1.5; margin: 0; flex: 1 1 auto; }
+        .role-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 4px; border-top: 1px solid var(--line-soft); margin-top: 2px; padding-top: 12px; }
+        .role-card-actions form { margin: 0; }
+
+        /* Approvals */
+        .approvals-master { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--brand-100); background: var(--brand-050); border-radius: var(--radius-sm); padding: 16px 18px; }
+        .switch-wrap { display: inline-flex; align-items: center; }
+        .approvals-actions[data-dimmed] { opacity: .5; pointer-events: none; }
+        .approval-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        @media (max-width: 700px) { .approval-grid { grid-template-columns: 1fr; } }
+        .approval-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 1.5px solid var(--line); border-radius: 11px; background: #fff; padding: 13px 15px; cursor: pointer; transition: border-color .15s, background .15s; }
+        .approval-card:hover { border-color: var(--brand-100); background: var(--brand-050); }
+        .approval-card:has(input:checked) { border-color: var(--brand); background: var(--brand-050); box-shadow: inset 0 0 0 1px var(--brand); }
+        .approval-card .approval-card-text { display: grid; gap: 3px; min-width: 0; color: var(--ink); font-weight: 700; font-size: 13.5px; }
+        .approval-card .approval-card-text small { font-weight: 500; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
     </style>
 
     <div class="topbar">
@@ -297,6 +387,45 @@
         </div>
     @endif
 
+    @if ($onlineStoreOnly && $onlineStore)
+        @php
+            $storefrontUrl = route('storefront.storefront.store.home', $onlineStore);
+        @endphp
+        <section class="store-url-card" aria-labelledby="store-url-label">
+            <div class="store-url-details">
+                <span class="store-url-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="9"></circle>
+                        <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"></path>
+                    </svg>
+                </span>
+                <div class="store-url-copy">
+                    <span class="store-url-label" id="store-url-label">Your store URL</span>
+                    <a class="store-url-link" href="{{ $storefrontUrl }}" target="_blank" rel="noopener noreferrer">{{ $storefrontUrl }}</a>
+                </div>
+            </div>
+            <div class="store-url-actions">
+                <button class="btn secondary" type="button" data-share-store-url="{{ $storefrontUrl }}" data-share-store-title="{{ $onlineStore->store_name }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="18" cy="5" r="2.5"></circle>
+                        <circle cx="6" cy="12" r="2.5"></circle>
+                        <circle cx="18" cy="19" r="2.5"></circle>
+                        <path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"></path>
+                    </svg>
+                    <span data-share-store-label>Share</span>
+                </button>
+                <a class="btn store-visit-btn" href="{{ $storefrontUrl }}" target="_blank" rel="noopener noreferrer">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M14 4h6v6M20 4l-9 9"></path>
+                        <path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"></path>
+                    </svg>
+                    Visit Store
+                </a>
+                <span class="store-share-status" data-share-store-status role="status" aria-live="polite"></span>
+            </div>
+        </section>
+    @endif
+
     @if (! $tenant && ! $isPlatformAdmin)
         <section class="panel">
             <div class="panel-body">
@@ -314,6 +443,7 @@
                 <a href="#departments" role="tab" data-tab-target="departments">Departments / units <span class="badge neutral">{{ $departments->count() }}</span></a>
                 <a href="#roles" role="tab" data-tab-target="roles">User roles <span class="badge neutral">{{ $roles->count() }}</span></a>
                 <a href="#users" role="tab" data-tab-target="users">Organization users <span class="badge neutral">{{ $memberships->count() }}</span></a>
+                <a href="#approvals" role="tab" data-tab-target="approvals">Approvals @if ($approvalsEnabled)<span class="badge">On</span>@else<span class="badge neutral">Off</span>@endif</a>
             </nav>
             @endunless
 
@@ -505,6 +635,58 @@
                                         </tbody>
                                     </table>
                                 </div>
+                                @php $moduleAccessSubscription = $tenantSubscriptions->first(); @endphp
+                                <div class="subscription-modules">
+                                    <div class="subscription-modules-head">
+                                        <div>
+                                            <h3>Module access</h3>
+                                            <p class="subtle">Core modules are always available. Other modules follow the plan until a tenant-specific setting is saved.</p>
+                                        </div>
+                                        <span class="badge neutral">{{ $subscriptionModuleStates->where('enabled', true)->count() }} enabled</span>
+                                    </div>
+                                    <div class="subscription-module-list">
+                                        @foreach ($subscriptionModuleStates as $moduleState)
+                                            @php
+                                                $module = $moduleState['module'];
+                                                $moduleEnabled = $moduleState['enabled'];
+                                                $moduleSource = $moduleState['source'];
+                                            @endphp
+                                            <div class="subscription-module-item">
+                                                <div class="subscription-module-copy">
+                                                    <strong>{{ $module->name }}</strong>
+                                                    <div class="subscription-module-meta">
+                                                        @if ($module->is_core)
+                                                            <span class="badge">Core</span>
+                                                            <span>Always available</span>
+                                                        @elseif (! $module->is_active)
+                                                            <span class="badge neutral">Unavailable</span>
+                                                        @elseif ($moduleSource === 'tenant')
+                                                            <span>Tenant override</span>
+                                                        @elseif ($moduleEnabled)
+                                                            <span>Included in plan</span>
+                                                        @else
+                                                            <span>Not included in plan</span>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                                @if ($canManageSubscriptionModules && $moduleAccessSubscription && ! $module->is_core && $module->is_active)
+                                                    <form class="subscription-module-control" method="POST" action="{{ route('admin.business.subscriptions.modules.update', [$moduleAccessSubscription, $module]) }}">
+                                                        @csrf
+                                                        @method('PUT')
+                                                        <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                                                        <input type="hidden" name="enabled" value="0">
+                                                        <input type="checkbox" name="enabled" value="1" @checked($moduleEnabled) onchange="this.form.requestSubmit()" aria-label="Toggle {{ $module->name }}">
+                                                    </form>
+                                                @else
+                                                    <label class="subscription-module-control">
+                                                        <input type="checkbox" @checked($moduleEnabled) disabled>
+                                                        <span>{{ $moduleEnabled ? 'On' : 'Off' }}</span>
+                                                    </label>
+                                                @endif
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
                             @endif
                         @endif
                     </div>
@@ -571,7 +753,15 @@
                                         <div class="field full"><label>Address</label><textarea name="address" rows="2">{{ old('address', $onlineStore?->address ?? $tenant->address) }}</textarea></div>
                                         <div class="field"><label>City</label><input name="city" value="{{ old('city', $onlineStore?->city) }}"></div>
                                         <div class="field"><label>State</label><input name="state" value="{{ old('state', $onlineStore?->state) }}"></div>
-                                        <div class="field"><label>Country</label><input name="country" value="{{ old('country', $onlineStore?->country ?? $tenant->country_code) }}"></div>
+                                        <div class="field">
+                                            <label>Country</label>
+                                            <select name="country">
+                                                <option value="">Select country</option>
+                                                @foreach ($onlineStoreCountries as $country)
+                                                    <option value="{{ $country['name'] }}" @selected($selectedOnlineStoreCountry === $country['name'])>{{ $country['name'] }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
                                         <div class="field"><label>Site Email</label><input name="site_email" type="email" value="{{ old('site_email', $onlineStore?->site_email ?? $tenant->email) }}"></div>
                                         <div class="field"><label>Store Phone number</label><input name="store_phone" value="{{ old('store_phone', $onlineStore?->store_phone ?? $tenant->phone) }}"></div>
                                         <div class="field"><label>Store WhatsApp Number</label><input name="store_whatsapp" value="{{ old('store_whatsapp', $onlineStore?->store_whatsapp) }}"></div>
@@ -591,7 +781,7 @@
                                             <span class="subtle">Storefront category menu</span>
                                         </summary>
                                         <div class="setup-accordion-body">
-                                            <div class="check-grid">
+                                            <div class="check-grid store-menu-category-grid">
                                                 @forelse ($productCategories as $category)
                                                     <label class="check-card"><input type="checkbox" name="category_ids[]" value="{{ $category->id }}" @checked($selectedOnlineCategories->contains($category->id))> <span>{{ $category->name }}</span></label>
                                                 @empty
@@ -832,8 +1022,12 @@
                                                         <div class="subtle" data-faq-answer>{{ $answer ?: 'Answer not set' }}</div>
                                                     </div>
                                                     <div class="setup-row-actions">
-                                                        <button class="btn secondary" type="button" data-edit-online-faq>Edit</button>
-                                                        <button class="btn danger" type="button" data-delete-online-faq>Delete</button>
+                                                        <button class="icon-btn faq-icon-action" type="button" data-edit-online-faq aria-label="Edit FAQ" title="Edit FAQ">
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
+                                                        </button>
+                                                        <button class="icon-btn faq-icon-action delete" type="button" data-delete-online-faq aria-label="Delete FAQ" title="Delete FAQ">
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 10v6M14 10v6"/></svg>
+                                                        </button>
                                                     </div>
                                                 </div>
                                                 <input type="hidden" data-faq-field="question" name="faqs[{{ $index }}][question]" value="{{ $question }}">
@@ -977,34 +1171,62 @@
                     <div class="panel-header">
                         <div>
                             <h2 class="panel-title">User roles</h2>
-                            <p class="subtle">List of tenant-level roles used to assign access.</p>
+                            <p class="subtle">Roles bundle permissions into a job. Assign one to each organization user.</p>
                         </div>
                         @if ($tenant)
-                            <button class="btn primary" type="button" data-dialog-open="role-dialog">Add role</button>
+                            <a class="btn primary" href="{{ route('admin.access.roles.create', ['tenant' => $tenant->id]) }}">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                                Create custom role
+                            </a>
                         @endif
                     </div>
                     <div class="panel-body">
                         @if (! $tenant)
                             <div class="empty">Default roles are created after business registration.</div>
+                        @elseif ($roles->isEmpty())
+                            <div class="empty">No roles yet.</div>
                         @else
-                            @if ($roles->isEmpty())
-                                <div class="empty">No roles yet.</div>
-                            @else
-                                <div class="table-scroll">
-                                    <table class="table">
-                                        <thead><tr><th>Role</th><th>Slug</th><th>Type</th></tr></thead>
-                                        <tbody>
-                                            @foreach ($roles as $role)
-                                                <tr>
-                                                    <td><div class="cell-title">{{ $role->name }}</div></td>
-                                                    <td class="subtle">{{ $role->slug }}</td>
-                                                    <td>{!! $statusPill($role->is_system ? 'System' : 'Custom', $role->is_system ? 'success' : 'neutral') !!}</td>
-                                                </tr>
-                                            @endforeach
-                                        </tbody>
-                                    </table>
-                                </div>
-                            @endif
+                            <div class="role-card-grid">
+                                @foreach ($roles as $role)
+                                    <article class="role-card">
+                                        <div class="role-card-head">
+                                            <div class="role-card-title">
+                                                <span class="role-card-name">{{ $role->name }}</span>
+                                                @if ($role->is_protected)
+                                                    {!! $statusPill('Protected', 'success') !!}
+                                                @elseif ($role->is_system)
+                                                    {!! $statusPill('System', 'neutral') !!}
+                                                @else
+                                                    {!! $statusPill('Custom', 'neutral') !!}
+                                                @endif
+                                            </div>
+                                            <span class="role-card-users" title="Users on this role">
+                                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 16 11"/></svg>
+                                                {{ $role->memberships_count }}
+                                            </span>
+                                        </div>
+                                        <p class="role-card-summary">{{ $role->summary ?: ($role->description ?: 'No permissions assigned yet.') }}</p>
+                                        <div class="role-card-actions">
+                                            @if ($role->is_protected)
+                                                <span class="subtle" style="font-size:12.5px;">Always full access — cannot be edited.</span>
+                                            @else
+                                                <a class="btn secondary btn-sm" href="{{ route('admin.access.roles.edit', $role) }}">Edit</a>
+                                            @endif
+                                            <form method="POST" action="{{ route('admin.access.roles.duplicate', $role) }}" style="display:inline;">
+                                                @csrf
+                                                <button class="btn secondary btn-sm" type="submit">Duplicate</button>
+                                            </form>
+                                            @if (! $role->is_protected && $role->memberships_count === 0)
+                                                <form method="POST" action="{{ route('admin.access.roles.destroy', $role) }}" style="display:inline;"
+                                                      onsubmit="return confirm('Delete the “{{ $role->name }}” role?');">
+                                                    @csrf @method('DELETE')
+                                                    <button class="btn danger btn-sm" type="submit">Delete</button>
+                                                </form>
+                                            @endif
+                                        </div>
+                                    </article>
+                                @endforeach
+                            </div>
                         @endif
                     </div>
                 </section>
@@ -1028,7 +1250,7 @@
                             @else
                                 <div class="table-scroll">
                                     <table class="table">
-                                        <thead><tr><th>User</th><th>Role</th><th>Branch</th><th>Status</th></tr></thead>
+                                        <thead><tr><th>User</th><th>Role</th><th>Branch</th><th>Status</th><th></th></tr></thead>
                                         <tbody>
                                             @foreach ($memberships as $membership)
                                                 <tr>
@@ -1039,12 +1261,68 @@
                                                     <td>{{ $membership->role?->name ?? '—' }}</td>
                                                     <td>{{ $membership->branch?->name ?? 'All branches' }}</td>
                                                     <td>{!! $statusPill($membership->status->label(), $statusTone($membership->status->value)) !!}</td>
+                                                    <td style="text-align:right;">
+                                                        <button class="btn secondary btn-sm" type="button"
+                                                                data-edit-membership
+                                                                data-membership-id="{{ $membership->id }}"
+                                                                data-membership-name="{{ $membership->user->name }}"
+                                                                data-membership-role="{{ $membership->role_id }}"
+                                                                data-membership-branch="{{ $membership->branch_id }}">Edit access</button>
+                                                    </td>
                                                 </tr>
                                             @endforeach
                                         </tbody>
                                     </table>
                                 </div>
                             @endif
+                        @endif
+                    </div>
+                </section>
+
+                <section class="panel tab-panel" id="approvals" role="tabpanel" data-tab-panel hidden>
+                    <div class="panel-header">
+                        <div>
+                            <h2 class="panel-title">Approval workflows</h2>
+                            <p class="subtle">Require a second person to sign off on sensitive actions before they take effect.</p>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        @if (! $tenant)
+                            <div class="empty">Select an organization first.</div>
+                        @else
+                            <form method="POST" action="{{ route('admin.business.approvals.save') }}">
+                                @csrf
+                                <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+
+                                <div class="approvals-master">
+                                    <div>
+                                        <div class="item-title">Require approvals for sensitive actions</div>
+                                        <p class="subtle" style="margin:2px 0 0;">Master switch. When off, staff act within their role and limits without a sign-off step.</p>
+                                    </div>
+                                    <label class="switch-wrap">
+                                        <input type="checkbox" name="approvals_enabled" value="1" @checked($approvalsEnabled) data-approvals-master>
+                                    </label>
+                                </div>
+
+                                <div class="approvals-actions" data-approvals-actions @if (! $approvalsEnabled) data-dimmed @endif>
+                                    <p class="subtle" style="margin:18px 0 12px; font-weight:600; color:var(--ink-soft);">Choose which actions need approval</p>
+                                    <div class="approval-grid">
+                                        @foreach ($approvableActions as $key => $action)
+                                            <label class="approval-card">
+                                                <span class="approval-card-text">
+                                                    {{ $action['name'] }}
+                                                    <small>Requester needs “{{ $definitions[$action['request']]['name'] ?? $action['request'] }}”; approver needs “{{ $definitions[$action['approve']]['name'] ?? $action['approve'] }}”.</small>
+                                                </span>
+                                                <input type="checkbox" name="actions[{{ $key }}]" value="1" @checked((bool) ($approvalActions[$key] ?? false)) class="switch-input">
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                </div>
+
+                                <div class="button-row">
+                                    <button class="btn primary" type="submit">Save approval settings</button>
+                                </div>
+                            </form>
                         @endif
                     </div>
                 </section>
@@ -1428,17 +1706,33 @@
                 </div>
             </dialog>
 
-            <dialog class="dialog" id="role-dialog">
-                <div class="dialog-header"><div><h2 class="panel-title">Add role</h2><p class="subtle">Create a tenant-level role for organization access.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
+            <dialog class="dialog" id="membership-dialog">
+                <div class="dialog-header"><div><h2 class="panel-title">Edit user access</h2><p class="subtle" data-membership-target>Change the role and branch scope for this user.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
                 <div class="dialog-body">
-                    <form class="mini-form" method="POST" action="{{ route('admin.access.roles.store') }}">
+                    <form class="mini-form" method="POST" action="{{ route('admin.access.roles.store') }}" data-membership-form>
                         @csrf
-                        <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                        @method('PUT')
                         <div class="form-grid">
-                            <div class="field"><label>Role name</label><input name="name" required placeholder="Store Supervisor"></div>
-                            <div class="field"><label>Slug</label><input name="slug" placeholder="store-supervisor"></div>
+                            <div class="field">
+                                <label>Role</label>
+                                <select name="role_id" data-membership-role-select>
+                                    <option value="">No role (no access)</option>
+                                    @foreach ($roles as $role)
+                                        <option value="{{ $role->id }}">{{ $role->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label>Branch access</label>
+                                <select name="branch_id" data-membership-branch-select>
+                                    <option value="">All branches</option>
+                                    @foreach ($branches as $branch)
+                                        <option value="{{ $branch->id }}">{{ $branch->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
                         </div>
-                        <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Cancel</button><button class="btn primary" type="submit">Add role</button></div>
+                        <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Cancel</button><button class="btn primary" type="submit">Save access</button></div>
                     </form>
                 </div>
             </dialog>
@@ -1482,6 +1776,53 @@
         document.addEventListener('DOMContentLoaded', () => {
             if (window.storebootBusinessSetupBound) return;
             window.storebootBusinessSetupBound = true;
+
+            const shareStoreButton = document.querySelector('[data-share-store-url]');
+            const shareStoreStatus = document.querySelector('[data-share-store-status]');
+            const shareStoreLabel = shareStoreButton?.querySelector('[data-share-store-label]');
+            const copyStoreUrl = async (url) => {
+                if (navigator.clipboard?.writeText) {
+                    try {
+                        await navigator.clipboard.writeText(url);
+                        return;
+                    } catch (error) {
+                        // Clipboard access can be denied on non-secure origins; use the legacy fallback below.
+                    }
+                }
+
+                const input = document.createElement('textarea');
+                input.value = url;
+                input.setAttribute('readonly', '');
+                input.style.position = 'fixed';
+                input.style.opacity = '0';
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                input.remove();
+            };
+
+            shareStoreButton?.addEventListener('click', async () => {
+                const url = shareStoreButton.dataset.shareStoreUrl;
+                const title = shareStoreButton.dataset.shareStoreTitle || 'Online store';
+
+                try {
+                    if (navigator.share) {
+                        await navigator.share({ title, url });
+                        return;
+                    }
+
+                    await copyStoreUrl(url);
+                    if (shareStoreLabel) shareStoreLabel.textContent = 'Copied';
+                    if (shareStoreStatus) shareStoreStatus.textContent = 'Store link copied to clipboard.';
+                    window.setTimeout(() => {
+                        if (shareStoreLabel) shareStoreLabel.textContent = 'Share';
+                        if (shareStoreStatus) shareStoreStatus.textContent = '';
+                    }, 2500);
+                } catch (error) {
+                    if (error?.name === 'AbortError') return;
+                    if (shareStoreStatus) shareStoreStatus.textContent = 'Could not share the store link.';
+                }
+            });
 
             const paintThemeColorField = (field) => {
                 field.style.backgroundColor = field.value;
@@ -1727,8 +2068,12 @@
                             <div class="subtle" data-faq-answer>Answer not set</div>
                         </div>
                         <div class="setup-row-actions">
-                            <button class="btn secondary" type="button" data-edit-online-faq>Edit</button>
-                            <button class="btn danger" type="button" data-delete-online-faq>Delete</button>
+                            <button class="icon-btn faq-icon-action" type="button" data-edit-online-faq aria-label="Edit FAQ" title="Edit FAQ">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
+                            </button>
+                            <button class="icon-btn faq-icon-action delete" type="button" data-delete-online-faq aria-label="Delete FAQ" title="Delete FAQ">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 10v6M14 10v6"/></svg>
+                            </button>
                         </div>
                     </div>
                     <input type="hidden" data-faq-field="question">
@@ -2034,6 +2379,41 @@
                 if (cur && currencySel && Array.prototype.some.call(currencySel.options, function (o) { return o.value === cur; })) currencySel.value = cur;
                 if (tz && tzSel && Array.prototype.some.call(tzSel.options, function (o) { return o.value === tz; })) tzSel.value = tz;
             }
+        });
+        </script>
+
+        <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const master = document.querySelector('[data-approvals-master]');
+            const actionsWrap = document.querySelector('[data-approvals-actions]');
+            if (master && actionsWrap) {
+                const sync = () => {
+                    if (master.checked) actionsWrap.removeAttribute('data-dimmed');
+                    else actionsWrap.setAttribute('data-dimmed', '');
+                };
+                master.addEventListener('change', sync);
+                sync();
+            }
+        });
+        document.addEventListener('DOMContentLoaded', () => {
+            const dialog = document.getElementById('membership-dialog');
+            const form = dialog?.querySelector('[data-membership-form]');
+            if (!dialog || !form) return;
+
+            const urlTemplate = @json(route('admin.access.memberships.update', ['membership' => '__ID__']));
+            const roleSelect = form.querySelector('[data-membership-role-select]');
+            const branchSelect = form.querySelector('[data-membership-branch-select]');
+            const target = dialog.querySelector('[data-membership-target]');
+
+            document.querySelectorAll('[data-edit-membership]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    form.setAttribute('action', urlTemplate.replace('__ID__', button.dataset.membershipId));
+                    if (roleSelect) roleSelect.value = button.dataset.membershipRole || '';
+                    if (branchSelect) branchSelect.value = button.dataset.membershipBranch || '';
+                    if (target) target.textContent = `Change the role and branch scope for ${button.dataset.membershipName}.`;
+                    dialog.showModal();
+                });
+            });
         });
         </script>
     @endif

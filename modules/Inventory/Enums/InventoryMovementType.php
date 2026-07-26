@@ -6,6 +6,7 @@ namespace Modules\Inventory\Enums;
 
 enum InventoryMovementType: string
 {
+    case OpeningStock = 'opening_stock';
     case StockIn = 'stock_in';
     case StockOut = 'stock_out';
     case AdjustmentIn = 'adjustment_in';
@@ -18,6 +19,7 @@ enum InventoryMovementType: string
     public function label(): string
     {
         return match ($this) {
+            self::OpeningStock => 'Opening stock',
             self::StockIn => 'Stock-in',
             self::StockOut => 'Stock-out',
             self::AdjustmentIn => 'Adjustment in',
@@ -32,7 +34,7 @@ enum InventoryMovementType: string
     public function stockDeltaSign(): int
     {
         return match ($this) {
-            self::StockIn, self::AdjustmentIn, self::TransferIn, self::Returned => 1,
+            self::OpeningStock, self::StockIn, self::AdjustmentIn, self::TransferIn, self::Returned => 1,
             self::StockOut, self::AdjustmentOut, self::TransferOut, self::Damaged => -1,
         };
     }
@@ -43,8 +45,13 @@ enum InventoryMovementType: string
     public static function options(): array
     {
         return collect(self::cases())
-            ->reject(fn (self $type): bool => in_array($type, [self::TransferIn, self::TransferOut], true))
-            ->mapWithKeys(fn (self $type): array => [$type->value => $type->label()])
+            ->reject(fn (self $type): bool => in_array($type, [self::TransferIn, self::TransferOut, self::Returned], true))
+            ->mapWithKeys(fn (self $type): array => [$type->value => match ($type) {
+                self::StockIn => 'Stock-in (non-purchase)',
+                self::StockOut => 'Stock-out / write-off',
+                self::Damaged => 'Damaged stock (full write-off)',
+                default => $type->label(),
+            }])
             ->all();
     }
 }

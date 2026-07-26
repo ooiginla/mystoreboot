@@ -25,29 +25,38 @@
         .product-name-link:hover { color: var(--accent); }
         .product-meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; color: #344054; }
         .product-meta strong { color: #101828; }
+        .product-tags { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .product-meta .product-tag-pill { border: 1px solid #c4b5fd; border-radius: 999px; background: #ede9fe; color: #6d28d9; padding: 2px 8px; font-size: 12px; line-height: 1.4; }
         .product-price-block { display: flex; align-items: center; gap: 12px; }
         .product-price { min-width: 104px; text-align: right; font-size: 18px; font-weight: 850; color: #101828; }
         .old-price { display: block; color: #667085; font-size: 13px; font-weight: 650; text-decoration: line-through; }
-        .dialog-local-tabs { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
-        .dialog-local-tabs a { border: 1px solid var(--line); border-radius: 999px; background: #fff; padding: 8px 12px; color: #344054; font-size: 13px; font-weight: 850; }
-        .dialog-local-tabs a.active { border-color: var(--accent); background: #eff6ff; color: var(--accent-dark); }
+        .dialog-local-tabs { display: flex; gap: 8px; flex-wrap: wrap; border: 1px solid #a6f4c5; border-radius: 999px; background: var(--brand-050); padding: 6px; }
+        .dialog-local-tabs a { border: 1px solid transparent; border-radius: 999px; background: transparent; padding: 8px 12px; color: var(--brand-strong); font-size: 13px; font-weight: 850; transition: background .15s, border-color .15s, color .15s, box-shadow .15s; }
+        .dialog-local-tabs a:hover { border-color: #a6f4c5; background: var(--brand-100); color: #05603a; }
+        .dialog-local-tabs a.active { border-color: var(--brand); background: var(--brand); color: #fff; box-shadow: 0 4px 12px -3px rgba(6,193,104,.5); }
         [data-local-tab-panel] { margin-top: 14px; }
-        .catalog-profit-summary { grid-column: 1 / -1; display: flex; gap: 18px; flex-wrap: wrap; border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; color: #344054; padding: 10px 12px; font-size: 14px; font-weight: 750; }
-        .catalog-profit-summary strong { color: #1d4ed8; }
+        .catalog-category-dialog-feedback { min-height: 18px; margin: 0; color: #b42318; font-size: 13px; }
+        .catalog-profit-summary { grid-column: 1 / -1; display: flex; gap: 18px; flex-wrap: wrap; border: 1px solid #a6f4c5; border-radius: 8px; background: var(--brand-050); color: #344054; padding: 10px 12px; font-size: 14px; font-weight: 750; }
+        .catalog-profit-summary strong { color: var(--brand-strong); }
         .catalog-image-uploader { border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgba(16,24,40,.04); overflow: hidden; }
         .catalog-image-uploader-header { padding: 18px 20px; border-bottom: 1px dashed var(--line); }
         .catalog-image-uploader-header h3 { margin: 0; color: #344054; font-size: 18px; }
         .catalog-image-uploader-header p { margin: 8px 0 0; color: #98a2b3; font-size: 15px; }
         .catalog-drop-zone { margin: 20px; min-height: 260px; border: 2px dashed #d9dee7; border-radius: 8px; background: #fff; display: grid; place-items: center; align-content: center; gap: 14px; text-align: center; cursor: pointer; color: #475467; padding: 28px; }
-        .catalog-drop-zone.dragging { border-color: var(--accent); background: #eff6ff; }
+        .catalog-drop-zone.dragging { border-color: var(--brand); background: var(--brand-050); }
         .catalog-drop-zone input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; pointer-events: none; }
-        .catalog-upload-icon { width: 54px; height: 54px; border-radius: 999px; display: grid; place-items: center; background: #e0f2fe; color: #38bdf8; font-size: 30px; font-weight: 900; }
+        .catalog-upload-icon { width: 54px; height: 54px; border-radius: 999px; display: grid; place-items: center; background: var(--brand-100); color: var(--brand); font-size: 30px; font-weight: 900; }
         .catalog-drop-zone strong { color: #344054; font-size: 20px; }
         .catalog-drop-zone span:not(.catalog-upload-icon):not(.catalog-browse-button) { color: #98a2b3; font-size: 15px; }
         .catalog-browse-button { border: 1px solid #d0d5dd; border-radius: 6px; background: #fff; color: #344054; padding: 8px 14px; font-weight: 750; box-shadow: 0 1px 2px rgba(16,24,40,.08); }
         .catalog-current-images, .catalog-selected-images { margin: 0 20px 20px; display: flex; gap: 10px; flex-wrap: wrap; }
         .catalog-current-images img { width: 86px; height: 70px; object-fit: cover; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
         .catalog-selected-images span { border: 1px solid #d0d5dd; border-radius: 999px; background: #f8fafc; padding: 6px 10px; color: #344054; font-size: 13px; font-weight: 750; }
+        .catalog-main-image-control { position: relative; min-height: 44px; display: grid; grid-template-columns: minmax(110px, 1fr) minmax(0, 2fr); overflow: hidden; border: 1px solid #d4ddd8; border-radius: var(--radius-sm); background: #fff; cursor: pointer; }
+        .catalog-main-image-control:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3.5px var(--brand-ring); }
+        .catalog-main-image-control input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; pointer-events: none; }
+        .catalog-main-image-button { display: grid; place-items: center; border-right: 1px solid #d4ddd8; background: var(--panel-soft); color: var(--ink-soft); font-weight: 700; }
+        .catalog-main-image-name { min-width: 0; display: flex; align-items: center; padding: 10px 12px; overflow: hidden; color: var(--muted); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
         .drawer { width: min(720px, calc(100vw - 24px)); max-width: none; height: 100vh; max-height: 100vh; margin: 0 0 0 auto; border: 0; padding: 0; border-radius: 8px 0 0 8px; box-shadow: -24px 0 60px rgba(16,24,40,.22); }
         .drawer::backdrop { background: rgba(16,24,40,.42); backdrop-filter: blur(2px); }
         .drawer-header { padding: 22px 24px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; align-items: start; }
@@ -69,21 +78,32 @@
         .catalog-inline-create { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 10px; }
         .catalog-inline-heading { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
         .catalog-inline-add-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+        .catalog-value-tag-input { min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; border: 1px solid #d4ddd8; border-radius: var(--radius-sm); background: #fff; padding: 5px 7px; cursor: text; transition: border-color .15s, box-shadow .15s; }
+        .catalog-value-tag-input:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3.5px var(--brand-ring); }
+        .catalog-value-tag-input input { flex: 1 1 120px; width: auto; min-width: 100px; border: 0; border-radius: 0; padding: 4px 3px; box-shadow: none; }
+        .catalog-value-tag-input input:focus { border: 0; box-shadow: none; }
+        .catalog-value-tag { max-width: 100%; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #a7f3d0; border-radius: 999px; background: #ecfdf3; color: #067647; padding: 3px 7px 3px 9px; font-size: 13px; font-weight: 700; }
+        .catalog-value-tag span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .catalog-value-tag button { width: 18px; height: 18px; display: grid; place-items: center; border: 0; border-radius: 999px; background: transparent; color: #067647; padding: 0; cursor: pointer; font-size: 16px; line-height: 1; }
+        .catalog-value-tag button:hover { background: #d1fadf; }
+        .catalog-new-attribute-grid { align-items: start; }
         .catalog-radio-row { display: flex; gap: 16px; flex-wrap: wrap; }
         .catalog-variant-editor { margin-top: 16px; }
         .catalog-attribute-panel { padding: 0; overflow: hidden; }
-        .catalog-attribute-toggle { width: 100%; border: 0; background: #eef4ff; color: #101828; padding: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; text-align: left; font-weight: 800; }
-        .catalog-attribute-toggle:hover { background: #e0ebff; }
-        .catalog-attribute-chevron { display: inline-grid; place-items: center; width: 18px; height: 18px; color: #2563eb; font-size: 22px; line-height: 1; transition: transform .16s ease; }
+        .catalog-attribute-toggle { width: 100%; border: 0; background: var(--brand-050); color: #101828; padding: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; text-align: left; font-weight: 800; }
+        .catalog-attribute-toggle:hover { background: var(--brand-100); }
+        .catalog-attribute-chevron { display: inline-grid; place-items: center; width: 18px; height: 18px; color: var(--brand); font-size: 22px; line-height: 1; transition: transform .16s ease; }
         .catalog-attribute-toggle[aria-expanded="true"] .catalog-attribute-chevron { transform: rotate(90deg); }
-        .catalog-attribute-toggle-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; background: #eef4ff; }
+        .catalog-attribute-toggle-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; background: var(--brand-050); }
         .catalog-attribute-toggle-row .catalog-attribute-toggle { background: transparent; }
         .catalog-attribute-toggle-row .btn.danger { align-self: center; margin-right: 8px; }
         .catalog-attribute-body { padding: 12px; display: grid; gap: 10px; }
-        .btn.inline-add { background: #2563eb; color: #fff; border: 1px solid #1d4ed8; padding-inline: 16px; }
-        .btn.inline-add:hover { background: #1d4ed8; }
+        .btn.inline-add { background: var(--brand); color: #fff; border: 1px solid var(--brand-strong); padding-inline: 16px; }
+        .btn.inline-add:hover { background: var(--brand-strong); }
         .category-type-pill { text-transform: capitalize; }
         .catalog-row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .btn.catalog-edit-button { border-color: #fdba74; background: #fff7ed; color: #c2410c; box-shadow: 0 1px 2px rgba(194,65,12,.08); }
+        .btn.catalog-edit-button:hover { border-color: #f97316; background: #ffedd5; color: #9a3412; }
         @media (max-width: 900px) {
             .catalog-toolbar, .catalog-filter-row, .product-card { grid-template-columns: 1fr; }
             .product-card { align-items: start; }
@@ -144,6 +164,7 @@
             <a href="#tags" role="tab" data-tab-target="tags">Tags <span class="badge neutral">{{ $tags->count() }}</span></a>
             <a href="#attributes" role="tab" data-tab-target="attributes">Attributes <span class="badge neutral">{{ $attributes->count() }}</span></a>
             <a href="#taxes" role="tab" data-tab-target="taxes">Taxes <span class="badge neutral">{{ $taxes->count() }}</span></a>
+            <a href="#coupons" role="tab" data-tab-target="coupons">Coupons <span class="badge neutral">{{ $coupons->count() }}</span></a>
         </nav>
 
         <div class="content-stack">
@@ -333,6 +354,36 @@
                     </div>
                 </div>
             </section>
+
+            <section class="panel tab-panel" id="coupons" role="tabpanel" data-tab-panel hidden>
+                <div class="panel-header">
+                    <div>
+                        <h2 class="panel-title">Coupons</h2>
+                        <p class="subtle">Create reusable amount or percentage discounts for sales.</p>
+                    </div>
+                    <button class="btn accent" type="button" data-dialog-open="coupon-dialog">Add coupon</button>
+                </div>
+                <div class="panel-body">
+                    <table class="table">
+                        <thead>
+                            <tr><th>Code</th><th>Type</th><th>Value</th><th>Validity</th><th>Status</th></tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($coupons as $coupon)
+                                <tr>
+                                    <td><strong>{{ $coupon->code }}</strong></td>
+                                    <td>{{ $coupon->discount_type->label() }}</td>
+                                    <td>{{ $coupon->discount_type->value === 'percentage' ? $coupon->discount_percent.'%' : $tenant->currency_code.' '.$money($coupon->discount_value_minor) }}</td>
+                                    <td>{{ $coupon->starts_at?->format('M j, Y') ?? 'Now' }} – {{ $coupon->expires_at?->format('M j, Y') ?? 'No expiry' }}</td>
+                                    <td><span class="badge {{ $coupon->is_active ? 'success' : 'neutral' }}">{{ $coupon->is_active ? 'Active' : 'Inactive' }}</span></td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="5"><div class="empty">No coupons yet.</div></td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         </div>
     </div>
 
@@ -351,6 +402,8 @@
         'product' => null,
         'variant' => null,
     ])
+
+    @include('sales::admin.partials.coupon-dialog')
 
     @foreach ($products as $product)
         @include('catalog::admin.partials.product-dialog', [
@@ -576,6 +629,62 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            const catalogButtonIcons = {
+                add: '<path d="M12 5v14M5 12h14"/>',
+                edit: '<path d="m4 20 4.3-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Zm9.8-12.8 3 3"/>',
+                remove: '<path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/>',
+                cancel: '<path d="m6 6 12 12M18 6 6 18"/>',
+                save: '<path d="M5 4h12l2 2v14H5V4Zm3 0v6h8V4M8 20v-6h8v6"/>',
+                filter: '<path d="M4 5h16l-6 7v6l-4 2v-8L4 5Z"/>',
+                generate: '<path d="m12 3 1.4 4.1L17.5 8.5l-4.1 1.4L12 14l-1.4-4.1-4.1-1.4 4.1-1.4L12 3Zm6 11 .8 2.2L21 17l-2.2.8L18 20l-.8-2.2L15 17l2.2-.8L18 14Z"/>',
+            };
+
+            const decorateCatalogButton = (button) => {
+                if (!button.matches('button.btn') || button.querySelector('[data-catalog-button-icon]')) return;
+
+                const label = button.textContent.trim().toLowerCase();
+                let icon = 'save';
+
+                if (label.startsWith('edit')) {
+                    icon = 'edit';
+                    button.classList.add('catalog-edit-button');
+                } else if (label.includes('delete') || label.includes('remove')) {
+                    icon = 'remove';
+                } else if (label.includes('cancel') || label === 'close') {
+                    icon = 'cancel';
+                } else if (label.includes('filter')) {
+                    icon = 'filter';
+                } else if (label.includes('generate')) {
+                    icon = 'generate';
+                } else if (label.includes('add') || label.includes('create')) {
+                    icon = 'add';
+                }
+
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('viewBox', '0 0 24 24');
+                svg.setAttribute('fill', 'none');
+                svg.setAttribute('stroke', 'currentColor');
+                svg.setAttribute('stroke-width', '1.9');
+                svg.setAttribute('stroke-linecap', 'round');
+                svg.setAttribute('stroke-linejoin', 'round');
+                svg.setAttribute('aria-hidden', 'true');
+                svg.dataset.catalogButtonIcon = icon;
+                svg.innerHTML = catalogButtonIcons[icon];
+                button.prepend(svg);
+            };
+
+            document.querySelectorAll('button.btn').forEach(decorateCatalogButton);
+            new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    mutation.addedNodes.forEach((node) => {
+                        if (! (node instanceof Element)) return;
+
+                        if (node.matches('button.btn')) decorateCatalogButton(node);
+                        node.querySelectorAll?.('button.btn').forEach(decorateCatalogButton);
+                    });
+                });
+            }).observe(document.body, { childList: true, subtree: true });
+
             function applyCatalogFilter(scope) {
                 const list = document.querySelector(`[data-catalog-list="${scope}"]`);
                 const search = document.querySelector(`[data-catalog-search="${scope}"]`);
@@ -630,6 +739,79 @@
 
                 select.addEventListener('change', filterParents);
                 filterParents();
+            });
+
+            document.querySelectorAll('[data-product-category-form]').forEach((categoryForm) => {
+                const productDialog = document.getElementById(categoryForm.dataset.productDialogId);
+                const categoryDialog = categoryForm.closest('[data-product-category-dialog]');
+                const categorySelect = productDialog?.querySelector('[data-product-category-select]');
+                const addOption = categorySelect?.querySelector('[data-add-category-option]');
+                const nameInput = categoryForm.querySelector('input[name="name"]');
+                const feedback = categoryForm.querySelector('[data-category-dialog-feedback]');
+                const submitButton = categoryForm.querySelector('button[type="submit"]');
+                let selectedCategory = categorySelect?.value || '';
+
+                if (!categoryDialog || !categorySelect || !addOption || !nameInput || !feedback || !submitButton) return;
+
+                categorySelect.addEventListener('change', () => {
+                    if (categorySelect.value !== addOption.value) {
+                        selectedCategory = categorySelect.value;
+                        return;
+                    }
+
+                    categorySelect.value = selectedCategory;
+                    feedback.textContent = '';
+                    categoryForm.reset();
+                    categoryDialog.showModal();
+                    window.setTimeout(() => nameInput.focus(), 0);
+                });
+
+                categoryForm.addEventListener('submit', async (event) => {
+                    event.preventDefault();
+                    feedback.textContent = '';
+                    submitButton.disabled = true;
+                    submitButton.textContent = 'Adding...';
+
+                    try {
+                        const response = await fetch(categoryForm.action, {
+                            method: 'POST',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': categoryForm.querySelector('input[name="_token"]').value,
+                            },
+                            body: new FormData(categoryForm),
+                        });
+                        const result = await response.json();
+
+                        if (!response.ok) {
+                            const firstError = Object.values(result.errors || {}).flat()[0];
+                            throw new Error(firstError || result.message || 'Unable to add category.');
+                        }
+
+                        const option = new Option(result.category.name, result.category.id, true, true);
+                        addOption.insertAdjacentElement('afterend', option);
+                        selectedCategory = String(result.category.id);
+                        categorySelect.value = selectedCategory;
+                        categorySelect.dispatchEvent(new Event('change', { bubbles: true }));
+                        categoryDialog.close();
+                    } catch (error) {
+                        feedback.textContent = error.message || 'Unable to add category.';
+                        nameInput.focus();
+                    } finally {
+                        submitButton.disabled = false;
+                        submitButton.textContent = 'Add category';
+                    }
+                });
+            });
+
+            document.querySelectorAll('[data-main-image-input]').forEach((input) => {
+                const fileName = input.closest('[data-main-image-control]')?.querySelector('[data-main-image-name]');
+
+                if (!fileName) return;
+
+                input.addEventListener('change', () => {
+                    fileName.textContent = input.files?.[0]?.name || 'No file selected';
+                });
             });
 
             const moneyValue = (value) => {
@@ -932,13 +1114,56 @@
                 input.focus();
             };
 
+            const attributeTagValues = (wrapper) => {
+                return Array.from(wrapper?.querySelectorAll('[data-attribute-value-tag]') || [])
+                    .map((tag) => tag.dataset.attributeValueTag)
+                    .filter(Boolean);
+            };
+
+            const appendAttributeValueTag = (input, value) => {
+                const wrapper = input?.closest('[data-attribute-value-tag-input]');
+                const cleanValue = value.trim();
+
+                if (!wrapper || !cleanValue) return;
+
+                const exists = attributeTagValues(wrapper)
+                    .some((item) => item.toLowerCase() === cleanValue.toLowerCase());
+
+                if (exists) return;
+
+                const tag = document.createElement('span');
+                tag.className = 'catalog-value-tag';
+                tag.dataset.attributeValueTag = cleanValue;
+
+                const label = document.createElement('span');
+                label.textContent = cleanValue;
+
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.dataset.removeAttributeValueTag = '';
+                remove.setAttribute('aria-label', `Remove ${cleanValue}`);
+                remove.textContent = '×';
+
+                tag.append(label, remove);
+                wrapper.insertBefore(tag, input);
+            };
+
+            const commitAttributeValueInput = (input) => {
+                splitInlineValues(input?.value).forEach((value) => appendAttributeValueTag(input, value));
+
+                if (input) input.value = '';
+            };
+
             const addInlineAttribute = (button) => {
                 const wrapper = button.closest('[data-new-attribute-list]');
                 const nameInput = wrapper?.querySelector('[data-new-attribute-name]');
                 const valuesInput = wrapper?.querySelector('[data-new-attribute-values]');
+                const valueTagInput = valuesInput?.closest('[data-attribute-value-tag-input]');
                 const list = wrapper?.closest('[data-inline-attributes]')?.querySelector('[data-added-inline-attribute-list]');
                 const name = nameInput?.value.trim() || '';
-                const values = splitInlineValues(valuesInput?.value);
+
+                commitAttributeValueInput(valuesInput);
+                const values = attributeTagValues(valueTagInput);
 
                 if (!wrapper || !list || !name || !values.length) return;
 
@@ -1001,8 +1226,31 @@
                 list.appendChild(row);
                 nameInput.value = '';
                 valuesInput.value = '';
+                valueTagInput.querySelectorAll('[data-attribute-value-tag]').forEach((tag) => tag.remove());
                 nameInput.focus();
             };
+
+            document.querySelectorAll('[data-attribute-value-tag-input]').forEach((wrapper) => {
+                const input = wrapper.querySelector('[data-new-attribute-values]');
+
+                if (!input) return;
+
+                wrapper.addEventListener('click', () => input.focus());
+                input.addEventListener('keydown', (event) => {
+                    if (event.key !== 'Enter' && event.key !== ',') return;
+
+                    event.preventDefault();
+                    commitAttributeValueInput(input);
+                });
+                input.addEventListener('input', () => {
+                    if (!input.value.includes(',')) return;
+
+                    const parts = input.value.split(',');
+                    input.value = parts.pop() || '';
+                    parts.forEach((value) => appendAttributeValueTag(input, value));
+                });
+                input.addEventListener('blur', () => commitAttributeValueInput(input));
+            });
 
             document.querySelectorAll('[data-inline-add-input]').forEach((input) => {
                 input.addEventListener('keydown', (event) => {
@@ -1157,6 +1405,11 @@
                     if (row) {
                         row.remove();
                     }
+                }
+
+                const removeAttributeValueTagButton = event.target.closest('[data-remove-attribute-value-tag]');
+                if (removeAttributeValueTagButton) {
+                    removeAttributeValueTagButton.closest('[data-attribute-value-tag]')?.remove();
                 }
 
                 const editButton = event.target.closest('[data-drawer-edit]');

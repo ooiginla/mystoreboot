@@ -15,6 +15,8 @@ use Modules\Inventory\Models\InventoryStockLevel;
 
 final class PostInventoryMovementAction
 {
+    private const SYSTEM_SOURCE_TYPES = ['goods_receipt', 'sales_order', 'sales_return'];
+
     public function __construct(private readonly PostJournalEntryAction $postJournalEntry) {}
 
     /**
@@ -22,7 +24,31 @@ final class PostInventoryMovementAction
      */
     public function execute(array $data): void
     {
-        DB::transaction(function () use ($data): void {
+        $this->executeMovement($data, false);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function executeFromSource(array $data, string $sourceType, int $sourceId): void
+    {
+        if (! in_array($sourceType, self::SYSTEM_SOURCE_TYPES, true)) {
+            throw new \InvalidArgumentException("Unsupported inventory movement source [{$sourceType}].");
+        }
+
+        $this->executeMovement([
+            ...$data,
+            'reference_type' => $sourceType,
+            'reference_id' => $sourceId,
+        ], true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function executeMovement(array $data, bool $accountingHandledBySource): void
+    {
+        DB::transaction(function () use ($data, $accountingHandledBySource): void {
             $type = InventoryMovementType::from($data['movement_type']);
 
             if ($type === InventoryMovementType::TransferOut) {
@@ -31,7 +57,7 @@ final class PostInventoryMovementAction
                 return;
             }
 
-            $this->postSingleMovement($data, $type);
+            $this->postSingleMovement($data, $type, $accountingHandledBySource);
         });
     }
 
@@ -51,32 +77,73 @@ final class PostInventoryMovementAction
         $this->applyDelta($source, -$quantity, $unitCostMinor);
         $this->applyDelta($destination, $quantity, $unitCostMinor);
 
-        $this->recordMovement($data, InventoryMovementType::TransferOut, $source, -$quantity, $unitCostMinor);
+        $transferOut = $this->recordMovement($data, InventoryMovementType::TransferOut, $source, -$quantity, $unitCostMinor);
         $this->recordMovement([
             ...$data,
             'inventory_location_id' => $data['destination_inventory_location_id'],
             'destination_inventory_location_id' => $data['inventory_location_id'],
         ], InventoryMovementType::TransferIn, $destination, $quantity, $unitCostMinor);
+
+        $valueMinor = $quantity * $unitCostMinor;
+
+        if ($valueMinor > 0) {
+            $sourceBranchId = $source->loadMissing('location')->location?->branch_id;
+            $destinationBranchId = $destination->loadMissing('location')->location?->branch_id;
+
+            $this->postJournalEntry->execute(
+                $data['tenant_id'],
+                (string) ($data['occurred_at'] ?? now()->toDateString()),
+                'Inventory transfer',
+                [
+                    ['account_code' => '1200', 'branch_id' => $destinationBranchId, 'debit_minor' => $valueMinor],
+                    ['account_code' => '1200', 'branch_id' => $sourceBranchId, 'credit_minor' => $valueMinor],
+                ],
+                'inventory_movement',
+                $transferOut->id,
+                'transferred',
+            );
+        }
     }
 
     /**
      * @param  array<string, mixed>  $data
      */
-    private function postSingleMovement(array $data, InventoryMovementType $type): void
+    private function postSingleMovement(array $data, InventoryMovementType $type, bool $accountingHandledBySource): void
     {
         $stockLevel = $this->stockLevel($data['tenant_id'], (int) $data['inventory_location_id'], (int) $data['product_variant_id']);
         $quantity = (int) $data['quantity'];
         $delta = $quantity * $type->stockDeltaSign();
-        $unitCostMinor = $this->moneyToMinor($data['unit_cost'] ?? 0) ?: (int) $stockLevel->average_cost_minor;
+        $providedUnitCostMinor = array_key_exists('unit_cost_minor', $data)
+            ? (int) $data['unit_cost_minor']
+            : $this->moneyToMinor($data['unit_cost'] ?? 0);
+
+        if ($type === InventoryMovementType::OpeningStock && $providedUnitCostMinor <= 0) {
+            throw ValidationException::withMessages([
+                'unit_cost' => 'Enter a unit cost greater than zero for opening stock.',
+            ]);
+        }
+
+        $unitCostMinor = $providedUnitCostMinor ?: (int) $stockLevel->average_cost_minor;
+        $movementValueMinor = array_key_exists('movement_value_minor', $data)
+            ? (int) $data['movement_value_minor']
+            : abs($delta) * $unitCostMinor;
 
         if ($delta < 0) {
             $this->assertEnoughStock($stockLevel, abs($delta));
         }
 
-        $this->applyDelta($stockLevel, $delta, $unitCostMinor);
-        $this->recordMovement($data, $type, $stockLevel, $delta, $unitCostMinor);
+        $this->applyDelta($stockLevel, $delta, $unitCostMinor, $movementValueMinor);
+        $movement = $this->recordMovement($data, $type, $stockLevel, $delta, $unitCostMinor, $movementValueMinor);
         $this->recordBatchIfApplicable($data, $type, $delta, $unitCostMinor);
-        $this->postAccountingEntryIfApplicable($data, $type, $delta, $unitCostMinor, $stockLevel);
+        $this->postAccountingEntryIfApplicable(
+            $data,
+            $type,
+            $delta,
+            $unitCostMinor,
+            $stockLevel,
+            $movement,
+            $accountingHandledBySource,
+        );
     }
 
     private function stockLevel(string $tenantId, int $locationId, int $variantId): InventoryStockLevel
@@ -93,13 +160,18 @@ final class PostInventoryMovementAction
             ]);
     }
 
-    private function applyDelta(InventoryStockLevel $stockLevel, int $delta, int $unitCostMinor): void
+    private function applyDelta(
+        InventoryStockLevel $stockLevel,
+        int $delta,
+        int $unitCostMinor,
+        ?int $incomingValueMinor = null,
+    ): void
     {
         $currentQuantity = $stockLevel->quantity_on_hand;
 
         if ($delta > 0 && $unitCostMinor > 0) {
             $currentValue = max(0, $currentQuantity) * $stockLevel->average_cost_minor;
-            $incomingValue = $delta * $unitCostMinor;
+            $incomingValue = $incomingValueMinor ?? ($delta * $unitCostMinor);
             $newQuantity = max(0, $currentQuantity) + $delta;
             $stockLevel->average_cost_minor = (int) round(($currentValue + $incomingValue) / max(1, $newQuantity));
         }
@@ -112,9 +184,16 @@ final class PostInventoryMovementAction
     /**
      * @param  array<string, mixed>  $data
      */
-    private function recordMovement(array $data, InventoryMovementType $type, InventoryStockLevel $stockLevel, int $delta, int $unitCostMinor): void
+    private function recordMovement(
+        array $data,
+        InventoryMovementType $type,
+        InventoryStockLevel $stockLevel,
+        int $delta,
+        int $unitCostMinor,
+        ?int $movementValueMinor = null,
+    ): InventoryMovement
     {
-        InventoryMovement::query()->create([
+        return InventoryMovement::query()->create([
             'tenant_id' => $data['tenant_id'],
             'inventory_location_id' => $data['inventory_location_id'],
             'destination_inventory_location_id' => $data['destination_inventory_location_id'] ?? null,
@@ -124,10 +203,11 @@ final class PostInventoryMovementAction
             'quantity' => $delta,
             'stock_after' => $stockLevel->quantity_on_hand,
             'unit_cost_minor' => $unitCostMinor,
-            'movement_value_minor' => abs($delta) * $unitCostMinor,
+            'movement_value_minor' => $movementValueMinor ?? (abs($delta) * $unitCostMinor),
             'batch_number' => $data['batch_number'] ?? null,
             'expiry_date' => $data['expiry_date'] ?? null,
             'reference_type' => $data['reference_type'] ?? null,
+            'reference_id' => $data['reference_id'] ?? null,
             'reference_number' => $data['reference_number'] ?? null,
             'notes' => $data['notes'] ?? null,
             'occurred_at' => $data['occurred_at'] ?? now(),
@@ -183,36 +263,51 @@ final class PostInventoryMovementAction
     /**
      * @param  array<string, mixed>  $data
      */
-    private function postAccountingEntryIfApplicable(array $data, InventoryMovementType $type, int $delta, int $unitCostMinor, InventoryStockLevel $stockLevel): void
+    private function postAccountingEntryIfApplicable(
+        array $data,
+        InventoryMovementType $type,
+        int $delta,
+        int $unitCostMinor,
+        InventoryStockLevel $stockLevel,
+        InventoryMovement $movement,
+        bool $accountingHandledBySource,
+    ): void
     {
-        if (in_array($data['reference_type'] ?? null, ['sales_order', 'sales_return', 'purchase_order'], true)) {
+        if ($accountingHandledBySource) {
             return;
         }
 
-        $valueMinor = abs($delta) * $unitCostMinor;
+        $valueMinor = (int) $movement->movement_value_minor;
 
         if ($valueMinor <= 0 || in_array($type, [InventoryMovementType::TransferIn, InventoryMovementType::TransferOut], true)) {
             return;
         }
 
-        $lines = $delta > 0
-            ? [
+        $lines = match (true) {
+            $type === InventoryMovementType::OpeningStock => [
+                ['account_code' => '1200', 'branch_id' => $stockLevel->loadMissing('location')->location?->branch_id, 'debit_minor' => $valueMinor],
+                ['account_code' => '3400', 'branch_id' => $stockLevel->location?->branch_id, 'credit_minor' => $valueMinor],
+            ],
+            $delta > 0 => [
                 ['account_code' => '1200', 'branch_id' => $stockLevel->loadMissing('location')->location?->branch_id, 'debit_minor' => $valueMinor],
                 ['account_code' => '4120', 'branch_id' => $stockLevel->location?->branch_id, 'credit_minor' => $valueMinor],
-            ]
-            : [
+            ],
+            default => [
                 ['account_code' => 'EXP-6050', 'branch_id' => $stockLevel->loadMissing('location')->location?->branch_id, 'debit_minor' => $valueMinor],
                 ['account_code' => '1200', 'branch_id' => $stockLevel->location?->branch_id, 'credit_minor' => $valueMinor],
-            ];
+            ],
+        };
 
         $this->postJournalEntry->execute(
             $data['tenant_id'],
             (string) ($data['occurred_at'] ?? now()->toDateString()),
-            'Inventory '.$type->label().' adjustment',
+            $type === InventoryMovementType::OpeningStock
+                ? 'Inventory opening stock'
+                : 'Inventory '.$type->label().' adjustment',
             $lines,
             'inventory_movement',
-            null,
-            null,
+            $movement->id,
+            $type->value,
         );
     }
 }

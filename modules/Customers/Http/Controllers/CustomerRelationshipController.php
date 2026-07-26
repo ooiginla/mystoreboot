@@ -23,6 +23,7 @@ use Modules\Customers\Http\Requests\CustomerPurchaseRequest;
 use Modules\Customers\Http\Requests\CustomerRequest;
 use Modules\Customers\Http\Requests\SupportTicketRequest;
 use Modules\Customers\Http\Requests\SupportTicketResponseRequest;
+use Modules\Customers\Http\Requests\SupportTicketStatusRequest;
 use Modules\Customers\Models\Customer;
 use Modules\Customers\Models\CustomerFollowUp;
 use Modules\Customers\Models\CustomerGroup;
@@ -196,6 +197,50 @@ final class CustomerRelationshipController extends Controller
         ]);
 
         return redirect()->to(route('admin.customers.index', ['tenant' => $ticket->tenant_id]).'#tickets')->with('status', "Ticket {$ticket->ticket_number} updated.");
+    }
+
+    public function updateTicketStatus(SupportTicketStatusRequest $request, SupportTicket $ticket): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $ticket->tenant_id);
+        $status = $request->enum('status', TicketStatus::class);
+
+        $ticket->update([
+            'status' => $status->value,
+            'resolved_at' => in_array($status, [TicketStatus::Resolved, TicketStatus::Closed], true)
+                ? ($ticket->resolved_at ?? now())
+                : null,
+        ]);
+
+        return redirect()->to(route('admin.customers.index', ['tenant' => $ticket->tenant_id]).'#tickets')
+            ->with('status', "Ticket {$ticket->ticket_number} status changed to {$status->label()}.");
+    }
+
+    public function claimTicket(Request $request, SupportTicket $ticket): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $ticket->tenant_id);
+        /** @var User $user */
+        $user = $request->user();
+
+        if ($ticket->assigned_to && $ticket->assigned_to !== $user->id) {
+            return redirect()->to(route('admin.customers.index', ['tenant' => $ticket->tenant_id]).'#tickets')
+                ->withErrors(['assigned_to' => 'This ticket is already assigned to another user.']);
+        }
+
+        SupportTicket::query()
+            ->whereKey($ticket->id)
+            ->where('tenant_id', $ticket->tenant_id)
+            ->whereNull('assigned_to')
+            ->update(['assigned_to' => $user->id]);
+
+        $ticket->refresh();
+
+        if ($ticket->assigned_to !== $user->id) {
+            return redirect()->to(route('admin.customers.index', ['tenant' => $ticket->tenant_id]).'#tickets')
+                ->withErrors(['assigned_to' => 'This ticket was claimed by another user.']);
+        }
+
+        return redirect()->to(route('admin.customers.index', ['tenant' => $ticket->tenant_id]).'#tickets')
+            ->with('status', "Ticket {$ticket->ticket_number} assigned to you.");
     }
 
     public function storeTicketResponse(SupportTicketResponseRequest $request, SupportTicket $ticket): RedirectResponse

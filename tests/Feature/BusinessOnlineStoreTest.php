@@ -7,6 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Modules\Access\Enums\MembershipStatus;
+use Modules\Access\Models\Role;
 use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
 use Modules\Business\Models\OnlineStore;
@@ -14,7 +15,9 @@ use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
+use Modules\Subscriptions\Models\Module;
 use Modules\Subscriptions\Models\Plan;
+use Modules\Subscriptions\Models\TenantModuleEntitlement;
 use Modules\Subscriptions\Models\TenantSubscription;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
@@ -117,11 +120,24 @@ class BusinessOnlineStoreTest extends TestCase
             ->assertSee('Online Store')
             ->assertSee('Online Store Basics')
             ->assertSee('Contact')
+            ->assertSee('<select name="country">', false)
+            ->assertSee('<option value="Nigeria" selected>Nigeria</option>', false)
+            ->assertSee('<option value="Ghana"', false)
+            ->assertSee('<option value="United States"', false)
             ->assertSee('Description of Store')
             ->assertSee('Banner Image Text')
             ->assertSee('Privacy Policy')
             ->assertSee('Save pages')
+            ->assertSee('By accessing or using Web Shop')
+            ->assertSee('We want you to be satisfied with your purchase')
+            ->assertSee('respects your privacy')
+            ->assertSee('offers delivery to the locations')
             ->assertSee('Save FAQ')
+            ->assertSee('How do I place an order?')
+            ->assertSee('What payment methods do you accept?')
+            ->assertSee('How long will delivery take?')
+            ->assertSee('Can I change or cancel my order?')
+            ->assertSee('How do I request a return or refund?')
             ->assertSee('Save payment method')
             ->assertSee('Bank account')
             ->assertSee('Manage bank accounts from Business Profile.')
@@ -207,6 +223,15 @@ class BusinessOnlineStoreTest extends TestCase
             ->assertRedirect(route('admin.business.online-store.index', ['tenant' => $tenant->id, 'online_store_section' => 'online-store-theme']).'#online-store');
 
         $store = OnlineStore::query()->where('tenant_id', $tenant->id)->firstOrFail();
+        $storefrontUrl = route('storefront.storefront.store.home', $store);
+
+        $this->actingAs($user)
+            ->get(route('admin.business.online-store.index', ['tenant' => $tenant->id]).'#online-store')
+            ->assertOk()
+            ->assertSee('Your store URL')
+            ->assertSee($storefrontUrl, false)
+            ->assertSee('data-share-store-url="'.$storefrontUrl.'"', false)
+            ->assertSee('Visit Store');
 
         $this->assertSame('web-shop', $store->username);
         $this->assertSame('Web Shop Online', $store->store_name);
@@ -276,6 +301,51 @@ class BusinessOnlineStoreTest extends TestCase
             ->assertOk()
             ->assertSee('Settlement Bank Name');
         $this->assertMatchesRegularExpression('/data-paystack-settlement-bank-fields\s+hidden/', $response->getContent());
+    }
+
+    public function test_new_online_store_gets_default_policies_and_removable_generic_faqs(): void
+    {
+        $tenant = Tenant::query()->create([
+            'name' => 'Default Content Shop',
+            'slug' => 'default-content-shop',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+            'email' => 'hello@example.com',
+        ]);
+        $user = User::factory()->create(['is_platform_admin' => true]);
+        $payload = [
+            'tenant_id' => $tenant->id,
+            'online_store_section' => 'online-store-basics',
+            'username' => 'default-content-shop',
+            'store_name' => 'Default Content Shop',
+            'theme_primary_color' => '#006554',
+            'theme_secondary_color' => '#f59e0b',
+            'payment_methods' => [],
+            'paystack_method' => 'none',
+        ];
+
+        $this->actingAs($user)
+            ->post(route('admin.business.online-store.save'), $payload)
+            ->assertRedirect(route('admin.business.online-store.index', [
+                'tenant' => $tenant->id,
+                'online_store_section' => 'online-store-basics',
+            ]).'#online-store');
+
+        $store = OnlineStore::query()->where('tenant_id', $tenant->id)->firstOrFail();
+        $this->assertStringContainsString('By accessing or using Default Content Shop', $store->pages['terms_of_use']);
+        $this->assertStringContainsString('We want you to be satisfied with your purchase', $store->pages['return_policy']);
+        $this->assertStringContainsString('respects your privacy', $store->pages['privacy_policy']);
+        $this->assertStringContainsString('offers delivery to the locations', $store->pages['shipping_information']);
+        $this->assertCount(5, $store->faqs);
+
+        $this->actingAs($user)
+            ->post(route('admin.business.online-store.save'), $payload + ['faqs' => []])
+            ->assertRedirect();
+
+        $this->assertSame([], $store->refresh()->faqs);
     }
 
     public function test_superadmin_can_manage_tenant_subscriptions_from_business_setup(): void
@@ -382,6 +452,154 @@ class BusinessOnlineStoreTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_authorized_administrators_can_toggle_non_core_tenant_modules_and_sidebar_follows_access(): void
+    {
+        $tenant = Tenant::query()->create([
+            'name' => 'Modular Shop',
+            'slug' => 'modular-shop',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+        ]);
+        $plan = Plan::query()->create([
+            'name' => 'Modular Plan',
+            'slug' => 'modular-plan',
+            'sort_order' => 1,
+            'monthly_price_minor' => 0,
+            'yearly_price_minor' => 0,
+            'currency_code' => 'NGN',
+            'is_active' => true,
+        ]);
+        $core = Module::query()->create([
+            'name' => 'Business Setup',
+            'slug' => 'business',
+            'is_core' => true,
+            'is_active' => true,
+        ]);
+        $inventory = Module::query()->create([
+            'name' => 'Inventory Management',
+            'slug' => 'inventory',
+            'is_core' => false,
+            'is_active' => true,
+        ]);
+        $sales = Module::query()->create([
+            'name' => 'Sales & Invoicing',
+            'slug' => 'sales',
+            'is_core' => false,
+            'is_active' => true,
+        ]);
+        $retailPos = Module::query()->where('slug', 'retail-pos')->firstOrFail();
+        $plan->modules()->sync([
+            $core->id => ['is_enabled' => true],
+            $inventory->id => ['is_enabled' => true],
+            $sales->id => ['is_enabled' => true],
+            $retailPos->id => ['is_enabled' => true],
+        ]);
+        $subscription = TenantSubscription::query()->create([
+            'tenant_id' => $tenant->id,
+            'plan_id' => $plan->id,
+            'status' => SubscriptionStatus::Active,
+            'billing_interval' => 'monthly',
+        ]);
+        $superadmin = User::factory()->create(['is_platform_admin' => true]);
+        $administratorRole = Role::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Administrator',
+            'slug' => 'administrator',
+            'is_system' => true,
+        ]);
+        $staffRole = Role::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Staff',
+            'slug' => 'staff',
+            'is_system' => false,
+        ]);
+        $tenantAdmin = User::factory()->create(['is_platform_admin' => false]);
+        $staff = User::factory()->create(['is_platform_admin' => false]);
+        TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $tenantAdmin->id,
+            'role_id' => $administratorRole->id,
+            'status' => MembershipStatus::Active,
+        ]);
+        TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $staff->id,
+            'role_id' => $staffRole->id,
+            'status' => MembershipStatus::Active,
+        ]);
+
+        $this->actingAs($superadmin)
+            ->get(route('admin.business.index', ['tenant' => $tenant->id]).'#subscriptions')
+            ->assertOk()
+            ->assertSee('Module access')
+            ->assertSee('Inventory Management')
+            ->assertSee('Core')
+            ->assertSee('Inventory &amp; Stock', false)
+            ->assertSee('Retail POS')
+            ->assertSee('Record Sale');
+
+        $this->actingAs($superadmin)
+            ->put(route('admin.business.subscriptions.modules.update', [$subscription, $inventory]), [
+                'tenant_id' => $tenant->id,
+                'enabled' => false,
+            ])
+            ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#subscriptions');
+
+        $this->assertDatabaseHas('tenant_module_entitlements', [
+            'tenant_id' => $tenant->id,
+            'module_id' => $inventory->id,
+            'is_enabled' => false,
+        ]);
+
+        $this->actingAs($superadmin)
+            ->put(route('admin.business.subscriptions.modules.update', [$subscription, $retailPos]), [
+                'tenant_id' => $tenant->id,
+                'enabled' => false,
+            ])
+            ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#subscriptions');
+
+        $response = $this->actingAs($tenantAdmin)
+            ->get(route('admin.business.index', ['tenant' => $tenant->id]).'#subscriptions')
+            ->assertOk()
+            ->assertDontSee('Inventory &amp; Stock', false)
+            ->assertDontSee('href="'.route('admin.sales.retail-pos', ['tenant' => $tenant->id]).'"', false)
+            ->assertSee('Record Sale')
+            ->assertSee('Business setup');
+        $this->assertStringContainsString(
+            route('admin.business.subscriptions.modules.update', [$subscription, $sales]),
+            $response->getContent(),
+        );
+
+        $this->actingAs($tenantAdmin)
+            ->put(route('admin.business.subscriptions.modules.update', [$subscription, $sales]), [
+                'tenant_id' => $tenant->id,
+                'enabled' => false,
+            ])
+            ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#subscriptions');
+
+        $this->actingAs($tenantAdmin)
+            ->put(route('admin.business.subscriptions.modules.update', [$subscription, $core]), [
+                'tenant_id' => $tenant->id,
+                'enabled' => false,
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($staff)
+            ->put(route('admin.business.subscriptions.modules.update', [$subscription, $inventory]), [
+                'tenant_id' => $tenant->id,
+                'enabled' => true,
+            ])
+            ->assertForbidden();
+
+        $this->assertFalse(TenantModuleEntitlement::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('module_id', $core->id)
+            ->exists());
+    }
+
     public function test_business_bank_details_create_asset_accounts_with_codes(): void
     {
         $tenant = Tenant::query()->create([
@@ -410,7 +628,7 @@ class BusinessOnlineStoreTest extends TestCase
                     ['bank_name' => 'Asset Bank', 'account_name' => 'Bank Asset Shop', 'account_number' => '1234567890', 'status' => 'active'],
                 ],
             ])
-            ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]));
+            ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#business-profile');
 
         $tenant->refresh();
         $bankAccount = $tenant->settings['bank_details'][0];

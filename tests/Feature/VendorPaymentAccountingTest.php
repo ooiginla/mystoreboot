@@ -18,7 +18,7 @@ class VendorPaymentAccountingTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_vendor_payment_credits_selected_current_asset_account(): void
+    public function test_pre_receipt_vendor_payment_posts_to_vendor_advances_and_credits_selected_asset_account(): void
     {
         $tenant = Tenant::query()->create([
             'name' => 'Procurement Shop',
@@ -68,7 +68,8 @@ class VendorPaymentAccountingTest extends TestCase
             ->where('source_event', 'paid')
             ->firstOrFail();
 
-        $this->assertTrue($journal->lines->contains(fn ($line): bool => $line->account->code === '2000' && $line->debit_minor === 500000));
+        $this->assertTrue($journal->lines->contains(fn ($line): bool => $line->account->code === '1220' && $line->debit_minor === 500000));
+        $this->assertFalse($journal->lines->contains(fn ($line): bool => $line->account->code === '2000'));
         $this->assertTrue($journal->lines->contains(fn ($line): bool => $line->account->code === '1010' && $line->credit_minor === 500000));
         $this->assertSame(PaymentStatus::Paid, $purchaseOrder->refresh()->payment_status);
     }

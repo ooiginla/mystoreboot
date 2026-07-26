@@ -1,9 +1,9 @@
 @php
     $money = fn (?int $minor): string => number_format(($minor ?? 0) / 100, 2);
     $statusTag = fn (string $status): string => match ($status) {
-        'active', 'completed', 'resolved', 'closed' => 'success',
-        'pending', 'open', 'in_progress', 'normal' => 'warning',
-        'blocked', 'urgent', 'high' => 'danger',
+        'active', 'completed', 'resolved', 'closed', 'service_request' => 'success',
+        'pending', 'open', 'in_progress', 'normal', 'internal_issue' => 'warning',
+        'blocked', 'urgent', 'high', 'complaint' => 'danger',
         default => 'neutral',
     };
 @endphp
@@ -22,10 +22,18 @@
         .tag.success { background: #ecfdf3; color: #067647; }
         .tag.warning { background: #fffaeb; color: #b54708; }
         .tag.danger { background: #fef3f2; color: #b42318; }
+        .summary-item .tag { display: inline-flex; margin-top: 0; text-transform: none; letter-spacing: 0; }
+        .ticket-quick-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 1fr); gap: 12px; margin-top: 16px; }
+        .ticket-quick-action { display: flex; align-items: end; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-soft); padding: 12px; }
+        .ticket-assignment { display: grid; gap: 3px; }
+        .ticket-assignment span { color: var(--muted); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+        .ticket-status-form { display: flex; align-items: end; gap: 8px; }
+        .ticket-status-form .field { flex: 1; }
+        .ticket-status-form select { min-width: 150px; padding-top: 8px; padding-bottom: 8px; }
         .link-button { border: 0; background: transparent; padding: 0; color: var(--accent); cursor: pointer; font-weight: 800; text-align: left; }
         .mini-list { display: grid; gap: 8px; }
         .mini-row { border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: flex; justify-content: space-between; gap: 10px; }
-        @media (max-width: 960px) { .crm-filter { grid-template-columns: 1fr; } }
+        @media (max-width: 960px) { .crm-filter, .ticket-quick-actions { grid-template-columns: 1fr; } }
     </style>
 
     <div class="topbar">

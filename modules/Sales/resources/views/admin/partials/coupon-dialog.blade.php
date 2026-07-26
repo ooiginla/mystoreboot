@@ -1,5 +1,5 @@
 <dialog class="dialog" id="coupon-dialog">
-    <div class="dialog-header"><div><h2 class="panel-title">Add coupon</h2><p class="subtle">Create an amount or percentage coupon for POS sales.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
+    <div class="dialog-header"><div><h2 class="panel-title">Add coupon</h2><p class="subtle">Create an amount or percentage coupon for sales.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
     <div class="dialog-body">
         <form class="mini-form" method="POST" action="{{ route('admin.sales.coupons.store') }}">
             @csrf

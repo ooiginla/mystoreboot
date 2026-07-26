@@ -30,14 +30,14 @@
                         @endforeach
                     </select>
                 </div>
-                <x-variant-picker label="Product variant" class="full" />
+                <x-variant-picker label="Product variant" class="full" enhanced />
                 <div class="field">
                     <label>Quantity</label>
                     <input name="quantity" type="number" min="1" step="1" required>
                 </div>
                 <div class="field">
                     <label>Unit cost</label>
-                    <input name="unit_cost" type="text" inputmode="decimal" data-money-input>
+                    <input type="text" value="Uses current average cost" disabled>
                 </div>
                 <div class="field">
                     <label>Reference number</label>

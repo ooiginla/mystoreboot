@@ -1,12 +1,14 @@
 @php
     $money = fn (?int $minor): string => number_format(($minor ?? 0) / 100, 2);
-    $signedMoney = fn (int $minor): string => ($minor < 0 ? '-' : '').$tenant->currency_code.' '.number_format(abs($minor) / 100, 2);
     $currencySymbols = ['NGN' => '₦', 'USD' => '$', 'GHS' => '₵', 'KES' => 'KSh', 'ZAR' => 'R', 'GBP' => '£', 'EUR' => '€', 'GHc' => '₵'];
     $currencySymbol = $currencySymbols[$tenant->currency_code] ?? $tenant->currency_code;
-    $activeBranchForView = app(\App\Support\ActiveBranchManager::class)->stateForRequest(request(), auth()->user())['activeBranch'];
-    $posLocations = $activeTill
-        ? $locations->filter(fn ($location) => $location->branch_id === null || $location->branch_id === $activeTill->branch_id)
+    $signedMoney = fn (int $minor): string => ($minor < 0 ? '-' : '').$currencySymbol.' '.number_format(abs($minor) / 100, 2);
+    $recordSaleLocations = $recordSaleBranch
+        ? $locations->filter(fn ($location) => $location->branch_id === null || $location->branch_id === $recordSaleBranch->id)
         : collect();
+    $recordSaleLocation = $recordSaleLocations->firstWhere('branch_id', $recordSaleBranch?->id) ?? $recordSaleLocations->first();
+    $canRecordOrderPayment = fn ($order): bool => in_array($order->source, ['offline', 'online'], true)
+        || ($activeTill && $activeTill->branch_id === $order->branch_id);
     $movementTypes = [
         'cash_in' => 'Cash In',
         'cash_out' => 'Cash Out',
@@ -56,16 +58,6 @@
     </datalist>
 
     <style>
-        .sales-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 18px; }
-        .sales-metric-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 18px 20px; min-height: 104px; display: flex; justify-content: space-between; align-items: center; gap: 16px; box-shadow: var(--shadow-sm); }
-        .sales-metric-card.danger { border-left: 4px solid var(--danger); }
-        .sales-metric-label { color: var(--muted); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
-        .sales-metric-value { display: block; margin-top: 10px; color: var(--ink); font-size: 20px; line-height: 1.15; font-weight: 750; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .sales-metric-card > div { min-width: 0; }
-        .sales-metric-card.danger .sales-metric-value { color: var(--danger); }
-        .sales-metric-icon { width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: linear-gradient(140deg, #22dd85, var(--brand)); font-size: 17px; font-weight: 750; flex: 0 0 auto; }
-        .sales-metric-icon.soft { color: var(--brand-strong); background: var(--brand-100); }
-        .sales-metric-icon.danger { color: var(--danger); background: var(--danger-bg); }
         .sales-header-context { margin-top: 8px; color: var(--muted); font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; }
         .sales-header-context strong { color: var(--ink); font-weight: 700; }
         .sales-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); gap: 18px; align-items: start; }
@@ -80,7 +72,14 @@
         .sales-summary-header { background: linear-gradient(120deg, var(--brand-050), #f4fbf7); border-bottom: 1px solid var(--line); padding: 18px 22px; }
         .sales-summary-header h3 { margin: 0; color: var(--brand-strong); font-size: 17px; font-weight: 750; letter-spacing: -.01em; }
         .sales-summary-body { padding: 20px 22px; }
-        .sales-summary-discount { margin: 16px 0; border-radius: var(--radius-sm); background: var(--panel-soft); border: 1px solid var(--line); padding: 16px; display: grid; gap: 14px; }
+        .sales-product-entry-grid { display: grid; grid-template-columns: minmax(0, 1fr) 84px; gap: 14px; }
+        .sales-product-quantity input { width: 100%; min-width: 0; padding-inline: 6px; text-align: center; }
+        .sales-summary-expander { width: 100%; margin: 10px 0 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; color: var(--ink-soft); padding: 10px 12px; cursor: pointer; font-size: 13.5px; font-weight: 700; text-align: left; }
+        .sales-summary-expander:hover, .sales-summary-expander[aria-expanded="true"] { border-color: #a6f4c5; background: var(--brand-050); color: var(--brand-strong); }
+        .sales-summary-expander svg { width: 16px; height: 16px; transition: transform .15s; }
+        .sales-summary-expander[aria-expanded="true"] svg { transform: rotate(45deg); }
+        .sales-summary-collapsible { margin: 8px 0 12px; border-radius: var(--radius-sm); background: var(--panel-soft); border: 1px solid var(--line); padding: 16px; display: grid; gap: 14px; }
+        .sales-summary-collapsible[hidden] { display: none; }
         .sales-total-band { margin: 16px 0; border-radius: var(--radius); background: linear-gradient(120deg, var(--brand), var(--brand-strong)); color: #eafff5; padding: 18px 22px; display: flex; justify-content: space-between; align-items: center; gap: 16px; box-shadow: 0 10px 22px -10px rgba(6,193,104,.5); }
         .sales-total-band span { font-size: 15px; font-weight: 650; }
         .sales-total-band strong { font-size: 24px; line-height: 1.1; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -93,10 +92,23 @@
         .sales-tag.success { background: var(--brand-050); color: #067647; border-color: #a6f4c5; }
         .sales-tag.warning { background: var(--warn-bg); color: var(--warn); border-color: #fde3a7; }
         .sales-tag.danger { background: var(--danger-bg); color: var(--danger-strong); border-color: var(--danger-border); }
-        .link-button { border: 0; background: transparent; padding: 0; color: var(--accent); cursor: pointer; font-weight: 700; text-align: left; }
-        .cart-row { border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: var(--radius-sm); padding: 11px 12px; display: grid; grid-template-columns: 1fr 84px 120px 36px; gap: 10px; align-items: center; background: var(--brand-050); }
+        .link-button { border: 0; background: transparent; padding: 0; color: var(--brand-strong); cursor: pointer; font-weight: 700; text-align: left; }
+        .link-button:hover { color: var(--brand); text-decoration: underline; text-underline-offset: 3px; }
+        .order-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .order-actions .btn { padding: 7px 11px; }
+        .btn.order-view { border-color: var(--brand-100); background: var(--brand-050); color: var(--brand-strong); }
+        .btn.order-view:hover { border-color: #a6f4c5; background: var(--brand-100); color: #067647; }
+        .btn.order-receipt { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+        .btn.order-receipt:hover { border-color: #93c5fd; background: #dbeafe; color: #1e40af; }
+        .btn.order-payment { border-color: var(--brand); background: var(--brand); color: #fff; box-shadow: 0 4px 12px -3px rgba(6,193,104,.35); }
+        .btn.order-payment:hover { border-color: var(--brand-strong); background: var(--brand-strong); }
+        .btn.order-return { border-color: #fed7aa; background: #fff7ed; color: #c2410c; }
+        .btn.order-return:hover { border-color: #fdba74; background: #ffedd5; color: #9a3412; }
+        .cart-row { border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: var(--radius-sm); padding: 9px 12px; display: grid; grid-template-columns: minmax(0, 1fr) 58px 112px 28px; gap: 8px; align-items: center; background: var(--brand-050); }
         .cart-row strong { font-weight: 700; color: var(--ink); font-size: 14px; }
         .cart-row > span { font-weight: 750; color: var(--brand-strong); text-align: right; font-variant-numeric: tabular-nums; }
+        .cart-row input[data-cart-qty] { width: 58px; min-width: 0; height: 34px; justify-self: center; border-radius: 7px; padding: 4px 5px; text-align: center; font-size: 13px; font-weight: 700; }
+        .cart-row .cart-remove-button { width: 28px; height: 28px; border-radius: 7px; padding: 0; font-size: 12px; }
         .cart-remove-button { border-color: var(--danger-border); background: var(--danger-bg); color: var(--danger); font-weight: 800; }
         .cart-remove-button:hover { border-color: var(--danger); background: #fee4e2; color: var(--danger-strong); }
         .summary-cart-items { display: grid; gap: 8px; margin-bottom: 12px; }
@@ -111,8 +123,41 @@
         .danger-text { color: var(--danger); font-weight: 750; }
         .sales-inline-check { margin-top: 14px; display: inline-flex; align-items: center; gap: 10px; color: var(--ink-soft); font-size: 14px; font-weight: 700; cursor: pointer; }
         .sales-input-error { border-color: var(--danger) !important; box-shadow: 0 0 0 3.5px rgba(220,38,38,.15) !important; }
+        .sales-search-picker { position: relative; }
+        .sales-search-control { display: grid; grid-template-columns: minmax(0, 1fr) 48px; border: 1px solid #d4ddd8; border-radius: var(--radius-sm); background: #fff; overflow: hidden; transition: border-color .15s, box-shadow .15s; }
+        .sales-search-control:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3.5px var(--brand-ring); }
+        .sales-search-control input { min-width: 0; border: 0; border-radius: 0; box-shadow: none; }
+        .sales-search-control input:focus { border: 0; box-shadow: none; }
+        .sales-search-button { display: grid; place-items: center; border: 0; border-left: 1px solid var(--brand-strong); background: var(--brand); color: #fff; cursor: pointer; }
+        .sales-search-button:hover { background: var(--brand-strong); }
+        .sales-search-button svg { width: 22px; height: 22px; }
+        .sales-search-options { position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; right: 0; max-height: 280px; overflow-y: auto; border: 1px solid #d4ddd8; border-radius: var(--radius-sm); background: #fff; padding: 6px; box-shadow: 0 14px 30px -10px rgba(16,24,40,.28); }
+        .sales-search-options[hidden] { display: none; }
+        .sales-search-option { width: 100%; display: block; border: 0; border-radius: 7px; background: #fff; color: var(--ink); padding: 11px 12px; cursor: pointer; text-align: left; font-size: 14px; font-weight: 700; line-height: 1.35; }
+        .sales-search-option:hover, .sales-search-option.active { background: var(--brand-050); color: var(--brand-strong); }
+        .sales-search-option.add-customer { margin-bottom: 6px; border: 1px solid var(--brand-100); background: var(--brand-050); color: var(--brand-strong); }
+        .sales-search-option.add-customer:hover, .sales-search-option.add-customer.active { background: var(--brand-100); }
+        .sales-search-empty { padding: 12px; color: var(--muted); font-size: 13.5px; text-align: center; }
         .sales-pos-error { margin-top: 14px; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger-strong); font-weight: 700; font-size: 13.5px; display: flex; gap: 8px; align-items: flex-start; }
         .sales-pos-error[hidden] { display: none; }
+        .sales-confirm-section { display: grid; gap: 10px; }
+        .sales-confirm-section + .sales-confirm-section { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+        .sales-confirm-heading { margin: 0; color: var(--ink); font-size: 14px; font-weight: 800; }
+        .sales-confirm-items { display: grid; gap: 8px; }
+        .sales-confirm-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-soft); padding: 10px 12px; }
+        .sales-confirm-item strong, .sales-confirm-item small { display: block; }
+        .sales-confirm-item strong { color: var(--ink); font-size: 13.5px; }
+        .sales-confirm-item small { margin-top: 2px; color: var(--muted); font-size: 12px; }
+        .sales-confirm-item > span:last-child { color: var(--brand-strong); font-weight: 800; white-space: nowrap; }
+        .sales-confirm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .sales-confirm-detail { border-radius: var(--radius-sm); background: var(--panel-soft); padding: 10px 12px; }
+        .sales-confirm-detail span { display: block; color: var(--muted); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+        .sales-confirm-detail strong { display: block; margin-top: 2px; color: var(--ink); font-size: 13.5px; overflow-wrap: anywhere; }
+        .sales-confirm-totals { display: grid; gap: 7px; }
+        .sales-confirm-total-line { display: flex; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 13.5px; }
+        .sales-confirm-total-line strong { color: var(--ink-soft); }
+        .sales-confirm-total-line.grand { margin-top: 5px; padding-top: 11px; border-top: 1px solid var(--line); color: var(--ink); font-size: 16px; font-weight: 800; }
+        .sales-confirm-total-line.grand strong { color: var(--brand-strong); font-size: 19px; }
         .till-locked-pos { border: 1px dashed var(--line); border-radius: var(--radius); padding: 24px; text-align: center; background: var(--panel-soft); display: grid; gap: 6px; justify-items: center; }
         .thermal-receipt-dialog { width: min(430px, calc(100vw - 24px)); }
         .thermal-receipt-dialog .dialog-body { background: #f3f4f6; }
@@ -137,7 +182,7 @@
         .sales-submit-action { margin-top: 18px; }
         @media print {
             body:has(dialog[open]) .shell { display: block; }
-            body:has(dialog[open]) .sidebar, body:has(dialog[open]) .topbar, body:has(dialog[open]) .tab-layout, body:has(dialog[open]) .sales-metrics { display: none; }
+            body:has(dialog[open]) .sidebar, body:has(dialog[open]) .topbar, body:has(dialog[open]) .tab-layout { display: none; }
             dialog[open] { display: block; position: static; width: 100%; max-width: none; box-shadow: none; }
             dialog[open]::backdrop, dialog[open] .dialog-header .icon-btn, dialog[open] [data-print-dialog], dialog[open] [data-dialog-close] { display: none; }
             .dialog-body { max-height: none; overflow: visible; }
@@ -146,15 +191,46 @@
             dialog[open].thermal-receipt-dialog .dialog-body { padding: 0; background: #fff; }
             dialog[open].thermal-receipt-dialog .thermal-receipt-paper { width: 80mm; max-width: 80mm; padding: 4mm 3mm; box-shadow: none; }
         }
-        @media (max-width: 1200px) { .sales-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sales-grid { grid-template-columns: 1fr; } .sales-summary-card { position: static; } }
-        @media (max-width: 700px) { .sales-metrics { grid-template-columns: 1fr; } .cart-row { grid-template-columns: 1fr 70px 1fr 36px; } }
+        @media (max-width: 1200px) { .sales-grid { grid-template-columns: 1fr; } .sales-summary-card { position: static; } }
+        @media (max-width: 700px) {
+            #pos > .panel-body { padding: 14px; }
+            .sales-card { padding: 16px; }
+            .sales-product-entry-grid { grid-template-columns: 1fr; }
+            .sales-product-quantity input { min-height: 44px; padding-inline: 12px; text-align: left; }
+            .cart-row {
+                grid-template-columns: 88px minmax(0, 1fr) 40px;
+                grid-template-areas:
+                    "product product product"
+                    "quantity price remove";
+                gap: 12px 10px;
+                padding: 12px;
+            }
+            .cart-row strong { grid-area: product; overflow-wrap: anywhere; line-height: 1.45; }
+            .cart-row input[data-cart-qty] { grid-area: quantity; width: 88px; height: 40px; justify-self: start; }
+            .cart-row > span { grid-area: price; align-self: center; white-space: nowrap; }
+            .cart-row .cart-remove-button { grid-area: remove; width: 40px; height: 40px; justify-self: end; font-size: 14px; }
+            .sales-summary-body { padding: 16px; }
+            .sales-total-band { padding: 16px; }
+        }
+        @media (max-width: 420px) {
+            .sales-card { padding: 14px; }
+            .cart-row {
+                grid-template-columns: 76px minmax(0, 1fr) 40px;
+                padding: 11px;
+            }
+            .cart-row input[data-cart-qty] { width: 76px; }
+            .sales-total-band { align-items: flex-start; flex-direction: column; gap: 6px; }
+            .sales-total-band strong { font-size: 21px; }
+            .sales-confirm-grid { grid-template-columns: 1fr; }
+            .sales-confirm-item { align-items: start; }
+        }
     </style>
 
     <div class="topbar">
         <div>
-            <div class="eyebrow">Record sale · invoicing · till</div>
+            <div class="eyebrow">Offline sales · invoicing · payments</div>
             <h1>Record Sale</h1>
-            <p class="subtle">Record offline &amp; back-office sales, manage the till, invoices, receipts, credit sales, coupons, returns and refunds for {{ $tenant->name }}. For live counter selling, use <a href="{{ route('admin.sales.retail-pos', ['tenant' => $tenant->id]) }}" style="color:var(--brand-strong); font-weight:700;">Retail POS</a>.</p>
+            <p class="subtle">Record offline and back-office sales at any time, without opening a till. Manage invoices, receipts, credit sales, returns and refunds for {{ $tenant->name }}. For live counter selling with till sessions, use <a href="{{ route('admin.sales.retail-pos', ['tenant' => $tenant->id]) }}" style="color:var(--brand-strong); font-weight:700;">Retail POS</a>.</p>
         </div>
         @if ($isPlatformAdmin)
             <form method="GET" action="{{ route('admin.sales.index') }}" style="min-width: 260px;">
@@ -178,63 +254,69 @@
         <nav class="pill-nav" aria-label="Sales sections" role="tablist">
             <a href="#pos" role="tab" data-tab-target="pos">Record sale</a>
             <a href="#orders" role="tab" data-tab-target="orders">Orders <span class="badge neutral">{{ $orders->count() }}</span></a>
-            <a href="#coupons" role="tab" data-tab-target="coupons">Coupons <span class="badge neutral">{{ $coupons->count() }}</span></a>
             <a href="#returns" role="tab" data-tab-target="returns">Returns</a>
         </nav>
 
         <div class="content-stack">
-            {{-- Till & cash management (open / movements / close / reconcile / sessions) now lives entirely in Retail POS. --}}
-
             <section class="panel tab-panel" id="pos" role="tabpanel" data-tab-panel hidden>
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Point of Sale</h2>
-                        <p class="subtle">Search customer and products, build a cart, calculate totals, collect payment, and post stock-out.</p>
-                        @if ($activeTill)
+                        <h2 class="panel-title">Record Offline Sale</h2>
+                        <p class="subtle">Search customers and products, record payment, and update stock without a till session.</p>
+                        @if ($recordSaleBranch)
                             <div class="sales-header-context">
-                                <span>Signed-in branch: <strong>{{ $activeTill->branch?->name ?? 'Not set' }}</strong></span>
-                                <span>Inventory location: <strong>{{ $posLocations->first()?->name ?? 'No location' }}</strong></span>
+                                <span>Branch: <strong>{{ $recordSaleBranch->name }}</strong></span>
+                                <span>Inventory location: <strong>{{ $recordSaleLocation?->name ?? 'No location' }}</strong></span>
                                 <span>Order date: <strong>{{ now()->toDateString() }}</strong></span>
                             </div>
                         @endif
                     </div>
                 </div>
                 <div class="panel-body">
-                    @if (! $activeTill)
-                        <div class="till-locked-pos">
-                            <h3 class="panel-title">Open a till before recording a sale</h3>
-                            <p class="subtle">Sales post against an open till session. Open your till from the Retail POS, then come back to record offline sales here.</p>
-                            <div class="button-row" style="justify-content: center;"><a class="btn primary" href="{{ route('admin.sales.retail-pos', ['tenant' => $tenant->id]) }}">Open till in Retail POS</a></div>
-                        </div>
-                    @else
                     <form class="mini-form" method="POST" action="{{ route('admin.sales.orders.store') }}" data-pos-form>
                         @csrf
                         <input type="hidden" name="source" value="offline">
                         <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
-                        <input type="hidden" name="sales_till_session_id" value="{{ $activeTill->id }}">
-                        <input type="hidden" name="branch_id" value="{{ $activeTill->branch_id }}">
-                        <input type="hidden" name="inventory_location_id" value="{{ $posLocations->first()?->id }}">
+                        <input type="hidden" name="branch_id" value="{{ $recordSaleBranch?->id }}">
+                        <input type="hidden" name="inventory_location_id" value="{{ $recordSaleLocation?->id }}">
                         <input type="hidden" name="order_date" value="{{ now()->toDateString() }}">
-                        <div class="sales-metrics">
-                            <div class="sales-metric-card"><div><span class="sales-metric-label">Orders</span><strong class="sales-metric-value">{{ $stats['orders'] }}</strong></div><span class="sales-metric-icon">SO</span></div>
-                            <div class="sales-metric-card"><div><span class="sales-metric-label">Revenue</span><strong class="sales-metric-value">{{ $tenant->currency_code }} {{ $money($stats['revenue_minor']) }}</strong></div><span class="sales-metric-icon">{{ $currencySymbol }}</span></div>
-                            <div class="sales-metric-card"><div><span class="sales-metric-label">Credit balance</span><strong class="sales-metric-value">{{ $tenant->currency_code }} {{ $money($stats['credit_minor']) }}</strong></div><span class="sales-metric-icon soft">CR</span></div>
-                            <div class="sales-metric-card danger"><div><span class="sales-metric-label">Returns</span><strong class="sales-metric-value">{{ $tenant->currency_code }} {{ $money($stats['returns_minor']) }}</strong></div><span class="sales-metric-icon danger">RT</span></div>
-                        </div>
                         <div class="sales-grid">
                             <div class="stack">
                                 <div class="sales-card">
                                     <h3 class="sales-card-title">Sale Information</h3>
                                     <div class="sales-customer-grid">
-                                        <div class="field" data-sales-customer-picker><label>Customer</label><input type="text" list="sales-customer-options" data-sales-customer-search value="{{ $walkInCustomer->name }} · {{ $walkInCustomer->phone }}" required><input type="hidden" name="customer_id" data-sales-customer-value value="{{ $walkInCustomer->id }}"></div>
+                                        <div class="field" data-sales-customer-picker>
+                                            <label>Customer</label>
+                                            <div class="sales-search-picker" data-sales-search-picker>
+                                                <div class="sales-search-control">
+                                                    <input type="text" data-sales-customer-search data-sales-options-id="sales-customer-options" value="{{ $walkInCustomer->name }} · {{ $walkInCustomer->phone }}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" required>
+                                                    <button class="sales-search-button" type="button" data-sales-search-toggle aria-label="Search customers">
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg>
+                                                    </button>
+                                                </div>
+                                                <div class="sales-search-options" data-sales-search-options role="listbox" hidden></div>
+                                            </div>
+                                            <input type="hidden" name="customer_id" data-sales-customer-value value="{{ $walkInCustomer->id }}">
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="sales-card">
                                     <h3 class="sales-card-title"><span class="sales-card-icon">+</span> Add Product to Cart</h3>
                                     <div style="display: grid; gap: 14px;">
-                                        <div class="form-grid" style="grid-template-columns: minmax(0, 2fr) minmax(140px, .7fr);">
-                                            <div class="field"><label>Search Product, Variant or SKU</label><input type="text" list="sales-product-options" data-sales-product-search placeholder="Type to search..."></div>
-                                            <div class="field"><label>Quantity</label><input type="number" min="1" step="1" value="1" data-sales-product-qty></div>
+                                        <div class="sales-product-entry-grid">
+                                            <div class="field">
+                                                <label>Search Product, Variant or SKU</label>
+                                                <div class="sales-search-picker" data-sales-search-picker>
+                                                    <div class="sales-search-control">
+                                                        <input type="text" data-sales-product-search data-sales-options-id="sales-product-options" placeholder="Type to search..." autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false">
+                                                        <button class="sales-search-button" type="button" data-sales-search-toggle aria-label="Search products">
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg>
+                                                        </button>
+                                                    </div>
+                                                    <div class="sales-search-options" data-sales-search-options role="listbox" hidden></div>
+                                                </div>
+                                            </div>
+                                            <div class="field sales-product-quantity"><label>Quantity</label><input type="number" min="1" step="1" value="1" data-sales-product-qty></div>
                                         </div>
                                         <button class="sales-primary-button" type="button" data-sales-add-product>+ Add to Cart</button>
                                         <div data-sales-cart style="display: grid; gap: 8px;"></div>
@@ -245,30 +327,40 @@
                                     <h3 class="sales-card-title">Additional Note</h3>
                                     <textarea name="notes" rows="2" placeholder="Enter internal notes for this transaction..."></textarea>
                                     <div class="field sales-delivery-note"><label>Delivery Information</label><textarea name="delivery_address" rows="2" placeholder="Address, recipient contact..."></textarea></div>
-                                    <div class="field" style="margin-top: 14px;"><label>Delivery Status</label><select name="delivery_status" required><option value="delivered" selected>Delivered</option><option value="pending">Pending</option><option value="processing">Processing</option><option value="out_for_delivery">Out for delivery</option><option value="failed">Failed delivery</option><option value="returned">Returned</option></select></div>
                                 </div>
                             </div>
                             <div class="sales-summary-card">
                                 <div class="sales-summary-header"><h3>Order Summary</h3></div>
                                 <div class="sales-summary-body">
                                     <div class="summary-cart-items" data-sales-summary-items></div>
-                                    <div class="summary-line"><span>Subtotal</span><strong data-sales-subtotal>{{ $tenant->currency_code }} 0.00</strong></div>
-                                    <div class="summary-line"><span>Tax</span><strong data-sales-tax>{{ $tenant->currency_code }} 0.00</strong></div>
+                                    <div class="summary-line"><span>Subtotal</span><strong data-sales-subtotal>{{ $currencySymbol }} 0.00</strong></div>
+                                    <div class="summary-line"><span>Tax</span><strong data-sales-tax>{{ $currencySymbol }} 0.00</strong></div>
                                     <div class="summary-divider"></div>
-                                    <div class="form-grid">
-                                        <div class="field"><label>Delivery Method</label><select name="delivery_method" data-sales-delivery-method><option value="">No delivery</option>@foreach ($deliveryMethods as $method)<option value="{{ $method['name'] }}" data-price="{{ $method['price'] ?? 0 }}">{{ $method['name'] }}</option>@endforeach</select></div>
-                                        <div class="field"><label>Shipping Fee</label><input name="shipping" type="text" inputmode="decimal" data-money-input data-sales-shipping value="0.00"></div>
-                                    </div>
-                                    <div class="sales-summary-discount">
-                                        <div class="field"><label>Coupon Code</label><input name="coupon_code" data-sales-coupon-code placeholder="Enter code">@foreach ($coupons as $coupon)<span hidden data-sales-coupon data-code="{{ $coupon->code }}" data-type="{{ $coupon->discount_type->value }}" data-amount="{{ $coupon->discount_value_minor / 100 }}" data-percent="{{ $coupon->discount_percent }}"></span>@endforeach</div>
+                                    <button class="sales-summary-expander" type="button" data-sales-delivery-toggle aria-expanded="false">
+                                        <span>Delivery details</span>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                                    </button>
+                                    <div class="sales-summary-collapsible" data-sales-delivery-panel hidden>
                                         <div class="form-grid">
-                                            <div class="field"><label>Admin Discount</label><select name="admin_discount_type" data-sales-admin-discount-type><option value="amount">Amount ({{ $currencySymbol }})</option><option value="percentage">Percentage (%)</option></select></div>
-                                            <div class="field"><label>Value</label><input name="admin_discount_value" type="text" inputmode="decimal" data-money-input data-sales-admin-discount value="0"></div>
+                                            <div class="field"><label>Delivery Method</label><select name="delivery_method" data-sales-delivery-method><option value="">No delivery</option>@foreach ($deliveryMethods as $method)<option value="{{ $method['name'] }}" data-price="{{ $method['price'] ?? 0 }}" @selected(old('delivery_method') === $method['name'])>{{ $method['name'] }}</option>@endforeach</select></div>
+                                            <div class="field"><label>Shipping Fee</label><input name="shipping" type="text" inputmode="decimal" data-money-input data-sales-shipping value="{{ old('shipping', '0.00') }}"></div>
+                                        </div>
+                                        <div class="field"><label>Delivery Status</label><select name="delivery_status" required><option value="pending" @selected(old('delivery_status', 'pending') === 'pending')>Pending</option><option value="processing" @selected(old('delivery_status') === 'processing')>Processing</option><option value="out_for_delivery" @selected(old('delivery_status') === 'out_for_delivery')>Out for delivery</option><option value="delivered" @selected(old('delivery_status') === 'delivered')>Delivered</option><option value="failed" @selected(old('delivery_status') === 'failed')>Failed delivery</option><option value="returned" @selected(old('delivery_status') === 'returned')>Returned</option></select></div>
+                                    </div>
+                                    <button class="sales-summary-expander" type="button" data-sales-discount-toggle aria-expanded="false">
+                                        <span>Coupon &amp; admin discount</span>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                                    </button>
+                                    <div class="sales-summary-collapsible" data-sales-discount-panel hidden>
+                                        <div class="field"><label>Coupon Code</label><input name="coupon_code" data-sales-coupon-code placeholder="Enter code" value="{{ old('coupon_code') }}">@foreach ($coupons as $coupon)<span hidden data-sales-coupon data-code="{{ $coupon->code }}" data-type="{{ $coupon->discount_type->value }}" data-amount="{{ $coupon->discount_value_minor / 100 }}" data-percent="{{ $coupon->discount_percent }}"></span>@endforeach</div>
+                                        <div class="form-grid">
+                                            <div class="field"><label>Admin Discount</label><select name="admin_discount_type" data-sales-admin-discount-type><option value="amount" @selected(old('admin_discount_type', 'amount') === 'amount')>Amount ({{ $currencySymbol }})</option><option value="percentage" @selected(old('admin_discount_type') === 'percentage')>Percentage (%)</option></select></div>
+                                            <div class="field"><label>Value</label><input name="admin_discount_value" type="text" inputmode="decimal" data-money-input data-sales-admin-discount value="{{ old('admin_discount_value', '0') }}"></div>
                                         </div>
                                     </div>
-                                    <div class="summary-line discount"><span>Coupon Discount</span><strong data-sales-coupon-discount>-{{ $tenant->currency_code }} 0.00</strong></div>
-                                    <div class="summary-line discount"><span>Admin Discount</span><strong data-sales-admin-discount-label>-{{ $tenant->currency_code }} 0.00</strong></div>
-                                    <div class="sales-total-band"><span>Total</span><strong data-sales-total>{{ $tenant->currency_code }} 0.00</strong></div>
+                                    <div class="summary-line discount"><span>Coupon Discount</span><strong data-sales-coupon-discount>-{{ $currencySymbol }} 0.00</strong></div>
+                                    <div class="summary-line discount"><span>Admin Discount</span><strong data-sales-admin-discount-label>-{{ $currencySymbol }} 0.00</strong></div>
+                                    <div class="sales-total-band"><span>Total</span><strong data-sales-total>{{ $currencySymbol }} 0.00</strong></div>
                                     <div class="summary-divider"></div>
                                     <div class="field"><label>Payment Method</label><select name="payment_method" data-payment-method-selector>@foreach ($paymentMethods as $method)<option value="{{ $method }}">{{ strtoupper($method) }}</option>@endforeach</select></div>
                                     <div class="field" data-payment-account-wrapper hidden>
@@ -287,7 +379,7 @@
                                     <p class="subtle" data-sales-credit-hint hidden style="margin: 6px 0 0;">Collect a deposit (part payment) or nothing now — the balance is recorded as the customer's outstanding credit.</p>
                                     <div class="form-grid" style="margin-top: 16px;">
                                         <div class="field"><label>Amount Paid</label><input name="amount_paid" type="text" inputmode="decimal" data-money-input data-sales-paid value="0.00" style="font-size: 22px; font-weight: 900;"></div>
-                                        <div class="field"><label data-sales-change-label>Change</label><div class="sales-change-box" data-sales-change>{{ $tenant->currency_code }} 0.00</div></div>
+                                        <div class="field"><label data-sales-change-label>Change</label><div class="sales-change-box" data-sales-change>{{ $currencySymbol }} 0.00</div></div>
                                     </div>
                                     <div class="sales-pos-error" data-pos-error hidden></div>
                                     <button class="sales-primary-button sales-submit-action" type="submit">Create sales order</button>
@@ -295,7 +387,6 @@
                             </div>
                         </div>
                     </form>
-                    @endif
                 </div>
             </section>
 
@@ -305,7 +396,7 @@
                     <form class="form-grid" method="GET" action="{{ route('admin.sales.index') }}#orders" style="margin-bottom: 16px;">
                         <input type="hidden" name="tenant" value="{{ $tenant->id }}">
                         <div class="field"><label>Search orders</label><input name="order_search" value="{{ $orderSearch }}" placeholder="Order, invoice, receipt, customer, phone"></div>
-                        <div class="button-row" style="justify-content: flex-start;"><button class="btn secondary" type="submit">Search</button><a class="btn secondary" href="{{ route('admin.sales.index', ['tenant' => $tenant->id]).'#orders' }}">Reset</a></div>
+                        <div class="button-row" style="justify-content: flex-start;"><button class="btn primary" type="submit">Search</button><a class="btn secondary" href="{{ route('admin.sales.index', ['tenant' => $tenant->id]).'#orders' }}">Reset</a></div>
                     </form>
                     <table class="table">
                         <thead><tr><th>Order</th><th>Customer</th><th>Branch</th><th>Status</th><th>Payment</th><th>Total</th><th>Paid</th><th></th></tr></thead>
@@ -317,9 +408,9 @@
                                     <td>{{ $order->branch?->name ?? 'Not set' }}</td>
                                     <td><span class="sales-tag {{ $statusClass($order->order_status->value) }}">{{ $order->order_status->label() }}</span></td>
                                     <td><span class="sales-tag {{ $statusClass($order->payment_status->value) }}">{{ $order->payment_status->label() }}</span></td>
-                                    <td>{{ $tenant->currency_code }} {{ $money($order->total_minor) }}</td>
-                                    <td>{{ $tenant->currency_code }} {{ $money($order->paid_minor) }}</td>
-                                    <td style="display: flex; gap: 8px; flex-wrap: wrap;"><button class="btn secondary" type="button" data-dialog-open="order-view-{{ $order->id }}">View</button><button class="btn secondary" type="button" data-dialog-open="sales-receipt-{{ $order->id }}">Receipt</button>@if ($order->balance_minor > 0 && $activeTill && $activeTill->branch_id === $order->branch_id)<button class="btn secondary" type="button" data-dialog-open="order-payment-{{ $order->id }}">Add payment</button>@endif<button class="btn secondary" type="button" data-dialog-open="order-return-{{ $order->id }}">Return</button></td>
+                                    <td>{{ $currencySymbol }} {{ $money($order->total_minor) }}</td>
+                                    <td>{{ $currencySymbol }} {{ $money($order->paid_minor) }}</td>
+                                    <td><div class="order-actions"><button class="btn order-view" type="button" data-dialog-open="order-view-{{ $order->id }}">View</button><button class="btn order-receipt" type="button" data-dialog-open="sales-receipt-{{ $order->id }}">Receipt</button>@if ($order->balance_minor > 0 && $canRecordOrderPayment($order))<button class="btn order-payment" type="button" data-dialog-open="order-payment-{{ $order->id }}">Add payment</button>@endif<button class="btn order-return" type="button" data-dialog-open="order-return-{{ $order->id }}">Return</button></div></td>
                                 </tr>
                             @empty
                                 <tr><td colspan="8"><div class="empty">No sales orders yet.</div></td></tr>
@@ -329,28 +420,84 @@
                 </div>
             </section>
 
-            <section class="panel tab-panel" id="coupons" role="tabpanel" data-tab-panel hidden>
-                <div class="panel-header"><div><h2 class="panel-title">Coupon management</h2><p class="subtle">Create amount or percentage discounts for POS orders.</p></div><button class="btn accent" type="button" data-dialog-open="coupon-dialog">Add coupon</button></div>
-                <div class="panel-body">
-                    <table class="table"><thead><tr><th>Code</th><th>Type</th><th>Value</th><th>Validity</th><th>Status</th></tr></thead><tbody>@forelse ($coupons as $coupon)<tr><td>{{ $coupon->code }}</td><td>{{ $coupon->discount_type->label() }}</td><td>{{ $coupon->discount_type->value === 'percentage' ? $coupon->discount_percent.'%' : $tenant->currency_code.' '.$money($coupon->discount_value_minor) }}</td><td>{{ $coupon->starts_at?->format('M j, Y') ?? 'Now' }} - {{ $coupon->expires_at?->format('M j, Y') ?? 'No expiry' }}</td><td><span class="sales-tag {{ $coupon->is_active ? 'success' : 'neutral' }}">{{ $coupon->is_active ? 'Active' : 'Inactive' }}</span></td></tr>@empty<tr><td colspan="5"><div class="empty">No coupons yet.</div></td></tr>@endforelse</tbody></table>
-                </div>
-            </section>
-
             <section class="panel tab-panel" id="returns" role="tabpanel" data-tab-panel hidden>
                 <div class="panel-header"><div><h2 class="panel-title">Sales returns & refunds</h2><p class="subtle">Return history and refunded value from sales orders.</p></div></div>
                 <div class="panel-body">
-                    <table class="table"><thead><tr><th>Return</th><th>Order</th><th>Date</th><th>Refund</th><th>Reason</th></tr></thead><tbody>@forelse ($allOrders->flatMap->returns as $return)<tr><td>{{ $return->return_number }}</td><td>{{ $return->order->order_number }}</td><td>{{ $return->return_date->format('M j, Y') }}</td><td>{{ $tenant->currency_code }} {{ $money($return->refund_minor) }}</td><td>{{ $return->reason ?: 'Not set' }}</td></tr>@empty<tr><td colspan="5"><div class="empty">No returns yet.</div></td></tr>@endforelse</tbody></table>
+                    <table class="table"><thead><tr><th>Return</th><th>Order</th><th>Date</th><th>Refund</th><th>Reason</th></tr></thead><tbody>@forelse ($allOrders->flatMap->returns as $return)<tr><td>{{ $return->return_number }}</td><td>{{ $return->order->order_number }}</td><td>{{ $return->return_date->format('M j, Y') }}</td><td>{{ $currencySymbol }} {{ $money($return->refund_minor) }}</td><td>{{ $return->reason ?: 'Not set' }}</td></tr>@empty<tr><td colspan="5"><div class="empty">No returns yet.</div></td></tr>@endforelse</tbody></table>
                 </div>
             </section>
         </div>
     </div>
 
-    @include('sales::admin.partials.coupon-dialog')
     {{-- Till movement & breakdown dialogs now live in Retail POS. --}}
+    <dialog class="dialog" id="record-sale-customer-dialog" style="width:min(560px,calc(100vw - 24px));">
+        <div class="dialog-header">
+            <div>
+                <h2 class="panel-title">Add new customer</h2>
+                <p class="subtle">Create and select a customer without leaving this sale.</p>
+            </div>
+            <button class="icon-btn" type="button" data-dialog-close aria-label="Close">✕</button>
+        </div>
+        <div class="dialog-body">
+            <form class="mini-form" method="POST" action="{{ route('admin.sales.customers.quick') }}" data-record-sale-customer-form>
+                @csrf
+                <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                <div class="form-grid">
+                    <div class="field"><label>First name</label><input name="first_name" autocomplete="given-name" required></div>
+                    <div class="field"><label>Last name</label><input name="last_name" autocomplete="family-name"></div>
+                    <div class="field"><label>Phone</label><input name="phone" type="tel" autocomplete="tel" required></div>
+                    <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email"></div>
+                </div>
+                <p class="sales-pos-error" data-record-sale-customer-error hidden></p>
+                <div class="button-row">
+                    <button class="btn secondary" type="button" data-dialog-close>Cancel</button>
+                    <button class="btn primary" type="submit" data-record-sale-customer-submit>Create &amp; select</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    <dialog class="dialog" id="record-sale-confirmation-dialog" style="width:min(680px,calc(100vw - 24px));">
+        <div class="dialog-header">
+            <div>
+                <h2 class="panel-title">Confirm sales order</h2>
+                <p class="subtle">Review the details carefully before creating this order.</p>
+            </div>
+            <button class="icon-btn" type="button" data-dialog-close aria-label="Close">✕</button>
+        </div>
+        <div class="dialog-body">
+            <div class="sales-confirm-section">
+                <div class="sales-confirm-grid">
+                    <div class="sales-confirm-detail"><span>Customer</span><strong data-confirm-customer></strong></div>
+                    <div class="sales-confirm-detail"><span>Payment</span><strong data-confirm-payment></strong></div>
+                    <div class="sales-confirm-detail"><span>Delivery</span><strong data-confirm-delivery></strong></div>
+                    <div class="sales-confirm-detail"><span data-confirm-balance-label>Amount paid</span><strong data-confirm-balance></strong></div>
+                </div>
+            </div>
+            <div class="sales-confirm-section">
+                <h3 class="sales-confirm-heading">Items</h3>
+                <div class="sales-confirm-items" data-confirm-items></div>
+            </div>
+            <div class="sales-confirm-section sales-confirm-totals">
+                <div class="sales-confirm-total-line"><span>Subtotal</span><strong data-confirm-subtotal></strong></div>
+                <div class="sales-confirm-total-line"><span>Tax</span><strong data-confirm-tax></strong></div>
+                <div class="sales-confirm-total-line"><span>Shipping</span><strong data-confirm-shipping></strong></div>
+                <div class="sales-confirm-total-line"><span>Coupon discount</span><strong data-confirm-coupon></strong></div>
+                <div class="sales-confirm-total-line"><span>Admin discount</span><strong data-confirm-admin-discount></strong></div>
+                <div class="sales-confirm-total-line"><span>Amount paid</span><strong data-confirm-amount-paid></strong></div>
+                <div class="sales-confirm-total-line grand"><span>Order total</span><strong data-confirm-total></strong></div>
+            </div>
+            <div class="button-row">
+                <button class="btn secondary" type="button" data-dialog-close>Go back and edit</button>
+                <button class="btn primary" type="button" data-confirm-sales-order>Confirm &amp; create order</button>
+            </div>
+        </div>
+    </dialog>
+
     @foreach ($allOrders as $order)
         @include('sales::admin.partials.order-view-dialog', ['order' => $order])
         @include('sales::admin.partials.invoice-dialog', ['order' => $order])
-        @include('sales::admin.partials.thermal-receipt-dialog', ['order' => $order])
+        @include('sales::admin.partials.standard-receipt-dialog', ['order' => $order])
         @include('sales::admin.partials.payment-dialog', ['order' => $order])
         @include('sales::admin.partials.return-dialog', ['order' => $order])
         @foreach ($order->payments as $payment)
@@ -362,17 +509,236 @@
     document.addEventListener('DOMContentLoaded', () => {
         if (window.storebootSalesPosBound) return;
         window.storebootSalesPosBound = true;
-        const autoReceiptOrderId = @json(session('receipt_order_id'));
-        if (autoReceiptOrderId) {
+        const autoInvoiceOrderId = @json(session('invoice_order_id'));
+        if (autoInvoiceOrderId) {
             window.setTimeout(() => {
-                document.getElementById(`sales-receipt-${autoReceiptOrderId}`)?.showModal();
+                document.getElementById(`invoice-${autoInvoiceOrderId}`)?.showModal();
             }, 160);
         }
-        const currency = @json($tenant->currency_code);
+        const currency = @json($currencySymbol);
         const fmt = (value) => `${currency} ${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         const clean = (value) => Number(String(value || '0').replace(/,/g, '')) || 0;
+        const formatMoneyInput = (value) => clean(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+        const dataOptionsFor = (input) => Array.from(document.getElementById(input?.dataset.salesOptionsId || '')?.options || []);
+        const selectedDataOption = (input) => dataOptionsFor(input).find((option) => option.value === input?.value);
+
+        document.querySelectorAll('[data-sales-search-picker]').forEach((picker, pickerIndex) => {
+            const input = picker.querySelector('input[role="combobox"]');
+            const panel = picker.querySelector('[data-sales-search-options]');
+            const toggle = picker.querySelector('[data-sales-search-toggle]');
+            if (!input || !panel || !toggle) return;
+
+            const panelId = `sales-search-options-${pickerIndex}`;
+            const isCustomerPicker = !!picker.closest('[data-sales-customer-picker]');
+            let activeIndex = -1;
+            panel.id = panelId;
+            input.setAttribute('aria-controls', panelId);
+
+            const close = () => {
+                panel.hidden = true;
+                input.setAttribute('aria-expanded', 'false');
+                activeIndex = -1;
+            };
+            const activate = (index) => {
+                const rows = Array.from(panel.querySelectorAll('[data-sales-search-option]'));
+                if (!rows.length) return;
+                activeIndex = Math.max(0, Math.min(index, rows.length - 1));
+                rows.forEach((row, rowIndex) => row.classList.toggle('active', rowIndex === activeIndex));
+                rows[activeIndex].scrollIntoView({ block: 'nearest' });
+            };
+            const select = (option) => {
+                if (!option) return;
+                input.value = option.value;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                close();
+                input.focus();
+            };
+            const render = (showAll = false) => {
+                const query = showAll ? '' : input.value.trim().toLowerCase();
+                const matches = dataOptionsFor(input)
+                    .filter((option) => !query || option.value.toLowerCase().includes(query) || (option.dataset.sku || '').toLowerCase().includes(query))
+                    .slice(0, 60);
+
+                panel.innerHTML = '';
+                if (isCustomerPicker) {
+                    const addCustomer = document.createElement('button');
+                    addCustomer.type = 'button';
+                    addCustomer.setAttribute('role', 'option');
+                    addCustomer.className = 'sales-search-option add-customer';
+                    addCustomer.dataset.salesSearchOption = 'add-customer';
+                    addCustomer.textContent = '+ Add new customer';
+                    addCustomer.addEventListener('mousedown', (event) => event.preventDefault());
+                    addCustomer.addEventListener('click', () => {
+                        close();
+                        const dialog = document.getElementById('record-sale-customer-dialog');
+                        dialog?.showModal();
+                        window.setTimeout(() => dialog?.querySelector('[name="first_name"]')?.focus(), 0);
+                    });
+                    panel.append(addCustomer);
+                }
+
+                if (!matches.length) {
+                    const empty = document.createElement('div');
+                    empty.className = 'sales-search-empty';
+                    empty.textContent = isCustomerPicker ? 'No matching customers' : 'No matching options';
+                    panel.append(empty);
+                } else {
+                    matches.forEach((option, index) => {
+                        const row = document.createElement('button');
+                        row.type = 'button';
+                        row.setAttribute('role', 'option');
+                        row.className = 'sales-search-option';
+                        row.dataset.salesSearchOption = String(index);
+                        row.textContent = option.value;
+                        row.addEventListener('mousedown', (event) => event.preventDefault());
+                        row.addEventListener('click', () => select(option));
+                        panel.append(row);
+                    });
+                }
+                panel.hidden = false;
+                input.setAttribute('aria-expanded', 'true');
+                activeIndex = -1;
+            };
+
+            input.addEventListener('focus', () => render(selectedDataOption(input) !== undefined));
+            input.addEventListener('input', () => render(false));
+            input.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    close();
+                    return;
+                }
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    if (panel.hidden) render(false);
+                    activate(activeIndex + (event.key === 'ArrowDown' ? 1 : -1));
+                    return;
+                }
+                if (event.key === 'Enter' && !panel.hidden && activeIndex >= 0) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    panel.querySelectorAll('[data-sales-search-option]')[activeIndex]?.click();
+                }
+            });
+            toggle.addEventListener('click', () => {
+                if (panel.hidden) {
+                    render(true);
+                    input.focus();
+                } else {
+                    close();
+                }
+            });
+            picker.addEventListener('focusout', (event) => {
+                if (!picker.contains(event.relatedTarget)) close();
+            });
+        });
+
+        document.addEventListener('click', (event) => {
+            document.querySelectorAll('[data-sales-search-picker]').forEach((picker) => {
+                if (picker.contains(event.target)) return;
+                const input = picker.querySelector('input[role="combobox"]');
+                const panel = picker.querySelector('[data-sales-search-options]');
+                if (panel) panel.hidden = true;
+                if (input) input.setAttribute('aria-expanded', 'false');
+            });
+        });
+
+        const recordSaleCustomerForm = document.querySelector('[data-record-sale-customer-form]');
+        recordSaleCustomerForm?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const submit = recordSaleCustomerForm.querySelector('[data-record-sale-customer-submit]');
+            const error = recordSaleCustomerForm.querySelector('[data-record-sale-customer-error]');
+            const originalText = submit?.textContent || 'Create & select';
+
+            if (error) error.hidden = true;
+            if (submit) {
+                submit.disabled = true;
+                submit.textContent = 'Creating...';
+            }
+
+            try {
+                const response = await fetch(recordSaleCustomerForm.action, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: new FormData(recordSaleCustomerForm),
+                });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    const validationMessage = Object.values(result.errors || {}).flat()[0];
+                    throw new Error(validationMessage || result.message || 'Could not create the customer.');
+                }
+
+                const label = `${result.name} · ${result.phone}`;
+                const options = document.getElementById('sales-customer-options');
+                const option = document.createElement('option');
+                option.value = label;
+                option.dataset.customerId = String(result.id);
+                options?.append(option);
+
+                const customerSearch = document.querySelector('[data-sales-customer-search]');
+                const customerValue = document.querySelector('[data-sales-customer-value]');
+                if (customerSearch) {
+                    customerSearch.value = label;
+                    customerSearch.setCustomValidity('');
+                }
+                if (customerValue) customerValue.value = String(result.id);
+
+                savePosState(customerSearch?.closest('form'));
+                recordSaleCustomerForm.reset();
+                recordSaleCustomerForm.closest('dialog')?.close();
+                customerSearch?.focus();
+            } catch (failure) {
+                if (error) {
+                    error.textContent = failure.message || 'Could not create the customer. Check the details and try again.';
+                    error.hidden = false;
+                }
+            } finally {
+                if (submit) {
+                    submit.disabled = false;
+                    submit.textContent = originalText;
+                }
+            }
+        });
+
         const cart = [];
+        function setDiscountPanel(form, open) {
+            const panel = form?.querySelector('[data-sales-discount-panel]');
+            const toggle = form?.querySelector('[data-sales-discount-toggle]');
+            if (!panel || !toggle) return;
+            panel.hidden = !open;
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        function hasEnteredDiscount(form) {
+            return (form?.querySelector('[data-sales-coupon-code]')?.value || '').trim() !== ''
+                || clean(form?.querySelector('[data-sales-admin-discount]')?.value) > 0;
+        }
+        function setDeliveryPanel(form, open) {
+            const panel = form?.querySelector('[data-sales-delivery-panel]');
+            const toggle = form?.querySelector('[data-sales-delivery-toggle]');
+            if (!panel || !toggle) return;
+            panel.hidden = !open;
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        function hasEnteredDelivery(form) {
+            return (form?.querySelector('[data-sales-delivery-method]')?.value || '') !== ''
+                || clean(form?.querySelector('[data-sales-shipping]')?.value) > 0
+                || (form?.querySelector('[name="delivery_status"]')?.value || 'pending') !== 'pending';
+        }
+        document.querySelectorAll('[data-sales-discount-toggle]').forEach((toggle) => {
+            toggle.addEventListener('click', () => {
+                const form = toggle.closest('form');
+                setDiscountPanel(form, toggle.getAttribute('aria-expanded') !== 'true');
+            });
+        });
+        document.querySelectorAll('[data-sales-delivery-toggle]').forEach((toggle) => {
+            toggle.addEventListener('click', () => {
+                const form = toggle.closest('form');
+                setDeliveryPanel(form, toggle.getAttribute('aria-expanded') !== 'true');
+            });
+        });
+
         // Walk-in id is the server-rendered default customer, captured before any
         // restore overwrites the field — used to block walk-in credit sales.
         const walkInCustomerId = document.querySelector('[data-pos-form] [data-sales-customer-value]')?.value ?? null;
@@ -507,7 +873,7 @@
         function addSelectedProduct(form) {
             const search = form.querySelector('[data-sales-product-search]');
             const qty = Math.max(1, Number(form.querySelector('[data-sales-product-qty]')?.value || 1));
-            const option = Array.from(search.list?.options || []).find((item) => item.value === search.value);
+            const option = selectedDataOption(search);
             if (!option) {
                 if (search.value.trim() !== '') {
                     search.classList.add('sales-input-error');
@@ -550,7 +916,7 @@
             if (customer) {
                 const picker = customer.closest('[data-sales-customer-picker]');
                 const value = picker?.querySelector('[data-sales-customer-value]');
-                const option = Array.from(customer.list?.options || []).find((item) => item.value === customer.value);
+                const option = selectedDataOption(customer);
                 if (value) value.value = option?.dataset.customerId || '';
                 // Free text that resolves to no customer would fail server validation
                 // with a confusing message — block submit with a clear one instead.
@@ -570,7 +936,7 @@
             if (delivery) {
                 const form = delivery.closest('form');
                 const shipping = form?.querySelector('[data-sales-shipping]');
-                if (shipping) shipping.value = Number(delivery.selectedOptions[0]?.dataset.price || 0).toFixed(2);
+                if (shipping) shipping.value = formatMoneyInput(delivery.selectedOptions[0]?.dataset.price || 0);
                 if (form) renderSummary(form);
             }
 
@@ -670,6 +1036,61 @@
             renderCart(qty.closest('form'));
         });
 
+        function showSalesConfirmation(form, totals) {
+            const dialog = document.getElementById('record-sale-confirmation-dialog');
+            if (!(dialog instanceof HTMLDialogElement)) return;
+
+            const setText = (selector, value) => {
+                const node = dialog.querySelector(selector);
+                if (node) node.textContent = value;
+            };
+            const itemList = dialog.querySelector('[data-confirm-items]');
+            if (itemList) {
+                itemList.innerHTML = cart.map((item) => `
+                    <div class="sales-confirm-item">
+                        <span>
+                            <strong>${escapeHtml(item.label)}</strong>
+                            <small>${item.quantity.toLocaleString('en-US')} × ${fmt(item.price)}</small>
+                        </span>
+                        <span>${fmt(item.quantity * item.price)}</span>
+                    </div>
+                `).join('');
+            }
+
+            const paymentMethod = form.querySelector('[data-payment-method-selector]');
+            const paymentAccount = form.querySelector('[data-payment-account-selector]');
+            const paymentParts = [paymentMethod?.selectedOptions[0]?.textContent?.trim() || 'Not selected'];
+            if (paymentAccount && !paymentAccount.disabled && paymentAccount.value) {
+                paymentParts.push(paymentAccount.selectedOptions[0]?.textContent?.trim());
+            }
+            if (form.querySelector('[name="is_credit_sale"]')?.checked) paymentParts.push('Credit sale');
+
+            const deliveryMethod = form.querySelector('[data-sales-delivery-method]');
+            const deliveryStatus = form.querySelector('[name="delivery_status"]');
+            const deliveryParts = [
+                deliveryMethod?.selectedOptions[0]?.textContent?.trim() || 'No delivery',
+                deliveryStatus?.selectedOptions[0]?.textContent?.trim() || 'Pending',
+            ];
+            const shipping = clean(form.querySelector('[data-sales-shipping]')?.value);
+            const balance = totals.total - totals.paid;
+
+            setText('[data-confirm-customer]', form.querySelector('[data-sales-customer-search]')?.value || 'Not selected');
+            setText('[data-confirm-payment]', paymentParts.filter(Boolean).join(' · '));
+            setText('[data-confirm-delivery]', deliveryParts.filter(Boolean).join(' · '));
+            const settlementLabel = balance > 0.001 ? 'Balance due' : (balance < -0.001 ? 'Change due' : 'Payment status');
+            const settlementValue = balance > 0.001 ? fmt(balance) : (balance < -0.001 ? fmt(-balance) : 'Paid in full');
+            setText('[data-confirm-balance-label]', settlementLabel);
+            setText('[data-confirm-balance]', settlementValue);
+            setText('[data-confirm-subtotal]', fmt(totals.subtotal));
+            setText('[data-confirm-tax]', fmt(totals.tax));
+            setText('[data-confirm-shipping]', fmt(shipping));
+            setText('[data-confirm-coupon]', `-${fmt(totals.couponDiscount)}`);
+            setText('[data-confirm-admin-discount]', `-${fmt(totals.adminDiscount)}`);
+            setText('[data-confirm-amount-paid]', fmt(totals.paid));
+            setText('[data-confirm-total]', fmt(totals.total));
+            dialog.showModal();
+        }
+
         document.addEventListener('submit', (event) => {
             const paymentForm = event.target.closest('form');
             if (paymentForm?.querySelector('[data-payment-method-selector]')) {
@@ -680,6 +1101,10 @@
             // instead of round-tripping to the server and reloading away the whole cart.
             const posForm = event.target.closest('[data-pos-form]');
             if (!posForm) return;
+            if (posForm.dataset.confirmedSubmission === 'true') {
+                delete posForm.dataset.confirmedSubmission;
+                return;
+            }
 
             const errorBox = posForm.querySelector('[data-pos-error]');
             const fail = (message, focusSel) => {
@@ -708,6 +1133,18 @@
             }
 
             if (errorBox) errorBox.hidden = true;
+            event.preventDefault();
+            showSalesConfirmation(posForm, totals);
+        });
+
+        document.querySelector('[data-confirm-sales-order]')?.addEventListener('click', () => {
+            const posForm = document.querySelector('[data-pos-form]');
+            if (!posForm) return;
+
+            posForm.dataset.confirmedSubmission = 'true';
+            document.getElementById('record-sale-confirmation-dialog')?.close();
+            posForm.requestSubmit();
+            window.setTimeout(() => delete posForm.dataset.confirmedSubmission, 0);
         });
 
         document.querySelectorAll('[data-payment-method-selector]').forEach((selector) => syncPaymentAccountSelector(selector.closest('form')));
@@ -715,8 +1152,10 @@
         // Restore an in-progress sale after a reload; clear it once a sale has completed.
         const posForm = document.querySelector('[data-pos-form]');
         if (posForm) {
-            if (autoReceiptOrderId) clearPosState(posForm);
+            if (autoInvoiceOrderId) clearPosState(posForm);
             else restorePosState(posForm);
+            setDeliveryPanel(posForm, hasEnteredDelivery(posForm));
+            setDiscountPanel(posForm, hasEnteredDiscount(posForm));
         }
     });
     </script>

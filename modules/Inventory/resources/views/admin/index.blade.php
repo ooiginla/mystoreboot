@@ -8,7 +8,7 @@
 <x-layouts.admin title="Inventory & Stock">
     <datalist id="variant-options">
         @foreach ($variants as $variant)
-            <option value="{{ $variantLabel($variant) }}" data-variant-id="{{ $variant->id }}"></option>
+            <option value="{{ $variantLabel($variant) }}" data-variant-id="{{ $variant->id }}" data-sku="{{ $variant->sku }}" data-barcode="{{ $variant->barcode }}"></option>
         @endforeach
     </datalist>
 

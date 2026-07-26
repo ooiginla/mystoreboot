@@ -12,9 +12,15 @@
         'AUD' => '$',
     ][strtoupper($currency)] ?? strtoupper($currency);
     $money = fn (int|float|null $minor): string => number_format(((int) $minor) / 100, 2);
-    $variant = $product->variants->first();
+    $activeVariants = $product->variants
+        ->sortBy('selling_price_minor')
+        ->values();
+    $variant = $activeVariants->first();
+    $variantPrices = $activeVariants->pluck('selling_price_minor')->map(fn ($price) => (int) $price)->unique();
     $priceMinor = (int) ($variant?->selling_price_minor ?? $product->base_price_minor);
     $compareMinor = (int) ($variant?->compare_at_price_minor ?? $product->compare_at_price_minor ?? 0);
+    $showFromPrice = $product->has_variants && $variantPrices->count() > 1;
+    $requiresVariantSelection = $product->has_variants && $activeVariants->count() > 1;
     $imagePath = $variant?->image_path ?: $product->image_path;
     $image = $imagePath ? '/storage/'.ltrim($imagePath, '/') : null;
     $payload = [
@@ -42,14 +48,26 @@
     <div class="px-2 pb-2">
         <a href="{{ $detailsUrl }}" class="sf-headline-md mt-2 block line-clamp-2 min-h-14 text-[var(--store-ink)] hover:text-[var(--store-primary)]">{{ $product->name }}</a>
         <div class="mt-2 flex items-center gap-3">
-            <strong class="sf-body-lg font-bold text-[var(--store-secondary)]">{{ $currencySymbol }}{{ $money($priceMinor) }}</strong>
+            <strong class="sf-body-lg font-bold text-[var(--store-secondary)]" @if ($showFromPrice) data-variant-price-mode="from" @endif>{{ $showFromPrice ? 'From ' : '' }}{{ $currencySymbol }}{{ $money($priceMinor) }}</strong>
             @if ($compareMinor && $compareMinor > $priceMinor)
                 <span class="sf-body-md text-[var(--store-muted)] line-through">{{ $currencySymbol }}{{ $money($compareMinor) }}</span>
             @endif
         </div>
-        <button type="button" class="sf-label-md mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--store-secondary)] py-3 uppercase text-white transition-colors hover:brightness-90" data-add-to-cart data-product='@json($payload)'>
-            @include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5'])
-            Add to Cart
-        </button>
+        @if ($requiresVariantSelection)
+            <a href="{{ $detailsUrl }}" class="sf-label-md mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--store-secondary)] py-3 uppercase text-white transition-colors hover:brightness-90">
+                Choose options
+                @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
+            </a>
+        @elseif ($variant)
+            <button type="button" class="sf-label-md mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--store-secondary)] py-3 uppercase text-white transition-colors hover:brightness-90" data-add-to-cart data-product='@json($payload)'>
+                @include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5'])
+                Add to Cart
+            </button>
+        @else
+            <a href="{{ $detailsUrl }}" class="sf-label-md mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--store-line)] py-3 uppercase text-[var(--store-muted)]">
+                View details
+                @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
+            </a>
+        @endif
     </div>
 </article>

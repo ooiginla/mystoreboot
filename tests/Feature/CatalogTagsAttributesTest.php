@@ -78,6 +78,16 @@ class CatalogTagsAttributesTest extends TestCase
             ])
             ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#taxes');
 
+        $this->actingAs($user)
+            ->post(route('admin.sales.coupons.store'), [
+                'tenant_id' => $tenant->id,
+                'code' => 'SAVE10',
+                'discount_type' => 'percentage',
+                'discount_value' => '10',
+                'is_active' => '1',
+            ])
+            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#coupons');
+
         $tag = ProductTag::query()->where('tenant_id', $tenant->id)->firstOrFail();
         $tax = ProductTax::query()->where('tenant_id', $tenant->id)->firstOrFail();
         $attribute = ProductAttributeDefinition::query()->with('values')->where('tenant_id', $tenant->id)->firstOrFail();
@@ -123,12 +133,20 @@ class CatalogTagsAttributesTest extends TestCase
             ->get(route('admin.catalog.index', ['tenant' => $tenant->id]).'#products')
             ->assertOk()
             ->assertSee('/storage/'.$product->image_path, false)
+            ->assertSee('data-main-image-control', false)
+            ->assertSee('class="catalog-main-image-button">Upload</span>', false)
+            ->assertSee('data-main-image-name', false)
             ->assertSee('Additional Product Images')
             ->assertSee('Drop files here or click to upload.')
             ->assertSee('Tags')
             ->assertSee('Attributes')
             ->assertSee('Taxes')
+            ->assertSee('data-tab-target="coupons"', false)
             ->assertSee('VAT')
+            ->assertSee('SAVE10')
+            ->assertDontSee('SKU: <strong', false)
+            ->assertSee('product-tag-pill', false)
+            ->assertSee('data-catalog-button-icon', false)
             ->assertSee('Add tag')
             ->assertSee('Save attribute')
             ->assertSee('50% Off')
@@ -198,7 +216,49 @@ class CatalogTagsAttributesTest extends TestCase
             ->assertOk()
             ->assertSee('Add new tag')
             ->assertSee('Create new attribute')
+            ->assertSee('data-attribute-value-tag-input', false)
+            ->assertSee('Press Enter or type a comma after each value.')
             ->assertSee('Add value under Color');
+    }
+
+    public function test_category_can_be_created_inline_and_returned_for_selection(): void
+    {
+        $tenant = Tenant::query()->create([
+            'name' => 'Inline Category Shop',
+            'slug' => 'inline-category-shop',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+        ]);
+        $user = User::factory()->create(['is_platform_admin' => true]);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.catalog.categories.store'), [
+                'tenant_id' => $tenant->id,
+                'category_type' => CategoryType::Product->value,
+                'name' => 'New Arrivals',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('category.name', 'New Arrivals')
+            ->assertJsonPath('category.category_type', CategoryType::Product->value)
+            ->assertJsonPath('message', 'Category New Arrivals created.');
+
+        $category = ProductCategory::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('name', 'New Arrivals')
+            ->firstOrFail();
+
+        $this->assertSame('new-arrivals', $category->slug);
+
+        $this->actingAs($user)
+            ->get(route('admin.catalog.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('<option value="__add_new__" data-add-category-option>+ Add new category</option>', false)
+            ->assertSee('data-product-category-dialog', false)
+            ->assertSee('data-product-category-form', false)
+            ->assertSee('data-product-category-select', false);
     }
 
     public function test_admin_product_and_service_lists_are_paginated(): void

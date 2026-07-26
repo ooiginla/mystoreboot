@@ -10,7 +10,6 @@
         .expense-filter-header { align-items: stretch; flex-wrap: wrap; }
         .expense-filter-form { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; align-items: end; }
         .expense-filter-form .field { min-width: 132px; max-width: 190px; }
-        .expense-filter-form .field.search { min-width: 190px; }
         .expense-filter-actions { display: flex; gap: 8px; align-items: center; }
     </style>
 
@@ -49,7 +48,7 @@
         <div class="panel-header expense-filter-header">
             <div>
                 <h2 class="panel-title">Expense list</h2>
-                <p class="subtle">Filter by date, category, payment status, accounts, payee, or reference.</p>
+                <p class="subtle">Filter by date, category, payment status, or accounts.</p>
             </div>
             <form class="expense-filter-form" method="GET" action="{{ route('admin.finance.expenses') }}#expense-list">
                 <input type="hidden" name="tenant" value="{{ $tenant->id }}">
@@ -92,18 +91,10 @@
                     <label>Paid from</label>
                     <select name="expense_payment_account_code">
                         <option value="">All accounts</option>
-                        @foreach ($assetAccounts as $account)
+                        @foreach ($paymentSourceAccounts as $account)
                             <option value="{{ $account->code }}" @selected($expenseFilters['payment_account'] === $account->code)>{{ $account->code }} · {{ $account->name }}</option>
                         @endforeach
                     </select>
-                </div>
-                <div class="field search">
-                    <label>Payee</label>
-                    <input name="expense_payee" value="{{ $expenseFilters['payee'] }}" placeholder="Payee name">
-                </div>
-                <div class="field search">
-                    <label>Reference</label>
-                    <input name="expense_reference" value="{{ $expenseFilters['reference'] }}" placeholder="Number, reference, note">
                 </div>
                 <div class="expense-filter-actions">
                     <button class="btn secondary" type="submit">Filter</button>
@@ -151,7 +142,7 @@
                     <div class="field"><label>Date</label><input name="expense_date" type="date" value="{{ now()->toDateString() }}" required></div>
                     <div class="field"><label>Branch</label><select name="branch_id"><option value="">Unassigned</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((int) old('branch_id', $activeBranchForView?->id) === $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
                     <div class="field"><label>Payee</label><input name="payee_name"></div>
-                    <div class="field"><label>Paid from</label><select name="payment_account_code"><option value="">Only for unpaid expenses</option>@foreach ($assetAccounts as $account)<option value="{{ $account->code }}" @selected(old('payment_account_code') === $account->code)>{{ $account->code }} · {{ $account->name }}</option>@endforeach</select></div>
+                    <div class="field"><label>Paid from</label><select name="payment_account_code"><option value="">Only for unpaid expenses</option>@foreach ($paymentSourceAccounts as $account)<option value="{{ $account->code }}" @selected(old('payment_account_code') === $account->code)>{{ $account->code }} · {{ $account->name }}</option>@endforeach</select></div>
                     <div class="field"><label>Status</label><select name="payment_status"><option value="paid">Paid</option><option value="partially_paid">Partially paid</option><option value="unpaid">Unpaid</option></select></div>
                     <div class="field"><label>Amount</label><input name="amount" inputmode="decimal" data-money-input required></div>
                     <div class="field"><label>Paid amount</label><input name="paid_amount" inputmode="decimal" data-money-input></div>

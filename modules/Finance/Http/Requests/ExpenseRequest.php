@@ -8,6 +8,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use Modules\Finance\Models\FinanceAccount;
+use Modules\Finance\Support\PaymentSourceAccounts;
 
 final class ExpenseRequest extends FormRequest
 {
@@ -75,8 +76,8 @@ final class ExpenseRequest extends FormRequest
                 ->where('code', $this->string('payment_account_code')->toString())
                 ->first();
 
-            if (! $paymentAccount || ! $paymentAccount->is_active || $paymentAccount->type !== 'asset') {
-                $validator->errors()->add('payment_account_code', 'Select an active asset account to pay from.');
+            if (! PaymentSourceAccounts::allows($paymentAccount, $tenantId)) {
+                $validator->errors()->add('payment_account_code', 'Select an active cash, bank, or business payment account to pay from.');
             }
         });
     }

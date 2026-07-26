@@ -20,6 +20,7 @@ use Modules\Inventory\Enums\StockCondition;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Inventory\Models\InventoryStockLevel;
 use Modules\Sales\Actions\CreateSalesOrderAction;
+use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesTillSession;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
@@ -28,6 +29,186 @@ use Tests\TestCase;
 class SalesCostingTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_offline_sale_and_later_payment_do_not_require_a_till(): void
+    {
+        $tenant = Tenant::query()->create([
+            'name' => 'Offline Sales Shop',
+            'slug' => 'offline-sales-shop',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+        ]);
+        $branch = Branch::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Main Branch',
+            'code' => 'MAIN',
+            'status' => 'active',
+            'is_primary' => true,
+        ]);
+        $location = InventoryLocation::query()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'name' => 'Main Stock',
+            'code' => 'MAIN-STOCK',
+            'location_type' => InventoryLocationType::Branch->value,
+            'status' => 'active',
+        ]);
+        $product = Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Offline Item',
+            'slug' => 'offline-item',
+            'product_type' => ProductType::Product->value,
+            'base_price_minor' => 100000,
+            'tax_behavior' => TaxBehavior::Exempt->value,
+            'status' => ProductStatus::Active->value,
+        ]);
+        $variant = ProductVariant::query()->create([
+            'tenant_id' => $tenant->id,
+            'product_id' => $product->id,
+            'variant_name' => 'Default',
+            'sku' => 'OFFLINE-ITEM',
+            'selling_price_minor' => 100000,
+            'tax_behavior' => TaxBehavior::Exempt->value,
+            'status' => ProductStatus::Active->value,
+        ]);
+        $customer = Customer::query()->create([
+            'tenant_id' => $tenant->id,
+            'first_name' => 'Offline',
+            'last_name' => 'Customer',
+            'phone' => '08010000000',
+            'status' => 'active',
+        ]);
+        $user = User::factory()->create(['is_platform_admin' => true]);
+
+        app(PostInventoryMovementAction::class)->execute([
+            'tenant_id' => $tenant->id,
+            'inventory_location_id' => $location->id,
+            'product_variant_id' => $variant->id,
+            'movement_type' => InventoryMovementType::StockIn->value,
+            'stock_condition' => StockCondition::Sellable->value,
+            'quantity' => 2,
+            'unit_cost' => 500,
+            'reference_type' => 'manual_opening_stock',
+            'reference_number' => 'OPENING-OFFLINE',
+            'occurred_at' => '2026-07-23',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.sales.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('Record Offline Sale')
+            ->assertSee('+ Add new customer')
+            ->assertSee('data-record-sale-customer-form', false)
+            ->assertSee(route('admin.sales.customers.quick'), false)
+            ->assertSee('Confirm sales order')
+            ->assertSee('data-confirm-sales-order', false)
+            ->assertSee('name="shipping" type="text" inputmode="decimal" data-money-input data-sales-shipping', false)
+            ->assertSee('value="pending" selected', false)
+            ->assertSee('name="source" value="offline"', false)
+            ->assertDontSee('data-tab-target="coupons"', false)
+            ->assertDontSee('Open a till before recording a sale');
+
+        $this->actingAs($user)
+            ->postJson(route('admin.sales.customers.quick'), [
+                'tenant_id' => $tenant->id,
+                'first_name' => 'Ada',
+                'last_name' => 'Okafor',
+                'phone' => '0803 123 4567',
+                'email' => 'ada@example.test',
+            ])
+            ->assertOk()
+            ->assertJsonPath('name', 'Ada Okafor')
+            ->assertJsonPath('phone', '08031234567');
+
+        $this->assertDatabaseHas('customers', [
+            'tenant_id' => $tenant->id,
+            'first_name' => 'Ada',
+            'phone' => '08031234567',
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.sales.customers.quick'), [
+                'tenant_id' => $tenant->id,
+                'first_name' => 'Another Ada',
+                'phone' => '08031234567',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('phone');
+
+        $orderData = [
+            'tenant_id' => $tenant->id,
+            'source' => 'offline',
+            'branch_id' => $branch->id,
+            'inventory_location_id' => $location->id,
+            'customer_id' => $customer->id,
+            'order_date' => '2026-07-23',
+            'is_credit_sale' => '1',
+            'payment_method' => 'Cash',
+            'amount_paid' => '500',
+            'shipping' => '0',
+            'admin_discount_type' => 'amount',
+            'admin_discount_value' => '0',
+            'delivery_status' => 'delivered',
+            'items' => [
+                ['product_variant_id' => $variant->id, 'quantity' => 1, 'unit_price' => '1000'],
+            ],
+        ];
+
+        $this->actingAs($user)
+            ->post(route('admin.sales.orders.store'), $orderData)
+            ->assertRedirect(route('admin.sales.index', ['tenant' => $tenant->id]).'#orders')
+            ->assertSessionHas('invoice_order_id')
+            ->assertSessionMissing('receipt_order_id');
+
+        $order = SalesOrder::query()->with('payments')->where('tenant_id', $tenant->id)->firstOrFail();
+
+        $this->assertSame('offline', $order->source);
+        $this->assertNull($order->sales_till_session_id);
+        $this->assertNull($order->payments->firstOrFail()->sales_till_session_id);
+        $this->assertDatabaseCount('sales_till_sessions', 0);
+
+        $orderJournal = FinanceJournalEntry::query()
+            ->with('lines.account')
+            ->where('source_type', 'sales_order')
+            ->where('source_id', $order->id)
+            ->firstOrFail();
+        $this->assertTrue($orderJournal->lines->contains(fn ($line): bool => $line->account->code === '1000' && $line->debit_minor === 50000));
+
+        $this->actingAs($user)
+            ->post(route('admin.sales.orders.payments.store', $order), [
+                'payment_date' => '2026-07-23',
+                'payment_method' => 'Cash',
+                'amount' => '500',
+            ])
+            ->assertRedirect(route('admin.sales.index', ['tenant' => $tenant->id]).'#orders');
+
+        $latestPayment = $order->payments()->latest('id')->firstOrFail();
+        $this->assertNull($latestPayment->sales_till_session_id);
+        $this->assertSame(0, $order->refresh()->balance_minor);
+        $this->assertDatabaseCount('sales_till_sessions', 0);
+
+        $this->actingAs($user)
+            ->get(route('admin.sales.index', ['tenant' => $tenant->id]).'#orders')
+            ->assertOk()
+            ->assertSee('Order items paid for')
+            ->assertSee('payment-receipt-'.$latestPayment->id, false)
+            ->assertSee('data-standard-sales-receipt', false)
+            ->assertSee('Process this return? This will update inventory and calculate the refund for the selected items.', false)
+            ->assertSee('autoInvoiceOrderId', false);
+
+        $this->actingAs($user)
+            ->post(route('admin.sales.orders.store'), array_replace($orderData, [
+                'source' => 'retail_pos',
+                'is_credit_sale' => '0',
+                'amount_paid' => '1000',
+            ]))
+            ->assertSessionHasErrors('sales_till_session_id');
+
+        $this->assertDatabaseCount('sales_orders', 1);
+    }
 
     public function test_sales_cogs_uses_inventory_average_cost_not_variant_default_cost(): void
     {
@@ -93,7 +274,7 @@ class SalesCostingTest extends TestCase
             'opened_at' => now(),
         ]);
 
-        app(PostInventoryMovementAction::class)->execute([
+        app(PostInventoryMovementAction::class)->executeFromSource([
             'tenant_id' => $tenant->id,
             'inventory_location_id' => $location->id,
             'product_variant_id' => $variant->id,
@@ -101,10 +282,9 @@ class SalesCostingTest extends TestCase
             'stock_condition' => StockCondition::Sellable->value,
             'quantity' => 10,
             'unit_cost' => 700,
-            'reference_type' => 'purchase_order',
             'reference_number' => 'PO-TEST',
             'occurred_at' => '2026-06-08',
-        ]);
+        ], 'goods_receipt', 1);
 
         $this->assertSame(70000, InventoryStockLevel::query()->where('product_variant_id', $variant->id)->firstOrFail()->average_cost_minor);
 
@@ -263,7 +443,7 @@ class SalesCostingTest extends TestCase
             'status' => ProductStatus::Active->value,
         ]);
 
-        app(PostInventoryMovementAction::class)->execute([
+        app(PostInventoryMovementAction::class)->executeFromSource([
             'tenant_id' => $tenant->id,
             'inventory_location_id' => $location->id,
             'product_variant_id' => $variant->id,
@@ -271,10 +451,9 @@ class SalesCostingTest extends TestCase
             'stock_condition' => StockCondition::Sellable->value,
             'quantity' => 5,
             'unit_cost' => 400,
-            'reference_type' => 'purchase_order',
             'reference_number' => 'PO-SEED',
             'occurred_at' => '2026-06-25',
-        ]);
+        ], 'goods_receipt', 1);
 
         app(PostInventoryMovementAction::class)->execute([
             'tenant_id' => $tenant->id,
@@ -377,7 +556,7 @@ class SalesCostingTest extends TestCase
             'opened_at' => now(),
         ]);
 
-        app(PostInventoryMovementAction::class)->execute([
+        app(PostInventoryMovementAction::class)->executeFromSource([
             'tenant_id' => $tenant->id,
             'inventory_location_id' => $location->id,
             'product_variant_id' => $variant->id,
@@ -385,10 +564,9 @@ class SalesCostingTest extends TestCase
             'stock_condition' => StockCondition::Sellable->value,
             'quantity' => 2,
             'unit_cost' => 0,
-            'reference_type' => 'purchase_order',
             'reference_number' => 'PO-ZERO-COST',
             'occurred_at' => '2026-06-25',
-        ]);
+        ], 'goods_receipt', 1);
 
         $firstOrder = app(CreateSalesOrderAction::class)->execute([
             'tenant_id' => $tenant->id,

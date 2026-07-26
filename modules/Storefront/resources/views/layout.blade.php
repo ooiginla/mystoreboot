@@ -127,7 +127,7 @@
         </div>
     @endif
 
-    <header class="sticky top-0 z-50 border-b border-[var(--store-line)] bg-white/95 backdrop-blur">
+    <header class="sticky top-0 z-50 border-b border-[var(--store-line)] bg-white/95 backdrop-blur" data-store-header>
         <div class="store-shell flex min-h-20 items-center justify-between gap-4">
             <div class="flex items-center gap-4 md:gap-8">
                 <a href="{{ route('storefront.storefront.store.home', $store) }}" class="flex min-w-0 items-center gap-3">
@@ -166,7 +166,36 @@
                     @include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5 text-[var(--store-primary)]'])
                     <span class="sf-caption absolute right-1 top-1 hidden min-w-5 rounded-full bg-black px-1 text-center font-bold text-white" data-cart-count>0</span>
                 </button>
+                <button type="button" class="grid h-11 w-11 place-items-center rounded-full text-[var(--store-primary)] hover:bg-[var(--store-soft)] lg:hidden" data-mobile-nav-toggle aria-controls="store-mobile-nav" aria-expanded="false" aria-label="Open menu">
+                    <span data-mobile-menu-open>@include('storefront::partials.icon', ['name' => 'menu', 'class' => 'h-6 w-6'])</span>
+                    <span class="hidden" data-mobile-menu-close>@include('storefront::partials.icon', ['name' => 'close', 'class' => 'h-6 w-6'])</span>
+                </button>
             </div>
+        </div>
+        <div id="store-mobile-nav" class="hidden border-t border-[var(--store-line)] bg-white lg:hidden" data-mobile-nav>
+            <nav class="store-shell max-h-[calc(100dvh-5rem)] overflow-y-auto py-4" aria-label="Mobile store navigation">
+                <div class="grid gap-1">
+                    @foreach ($navLinks as $link)
+                        <a href="{{ $link['href'] }}" class="sf-body-md rounded-lg px-3 py-3 font-bold text-[var(--store-muted)] hover:bg-[var(--store-soft)] hover:text-[var(--store-primary)]">{{ $link['label'] }}</a>
+                    @endforeach
+                </div>
+                <details class="mt-2 border-t border-[var(--store-line)] pt-2">
+                    <summary class="sf-body-md flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-3 font-bold text-[var(--store-secondary)] hover:bg-[var(--store-soft)]">
+                        <span class="flex items-center gap-2">
+                            @include('storefront::partials.icon', ['name' => 'menu', 'class' => 'h-5 w-5'])
+                            All Categories
+                        </span>
+                        @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5 rotate-90'])
+                    </summary>
+                    <div class="grid gap-1 pb-2 pl-4">
+                        @forelse ($menuCategories as $category)
+                            <a href="{{ route('storefront.storefront.store.home', [$store, 'category' => $category->slug]) }}" class="sf-body-md rounded-lg px-3 py-2 font-semibold text-[var(--store-muted)] hover:bg-[var(--store-soft)] hover:text-[var(--store-primary)]">{{ $category->name }}</a>
+                        @empty
+                            <span class="sf-body-md px-3 py-2 text-[var(--store-muted)]">No categories yet</span>
+                        @endforelse
+                    </div>
+                </details>
+            </nav>
         </div>
     </header>
 
@@ -191,19 +220,19 @@
             <div>
                 <h3 class="sf-headline-md text-white">Shop</h3>
                 <div class="sf-body-md mt-3 grid gap-2 text-zinc-300">
-                    <a class="hover:text-[var(--store-secondary)]" href="{{ route('storefront.storefront.store.home', $store) }}">Products</a>
+                    <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ route('storefront.storefront.store.home', $store) }}">Products</a>
                     @if ($hasServices)
-                        <a class="hover:text-[var(--store-secondary)]" href="{{ route('storefront.storefront.store.services', $store) }}">Services</a>
+                        <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ route('storefront.storefront.store.services', $store) }}">Services</a>
                     @endif
-                    <a class="hover:text-[var(--store-secondary)]" href="{{ route('storefront.storefront.store.faq', $store) }}">FAQ</a>
-                    <a class="hover:text-[var(--store-secondary)]" href="{{ route('storefront.storefront.store.contact', $store) }}">Contact</a>
+                    <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ route('storefront.storefront.store.faq', $store) }}">FAQ</a>
+                    <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ route('storefront.storefront.store.contact', $store) }}">Contact</a>
                 </div>
             </div>
             <div>
                 <h3 class="sf-headline-md text-white">Info</h3>
                 <div class="sf-body-md mt-3 grid gap-2 text-zinc-300">
                     @foreach ($footerPages as $link)
-                        <a class="hover:text-[var(--store-secondary)]" href="{{ $link['href'] }}">{{ $link['label'] }}</a>
+                        <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ $link['href'] }}">{{ $link['label'] }}</a>
                     @endforeach
                 </div>
             </div>
@@ -226,7 +255,7 @@
                     @foreach (['facebook', 'instagram', 'tiktok', 'twitter', 'youtube', 'whatsapp'] as $network)
                         @php $handle = data_get($store->social_accounts, $network); @endphp
                         @if ($handle)
-                            <a href="{{ $socialUrl($network, $handle) }}" class="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-zinc-200 transition hover:border-[var(--store-secondary)] hover:bg-[var(--store-secondary)] hover:text-black" aria-label="{{ ucfirst($network) }}">
+                            <a href="{{ $socialUrl($network, $handle) }}" class="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-zinc-200 transition hover:border-white hover:bg-white hover:text-black" aria-label="{{ ucfirst($network) }}">
                                 @include('storefront::partials.social-icon', ['network' => $network, 'class' => 'h-5 w-5'])
                             </a>
                         @endif
@@ -252,6 +281,11 @@
             const backdrop = document.querySelector('[data-cart-backdrop]');
             const categoriesButton = document.querySelector('[data-categories-toggle]');
             const categoriesMenu = document.querySelector('[data-categories-menu]');
+            const storeHeader = document.querySelector('[data-store-header]');
+            const mobileNavButton = document.querySelector('[data-mobile-nav-toggle]');
+            const mobileNav = document.querySelector('[data-mobile-nav]');
+            const mobileMenuOpenIcon = document.querySelector('[data-mobile-menu-open]');
+            const mobileMenuCloseIcon = document.querySelector('[data-mobile-menu-close]');
             const count = document.querySelector('[data-cart-count]');
             const formatter = new Intl.NumberFormat('en-NG', { style: 'currency', currency: @json($currency), currencyDisplay: 'narrowSymbol' });
             let cart = JSON.parse(localStorage.getItem(cartKey) || '[]');
@@ -261,6 +295,15 @@
             const paystackMethods = ['storeboot_paystack', 'self_hosted_paystack'];
             const checkoutSteps = ['cart', 'shipping', 'payment', 'confirm'];
             const paystackInitializeUrl = @json(route('storefront.storefront.store.checkout.paystack.initialize', [$store, '__ORDER_ID__']));
+
+            const setMobileNav = (open) => {
+                if (!mobileNav || !mobileNavButton) return;
+                mobileNav.classList.toggle('hidden', !open);
+                mobileNavButton.setAttribute('aria-expanded', String(open));
+                mobileNavButton.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+                mobileMenuOpenIcon?.classList.toggle('hidden', open);
+                mobileMenuCloseIcon?.classList.toggle('hidden', !open);
+            };
 
             @if (session('clear_cart'))
                 cart = [];
@@ -578,6 +621,16 @@
             });
 
             document.addEventListener('click', (event) => {
+                if (event.target.closest('[data-mobile-nav-toggle]')) {
+                    setMobileNav(mobileNavButton?.getAttribute('aria-expanded') !== 'true');
+                } else if (mobileNav && !storeHeader?.contains(event.target)) {
+                    setMobileNav(false);
+                }
+
+                if (event.target.closest('[data-mobile-nav] a')) {
+                    setMobileNav(false);
+                }
+
                 const add = event.target.closest('[data-add-to-cart]');
                 if (add) {
                     const product = JSON.parse(add.dataset.product);
@@ -697,7 +750,14 @@
             document.querySelector('[data-gallery-next]')?.addEventListener('click', () => setGalleryImage(galleryIndex + 1));
 
             document.addEventListener('keydown', (event) => {
-                if (event.key === 'Escape') closeDrawer();
+                if (event.key === 'Escape') {
+                    closeDrawer();
+                    setMobileNav(false);
+                }
+            });
+
+            window.addEventListener('resize', () => {
+                if (window.innerWidth >= 1024) setMobileNav(false);
             });
 
             document.querySelectorAll('form[data-disable-on-submit]').forEach((form) => {
