@@ -6,10 +6,12 @@ namespace Modules\Sales\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Enums\TaxBehavior;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Customers\Models\Customer;
+use Modules\Inventory\Actions\AdjustInventoryReservationAction;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Enums\StockCondition;
@@ -23,6 +25,7 @@ use Modules\Sales\Models\SalesCoupon;
 use Modules\Sales\Models\SalesCashLocation;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesTillSession;
+use Modules\Subscriptions\Support\TenantModuleAccess;
 use Modules\Tenancy\Models\Tenant;
 
 final class CreateSalesOrderAction
@@ -30,6 +33,8 @@ final class CreateSalesOrderAction
     public function __construct(
         private readonly PostInventoryMovementAction $postInventoryMovement,
         private readonly PostJournalEntryAction $postJournalEntry,
+        private readonly AdjustInventoryReservationAction $reservations,
+        private readonly TenantModuleAccess $moduleAccess,
     ) {}
 
     /**
@@ -39,7 +44,19 @@ final class CreateSalesOrderAction
     {
         return DB::transaction(function () use ($data, $userId): SalesOrder {
             $tenant = Tenant::query()->findOrFail($data['tenant_id']);
+            $inventoryEnabled = $this->moduleAccess->allows($tenant, 'inventory');
+            $inventoryLocationId = $inventoryEnabled ? (int) ($data['inventory_location_id'] ?? 0) : null;
+
+            if ($inventoryEnabled && ! $inventoryLocationId) {
+                throw ValidationException::withMessages([
+                    'inventory_location_id' => 'Select an inventory location before recording this sale.',
+                ]);
+            }
+
             $source = (string) ($data['source'] ?? 'in_store');
+            $isCustomerOrder = $source === 'offline' && ($data['record_as'] ?? 'completed_sale') === 'customer_order';
+            $paymentReceived = ! $isCustomerOrder || (bool) ($data['payment_received'] ?? false);
+            $paymentMethod = $paymentReceived ? ($data['payment_method'] ?? null) : null;
             $requiresTill = ! in_array($source, ['offline', 'online'], true);
             $tillSession = $requiresTill
                 ? SalesTillSession::query()
@@ -59,17 +76,25 @@ final class CreateSalesOrderAction
             $customer = Customer::query()->where('tenant_id', $tenant->id)->findOrFail($data['customer_id']);
             $isWalkIn = strcasecmp($customer->phone, 'WALK-IN') === 0;
 
-            if ((bool) ($data['is_credit_sale'] ?? false) && $isWalkIn) {
+            if ($isCustomerOrder && $isWalkIn) {
+                throw ValidationException::withMessages([
+                    'customer_id' => 'Select or create a customer before recording a customer order.',
+                ]);
+            }
+
+            $isCreditSale = ! $isCustomerOrder && (bool) ($data['is_credit_sale'] ?? false);
+
+            if ($isCreditSale && $isWalkIn) {
                 throw ValidationException::withMessages([
                     'customer_id' => 'Credit sales cannot be assigned to the walk-in customer.',
                 ]);
             }
 
-            $items = collect((array) $data['items'])->map(function (array $item) use ($tenant, $data): array {
+            $items = collect((array) $data['items'])->map(function (array $item) use ($tenant, $inventoryEnabled, $inventoryLocationId): array {
                 $variant = ProductVariant::query()->with('product.taxes')->where('tenant_id', $tenant->id)->findOrFail($item['product_variant_id']);
                 $quantity = (int) $item['quantity'];
                 $unitPriceMinor = $this->moneyToMinor($item['unit_price']);
-                $unitCostMinor = $this->unitCostForSale($tenant, (int) $data['inventory_location_id'], $variant);
+                $unitCostMinor = $this->unitCostForSale($tenant, $inventoryLocationId, $variant, $inventoryEnabled);
                 $lineSubtotalMinor = $quantity * $unitPriceMinor;
                 $selectedTaxRate = $variant->product?->taxes?->sum(fn ($tax): float => (float) $tax->rate) ?? 0.0;
                 $taxRate = $variant->tax_behavior === TaxBehavior::Taxable
@@ -94,14 +119,14 @@ final class CreateSalesOrderAction
             $adminDiscountMinor = $this->discountMinor((string) ($data['admin_discount_type'] ?? DiscountType::Amount->value), (float) ($data['admin_discount_value'] ?? 0), $subtotalMinor);
             $this->guardDiscountLimit($userId, $tenant, $subtotalMinor, $adminDiscountMinor);
             $totalMinor = max(0, $subtotalMinor + $taxMinor + $shippingMinor - $couponDiscountMinor - $adminDiscountMinor);
-            $amountPaidMinor = $this->moneyToMinor($data['amount_paid'] ?? 0);
+            $amountPaidMinor = $paymentReceived ? $this->moneyToMinor($data['amount_paid'] ?? 0) : 0;
             $paidMinor = min($amountPaidMinor, $totalMinor);
             $changeDueMinor = max(0, $amountPaidMinor - $totalMinor);
             $paymentStatus = $paidMinor >= $totalMinor
                 ? SalesPaymentStatus::Paid
                 : ($paidMinor > 0 ? SalesPaymentStatus::PartiallyPaid : SalesPaymentStatus::Unpaid);
 
-            if (! (bool) ($data['is_credit_sale'] ?? false) && $paidMinor < $totalMinor) {
+            if (! $isCustomerOrder && ! $isCreditSale && $paidMinor < $totalMinor) {
                 throw ValidationException::withMessages([
                     'amount_paid' => 'Full payment is required unless this is marked as a credit sale.',
                 ]);
@@ -110,6 +135,8 @@ final class CreateSalesOrderAction
             $order = SalesOrder::query()->create([
                 'tenant_id' => $tenant->id,
                 'branch_id' => $data['branch_id'],
+                'inventory_location_id' => $inventoryLocationId,
+                'stock_reserved' => $isCustomerOrder && $inventoryEnabled,
                 'customer_id' => $customer->id,
                 'user_id' => $userId,
                 'sales_till_session_id' => $tillSession?->id,
@@ -118,10 +145,12 @@ final class CreateSalesOrderAction
                 'order_number' => $this->number('SO', $tenant->id),
                 'invoice_number' => $this->number('INV', $tenant->id),
                 'receipt_number' => $this->number('RCT', $tenant->id),
-                'order_status' => SalesOrderStatus::Completed->value,
+                'order_status' => $isCustomerOrder
+                    ? SalesOrderStatus::Pending->value
+                    : SalesOrderStatus::Completed->value,
                 'payment_status' => $paymentStatus->value,
                 'order_date' => $data['order_date'],
-                'is_credit_sale' => (bool) ($data['is_credit_sale'] ?? false),
+                'is_credit_sale' => $isCreditSale,
                 'subtotal_minor' => $subtotalMinor,
                 'tax_minor' => $taxMinor,
                 'shipping_minor' => $shippingMinor,
@@ -130,7 +159,7 @@ final class CreateSalesOrderAction
                 'total_minor' => $totalMinor,
                 'paid_minor' => $paidMinor,
                 'change_due_minor' => $changeDueMinor,
-                'payment_method' => $data['payment_method'] ?? null,
+                'payment_method' => $paymentMethod,
                 'delivery_method' => $data['delivery_method'] ?? null,
                 'delivery_status' => $data['delivery_status'] ?? 'delivered',
                 'delivery_address' => $data['delivery_address'] ?? null,
@@ -151,22 +180,28 @@ final class CreateSalesOrderAction
                     'line_total_minor' => $item['line_subtotal_minor'] + $item['tax_minor'],
                 ]);
 
-                $this->postInventoryMovement->executeFromSource([
-                    'tenant_id' => $tenant->id,
-                    'inventory_location_id' => $data['inventory_location_id'],
-                    'product_variant_id' => $variant->id,
-                    'movement_type' => InventoryMovementType::StockOut->value,
-                    'stock_condition' => StockCondition::Sellable->value,
-                    'quantity' => $item['quantity'],
-                    'unit_cost' => $item['unit_cost_minor'] / 100,
-                    'reference_number' => $order->order_number,
-                    'notes' => 'Sold through POS.',
-                    'occurred_at' => $data['order_date'],
-                ], 'sales_order', $order->id);
+                if (! $isCustomerOrder && $inventoryEnabled) {
+                    $this->postInventoryMovement->executeFromSource([
+                        'tenant_id' => $tenant->id,
+                        'inventory_location_id' => $inventoryLocationId,
+                        'product_variant_id' => $variant->id,
+                        'movement_type' => InventoryMovementType::StockOut->value,
+                        'stock_condition' => StockCondition::Sellable->value,
+                        'quantity' => $item['quantity'],
+                        'unit_cost' => $item['unit_cost_minor'] / 100,
+                        'reference_number' => $order->order_number,
+                        'notes' => 'Sold through POS.',
+                        'occurred_at' => $data['order_date'],
+                    ], 'sales_order', $order->id);
+                } elseif ($isCustomerOrder && $inventoryEnabled && $variant->product?->product_type === ProductType::Product) {
+                    // Pending customer orders reserve stock so it cannot be oversold
+                    // before completion. Stock is deducted when the order completes.
+                    $this->reservations->reserve($tenant->id, (int) $inventoryLocationId, (int) $variant->id, (int) $item['quantity']);
+                }
             }
 
             $paymentAccount = $paidMinor > 0
-                ? $this->paymentAccountFor($tenant->id, $order->branch_id, $data['payment_method'] ?? 'Cash', $data['business_payment_account_id'] ?? null, 'business_payment_account_id')
+                ? $this->paymentAccountFor($tenant->id, $order->branch_id, $paymentMethod ?? 'Cash', $data['business_payment_account_id'] ?? null, 'business_payment_account_id')
                 : null;
 
             if ($paidMinor > 0) {
@@ -175,35 +210,39 @@ final class CreateSalesOrderAction
                     'sales_till_session_id' => $tillSession?->id,
                     'business_payment_account_id' => $paymentAccount?->id,
                     'payment_date' => $data['order_date'],
-                    'payment_method' => $data['payment_method'] ?? 'Cash',
+                    'payment_method' => $paymentMethod ?? 'Cash',
                     'amount_minor' => $paidMinor,
                 ]);
             }
 
-            $this->syncCustomerBalance($customer, $order);
+            if (! $isCustomerOrder) {
+                $this->syncCustomerBalance($customer, $order);
+            }
             $cogsMinor = (int) $items->sum(fn (array $item): int => $item['quantity'] * $item['unit_cost_minor']);
             $discountMinor = $couponDiscountMinor + $adminDiscountMinor;
 
-            $this->postJournalEntry->execute(
-                $tenant->id,
-                (string) $data['order_date'],
-                'Sales order '.$order->order_number,
-                [
-                    ['account_code' => $this->cashAccountFor($data['payment_method'] ?? 'Cash', $tillSession, $paymentAccount), 'branch_id' => $order->branch_id, 'debit_minor' => $paidMinor, 'party_type' => 'customer', 'party_id' => $customer->id],
-                    ['account_code' => '1100', 'branch_id' => $order->branch_id, 'debit_minor' => $order->balance_minor, 'party_type' => 'customer', 'party_id' => $customer->id],
-                    ['account_code' => '4020', 'branch_id' => $order->branch_id, 'debit_minor' => $discountMinor],
-                    ['account_code' => '4000', 'branch_id' => $order->branch_id, 'credit_minor' => $subtotalMinor],
-                    ['account_code' => '2100', 'branch_id' => $order->branch_id, 'credit_minor' => $taxMinor],
-                    ['account_code' => '4010', 'branch_id' => $order->branch_id, 'credit_minor' => $shippingMinor],
-                    ['account_code' => 'EXP-5000', 'branch_id' => $order->branch_id, 'debit_minor' => $cogsMinor],
-                    ['account_code' => '1200', 'branch_id' => $order->branch_id, 'credit_minor' => $cogsMinor],
-                ],
-                'sales_order',
-                $order->id,
-                'created',
-            );
+            if (! $isCustomerOrder) {
+                $this->postJournalEntry->execute(
+                    $tenant->id,
+                    (string) $data['order_date'],
+                    'Sales order '.$order->order_number,
+                    [
+                        ['account_code' => $this->cashAccountFor($paymentMethod ?? 'Cash', $tillSession, $paymentAccount), 'branch_id' => $order->branch_id, 'debit_minor' => $paidMinor, 'party_type' => 'customer', 'party_id' => $customer->id],
+                        ['account_code' => '1100', 'branch_id' => $order->branch_id, 'debit_minor' => $order->balance_minor, 'party_type' => 'customer', 'party_id' => $customer->id],
+                        ['account_code' => '4020', 'branch_id' => $order->branch_id, 'debit_minor' => $discountMinor],
+                        ['account_code' => '4000', 'branch_id' => $order->branch_id, 'credit_minor' => $subtotalMinor],
+                        ['account_code' => '2100', 'branch_id' => $order->branch_id, 'credit_minor' => $taxMinor],
+                        ['account_code' => '4010', 'branch_id' => $order->branch_id, 'credit_minor' => $shippingMinor],
+                        ['account_code' => 'EXP-5000', 'branch_id' => $order->branch_id, 'debit_minor' => $cogsMinor],
+                        ['account_code' => '1200', 'branch_id' => $order->branch_id, 'credit_minor' => $cogsMinor],
+                    ],
+                    'sales_order',
+                    $order->id,
+                    'created',
+                );
+            }
 
-            if ($tillSession && $paidMinor > 0 && $this->isCashMethod($data['payment_method'] ?? 'Cash')) {
+            if ($tillSession && $paidMinor > 0 && $this->isCashMethod($paymentMethod ?? 'Cash')) {
                 $this->ensureTillCashLocation($tillSession)->increment('balance_minor', $paidMinor);
             }
 
@@ -293,14 +332,21 @@ final class CreateSalesOrderAction
         return (int) round(((float) (is_string($value) ? str_replace(',', '', $value) : ($value ?: 0))) * 100);
     }
 
-    private function unitCostForSale(Tenant $tenant, int $inventoryLocationId, ProductVariant $variant): int
+    private function unitCostForSale(
+        Tenant $tenant,
+        ?int $inventoryLocationId,
+        ProductVariant $variant,
+        bool $inventoryEnabled,
+    ): int
     {
-        $averageCostMinor = (int) InventoryStockLevel::query()
-            ->where('tenant_id', $tenant->id)
-            ->where('inventory_location_id', $inventoryLocationId)
-            ->where('product_variant_id', $variant->id)
-            ->lockForUpdate()
-            ->value('average_cost_minor');
+        $averageCostMinor = $inventoryEnabled && $inventoryLocationId
+            ? (int) InventoryStockLevel::query()
+                ->where('tenant_id', $tenant->id)
+                ->where('inventory_location_id', $inventoryLocationId)
+                ->where('product_variant_id', $variant->id)
+                ->lockForUpdate()
+                ->value('average_cost_minor')
+            : 0;
 
         if ($averageCostMinor > 0) {
             return $averageCostMinor;

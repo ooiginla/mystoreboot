@@ -81,6 +81,8 @@ final class ActiveBranchSelectionTest extends TestCase
             ->withSession(['active_branch_ids' => [$tenant->id => $annexBranch->id]])
             ->get(route('admin.business.index', ['tenant' => $tenant->id]))
             ->assertOk()
+            ->assertSee('data-business-context', false)
+            ->assertSee('Branch Shop')
             ->assertSee('Active branch')
             ->assertSee('Annex Branch')
             ->assertDontSee('<dialog class="dialog" data-active-branch-dialog>', false);

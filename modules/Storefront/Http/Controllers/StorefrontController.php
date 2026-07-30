@@ -5,19 +5,23 @@ declare(strict_types=1);
 namespace Modules\Storefront\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Mail\OnlineOrderConfirmationMail;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Modules\Catalog\Enums\TaxBehavior;
 use Modules\Business\Models\OnlineStore;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
+use Modules\Catalog\Enums\TaxBehavior;
 use Modules\Catalog\Models\Product;
+use Modules\Catalog\Models\ProductCollection;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Customers\Enums\CustomerStatus;
 use Modules\Customers\Enums\TicketPriority;
@@ -25,30 +29,112 @@ use Modules\Customers\Enums\TicketStatus;
 use Modules\Customers\Enums\TicketType;
 use Modules\Customers\Models\Customer;
 use Modules\Customers\Models\SupportTicket;
+use Modules\Finance\Actions\PostJournalEntryAction;
+use Modules\Inventory\Actions\AdjustInventoryReservationAction;
+use Modules\Sales\Actions\ExpireOnlineOrderReservationsAction;
 use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Enums\SalesPaymentStatus;
 use Modules\Sales\Models\OnlineCollectedPayment;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderPayment;
+use Modules\Subscriptions\Support\TenantModuleAccess;
+use Throwable;
 
 final class StorefrontController extends Controller
 {
     public function home(OnlineStore $store, Request $request): View
     {
         $store = $this->preparedStore($store);
+        $selectedCategorySlug = $request->string('category')->toString();
+        $selectedCategory = $store->categories
+            ->first(fn ($category): bool => $category->slug === $selectedCategorySlug);
 
         $products = $this->productsFor($store, ProductType::Product)
-            ->when($request->filled('category'), function ($query) use ($request): void {
-                $query->whereHas('category', fn ($category) => $category->where('slug', $request->string('category')->toString()));
+            ->when($selectedCategorySlug !== '', function ($query) use ($selectedCategorySlug): void {
+                $query->whereHas('category', fn ($category) => $category->where('slug', $selectedCategorySlug));
             })
             ->latest()
             ->paginate(16)
             ->withQueryString();
+        $productCollections = ProductCollection::query()
+            ->with([
+                'products' => fn ($query) => $query
+                    ->with([
+                        'badges',
+                        'category',
+                        'images',
+                        'tenant',
+                        'variants' => fn ($variantQuery) => $variantQuery
+                            ->where('status', ProductStatus::Active->value)
+                            ->oldest('id'),
+                    ])
+                    ->where('tenant_id', $store->tenant_id)
+                    ->where('product_type', ProductType::Product->value)
+                    ->where('status', ProductStatus::Active->value)
+                    ->latest('products.id'),
+            ])
+            ->where('tenant_id', $store->tenant_id)
+            ->where('collection_type', 'manual')
+            ->where('is_visible', true)
+            ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+            ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>=', now()))
+            ->orderByRaw('sort_order is null')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get()
+            ->filter(fn (ProductCollection $collection): bool => $collection->products->isNotEmpty())
+            ->values();
 
         return view('storefront::home', [
             'store' => $store,
             'products' => $products,
-            'selectedCategory' => $request->string('category')->toString(),
+            'productCollections' => $productCollections,
+            'selectedCategory' => $selectedCategorySlug,
+            'selectedCategoryName' => $selectedCategory?->name,
+            'selectedCollection' => null,
+        ]);
+    }
+
+    public function category(OnlineStore $store, string $categorySlug): View
+    {
+        $store = $this->preparedStore($store);
+        $category = $store->categories
+            ->first(fn ($item): bool => $item->slug === $categorySlug
+                && ($item->category_type?->value ?? (string) $item->category_type) === 'product');
+
+        abort_unless($category, 404);
+
+        return view('storefront::home', [
+            'store' => $store,
+            'products' => $this->productsFor($store, ProductType::Product)
+                ->where('category_id', $category->id)
+                ->latest()
+                ->paginate(16),
+            'productCollections' => collect(),
+            'selectedCategory' => $category->slug,
+            'selectedCategoryName' => $category->name,
+            'selectedCollection' => null,
+        ]);
+    }
+
+    public function collection(OnlineStore $store, string $collectionSlug): View
+    {
+        $store = $this->preparedStore($store);
+        $collection = $store->productCollections
+            ->first(fn (ProductCollection $item): bool => ($item->slug ?: (string) $item->id) === $collectionSlug);
+
+        abort_unless($collection, 404);
+
+        return view('storefront::home', [
+            'store' => $store,
+            'products' => $this->productsFor($store, ProductType::Product)
+                ->whereHas('collections', fn ($query) => $query->whereKey($collection->id))
+                ->latest()
+                ->paginate(16),
+            'productCollections' => collect(),
+            'selectedCategory' => '',
+            'selectedCategoryName' => null,
+            'selectedCollection' => $collection,
         ]);
     }
 
@@ -101,6 +187,67 @@ final class StorefrontController extends Controller
         return view('storefront::contact', [
             'store' => $this->preparedStore($store),
         ]);
+    }
+
+    public function track(OnlineStore $store, Request $request): View
+    {
+        $store = $this->preparedStore($store);
+        $reference = strtoupper(trim($request->string('reference')->toString()));
+        $order = null;
+        $timeline = [];
+
+        if ($reference !== '') {
+            // Scope to THIS store's tenant so one storefront can only reveal its
+            // own orders, even though tracking references are globally unique.
+            $order = SalesOrder::query()
+                ->with(['items', 'customer', 'payments'])
+                ->where('tenant_id', $store->tenant_id)
+                ->where('source', 'online')
+                ->where('tracking_reference', $reference)
+                ->first();
+
+            if ($order) {
+                $timeline = $this->orderTimeline($order);
+            }
+        }
+
+        return view('storefront::track', [
+            'store' => $store,
+            'reference' => $reference,
+            'order' => $order,
+            'timeline' => $timeline,
+            'searched' => $request->has('reference'),
+        ]);
+    }
+
+    /**
+     * A buyer-facing progress timeline derived from the order's current
+     * statuses and timestamps.
+     *
+     * @return list<array{label: string, note: string, done: bool, at: \Illuminate\Support\Carbon|null}>
+     */
+    private function orderTimeline(SalesOrder $order): array
+    {
+        if ($order->order_status === SalesOrderStatus::Cancelled) {
+            return [
+                ['label' => 'Order placed', 'note' => 'We received your order.', 'done' => true, 'at' => $order->created_at],
+                ['label' => 'Order cancelled', 'note' => 'This order was cancelled.', 'done' => true, 'at' => $order->updated_at],
+            ];
+        }
+
+        $paid = in_array($order->payment_status, [SalesPaymentStatus::Paid, SalesPaymentStatus::PartiallyPaid], true);
+        $delivery = (string) ($order->delivery_status ?? 'pending');
+        $processing = in_array($order->order_status, [SalesOrderStatus::Processing, SalesOrderStatus::Completed], true);
+        $outForDelivery = in_array($delivery, ['out_for_delivery', 'delivered'], true);
+        $delivered = $delivery === 'delivered' || $order->order_status === SalesOrderStatus::Completed;
+
+        return [
+            ['label' => 'Order placed', 'note' => 'We received your order.', 'done' => true, 'at' => $order->created_at],
+            ['label' => $paid ? 'Payment received' : 'Payment pending', 'note' => $order->payment_status->label(), 'done' => $paid, 'at' => $paid ? ($order->payments->sortByDesc('id')->first()?->created_at ?? $order->created_at) : null],
+            ['label' => 'Processing', 'note' => 'Your order is being prepared.', 'done' => $processing, 'at' => null],
+            ['label' => 'Out for delivery', 'note' => 'On its way to you.', 'done' => $outForDelivery, 'at' => null],
+            ['label' => 'Delivered', 'note' => 'Order completed.', 'done' => $delivered, 'at' => null],
+        ];
     }
 
     public function submitContact(OnlineStore $store, Request $request): RedirectResponse
@@ -168,6 +315,8 @@ final class StorefrontController extends Controller
             'customer.email' => ['required', 'email:rfc', 'max:160'],
             'customer.phone' => ['required', 'string', 'max:60'],
             'customer.address' => ['required', 'string', 'max:1000'],
+            'customer.save_address' => ['sometimes', 'boolean'],
+            'customer.address_label' => ['nullable', 'required_if:customer.save_address,true', 'string', 'max:80'],
             'shipping_option' => ['required', 'string', 'max:120'],
             'payment_method' => ['nullable', 'string', 'max:80'],
             'items' => ['required', 'array', 'min:1', 'max:100'],
@@ -175,111 +324,214 @@ final class StorefrontController extends Controller
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
         ]);
 
-        $order = DB::transaction(function () use ($store, $data): SalesOrder {
-            $customerData = $data['customer'];
-            $nameParts = preg_split('/\s+/', trim($customerData['name']), 2) ?: [];
-            $email = Str::lower(trim($customerData['email']));
+        // Lazily release expired reservations before this checkout so a stalled
+        // scheduler never permanently locks stock behind abandoned unpaid orders.
+        if (app(TenantModuleAccess::class)->allows($store->tenant, 'inventory')) {
+            app(ExpireOnlineOrderReservationsAction::class)->execute($store->tenant_id);
+        }
 
-            $customer = Customer::query()
-                ->where('tenant_id', $store->tenant_id)
-                ->where(fn ($query) => $query->where('email', $email)->orWhere('phone', $customerData['phone']))
-                ->first() ?? new Customer(['tenant_id' => $store->tenant_id]);
+        try {
+            $order = DB::transaction(function () use ($store, $data): SalesOrder {
+                $customerData = $data['customer'];
+                $nameParts = preg_split('/\s+/', trim($customerData['name']), 2) ?: [];
+                $email = Str::lower(trim($customerData['email']));
 
-            $customer->fill([
-                'first_name' => $nameParts[0] ?? $customer->first_name,
-                'last_name' => $nameParts[1] ?? $customer->last_name,
-                'email' => $email,
-                'phone' => $customerData['phone'],
-                'address' => $customerData['address'],
-                'status' => CustomerStatus::Active->value,
-            ])->save();
-
-            $items = collect($data['items'])->map(function (array $item) use ($store): array {
-                $variant = ProductVariant::query()
-                    ->with('product.taxes')
+                $customer = Customer::query()
                     ->where('tenant_id', $store->tenant_id)
-                    ->where('status', ProductStatus::Active->value)
-                    ->findOrFail($item['product_variant_id']);
+                    ->where(fn ($query) => $query->where('email', $email)->orWhere('phone', $customerData['phone']))
+                    ->first() ?? new Customer(['tenant_id' => $store->tenant_id]);
 
-                $categoryIds = $store->categories->pluck('id');
-                abort_unless(
-                    $variant->product
-                    && $variant->product->status === ProductStatus::Active
-                    && ($categoryIds->isEmpty() || $categoryIds->contains($variant->product->category_id)),
-                    422,
-                    'One or more cart items are unavailable.',
-                );
+                $customer->fill([
+                    'first_name' => $nameParts[0] ?? $customer->first_name,
+                    'last_name' => $nameParts[1] ?? $customer->last_name,
+                    'email' => $email,
+                    'phone' => $customerData['phone'],
+                    'address' => $customerData['address'],
+                    'status' => CustomerStatus::Active->value,
+                ])->save();
 
-                $quantity = (int) $item['quantity'];
-                $unitPriceMinor = (int) $variant->selling_price_minor;
-                $lineSubtotalMinor = $quantity * $unitPriceMinor;
-                $selectedTaxRate = $variant->product?->taxes?->sum(fn ($tax): float => (float) $tax->rate) ?? 0.0;
-                $taxRate = $variant->tax_behavior === TaxBehavior::Taxable
-                    ? (float) ($selectedTaxRate > 0 ? $selectedTaxRate : ($variant->tax_rate ?? $variant->product?->tax_rate ?? $store->tenant?->default_tax_rate ?? 0))
-                    : 0.0;
+                $matchingAddress = $customer->addresses()
+                    ->where('address', $customerData['address'])
+                    ->first();
 
-                return [
-                    'variant' => $variant,
-                    'quantity' => $quantity,
-                    'unit_price_minor' => $unitPriceMinor,
-                    'unit_cost_minor' => (bool) ($store->tenant?->settings['use_estimated_cost_for_cogs'] ?? false)
-                        ? (int) ($variant->cost_price_minor ?: $variant->product?->base_cost_price_minor ?: 0)
-                        : 0,
-                    'line_subtotal_minor' => $lineSubtotalMinor,
-                    'tax_minor' => (int) round($lineSubtotalMinor * ($taxRate / 100)),
-                ];
-            })->values();
+                if ((bool) ($customerData['save_address'] ?? false)) {
+                    $label = trim((string) $customerData['address_label']);
+                    $addressWithLabel = $customer->addresses()->where('label', $label)->first();
+                    $savedAddress = $customer->addresses()->updateOrCreate(
+                        ['label' => $label],
+                        [
+                            'tenant_id' => $store->tenant_id,
+                            'address' => $customerData['address'],
+                            'is_default' => $addressWithLabel?->is_default ?? ! $customer->addresses()->exists(),
+                            'last_used_at' => now(),
+                        ],
+                    );
+                    $matchingAddress = $savedAddress;
+                }
 
-            $shippingMinor = $this->shippingMinor($store, (string) $data['shipping_option']);
-            $subtotalMinor = (int) $items->sum('line_subtotal_minor');
-            $taxMinor = (int) $items->sum('tax_minor');
-            $totalMinor = $subtotalMinor + $taxMinor + $shippingMinor;
+                $matchingAddress?->update(['last_used_at' => now()]);
 
-            $order = SalesOrder::query()->create([
-                'tenant_id' => $store->tenant_id,
-                'branch_id' => $store->fulfilment_branch_id,
-                'customer_id' => $customer->id,
-                'source' => 'online',
-                'order_number' => $this->salesOrderNumber('SO', $store->tenant_id),
-                'invoice_number' => $this->salesOrderNumber('INV', $store->tenant_id),
-                'receipt_number' => $this->salesOrderNumber('RCT', $store->tenant_id),
-                'order_status' => SalesOrderStatus::Pending->value,
-                'payment_status' => SalesPaymentStatus::Pending->value,
-                'order_date' => now()->toDateString(),
-                'is_credit_sale' => false,
-                'subtotal_minor' => $subtotalMinor,
-                'tax_minor' => $taxMinor,
-                'shipping_minor' => $shippingMinor,
-                'total_minor' => $totalMinor,
-                'paid_minor' => 0,
-                'change_due_minor' => 0,
-                'payment_method' => $data['payment_method'] ?? null,
-                'delivery_method' => $data['shipping_option'],
-                'delivery_status' => 'pending',
-                'delivery_address' => $customerData['address'],
-            ]);
+                $items = collect($data['items'])->map(function (array $item) use ($store): array {
+                    $variant = ProductVariant::query()
+                        ->with('product.taxes')
+                        ->where('tenant_id', $store->tenant_id)
+                        ->where('status', ProductStatus::Active->value)
+                        ->findOrFail($item['product_variant_id']);
 
-            foreach ($items as $item) {
-                $variant = $item['variant'];
-                $order->items()->create([
+                    $categoryIds = $store->categories->pluck('id');
+                    abort_unless(
+                        $variant->product
+                        && $variant->product->status === ProductStatus::Active
+                        && ($categoryIds->isEmpty() || $categoryIds->contains($variant->product->category_id)),
+                        422,
+                        'One or more cart items are unavailable.',
+                    );
+
+                    $quantity = (int) $item['quantity'];
+                    $unitPriceMinor = (int) $variant->selling_price_minor;
+                    $lineSubtotalMinor = $quantity * $unitPriceMinor;
+                    $selectedTaxRate = $variant->product?->taxes?->sum(fn ($tax): float => (float) $tax->rate) ?? 0.0;
+                    $taxRate = $variant->tax_behavior === TaxBehavior::Taxable
+                        ? (float) ($selectedTaxRate > 0 ? $selectedTaxRate : ($variant->tax_rate ?? $variant->product?->tax_rate ?? $store->tenant?->default_tax_rate ?? 0))
+                        : 0.0;
+
+                    return [
+                        'variant' => $variant,
+                        'quantity' => $quantity,
+                        'unit_price_minor' => $unitPriceMinor,
+                        'unit_cost_minor' => (bool) ($store->tenant?->settings['use_estimated_cost_for_cogs'] ?? false)
+                            ? (int) ($variant->cost_price_minor ?: $variant->product?->base_cost_price_minor ?: 0)
+                            : 0,
+                        'line_subtotal_minor' => $lineSubtotalMinor,
+                        'tax_minor' => (int) round($lineSubtotalMinor * ($taxRate / 100)),
+                    ];
+                })->values();
+
+                $shippingMinor = $this->shippingMinor($store, (string) $data['shipping_option']);
+                $subtotalMinor = (int) $items->sum('line_subtotal_minor');
+                $taxMinor = (int) $items->sum('tax_minor');
+                $totalMinor = $subtotalMinor + $taxMinor + $shippingMinor;
+
+                // Reserve stock so two shoppers cannot buy the same last unit. The
+                // reservation holds availability until the order is paid & completed,
+                // or expires and is auto-cancelled to free the stock for others. Only
+                // applies when inventory is tracked at an active fulfilment location;
+                // stores without inventory tracking check out unchanged.
+                $reservationLocationId = null;
+                $reservedUntil = null;
+                $stockReserved = false;
+
+                if (app(TenantModuleAccess::class)->allows($store->tenant, 'inventory')) {
+                    $reservations = app(AdjustInventoryReservationAction::class);
+                    $reservationLocationId = $reservations->resolveActiveLocationId($store->tenant_id, (int) $store->fulfilment_branch_id);
+
+                    if ($reservationLocationId) {
+                        foreach ($items as $item) {
+                            if ($item['variant']->product?->product_type !== ProductType::Product) {
+                                continue;
+                            }
+
+                            $reservations->reserve($store->tenant_id, $reservationLocationId, (int) $item['variant']->id, (int) $item['quantity']);
+                        }
+
+                        $reservedUntil = now()->addMinutes(max(1, (int) ($store->reservation_hold_minutes ?: 30)));
+                        $stockReserved = true;
+                    }
+                }
+
+                $order = SalesOrder::query()->create([
                     'tenant_id' => $store->tenant_id,
-                    'product_variant_id' => $variant->id,
-                    'item_name' => $variant->product?->name.' / '.$variant->variant_name,
-                    'sku' => $variant->sku,
-                    'quantity' => $item['quantity'],
-                    'unit_price_minor' => $item['unit_price_minor'],
-                    'unit_cost_minor' => $item['unit_cost_minor'],
-                    'tax_minor' => $item['tax_minor'],
-                    'line_total_minor' => $item['line_subtotal_minor'] + $item['tax_minor'],
+                    'branch_id' => $store->fulfilment_branch_id,
+                    'inventory_location_id' => $reservationLocationId,
+                    'stock_reserved' => $stockReserved,
+                    'reserved_until' => $reservedUntil,
+                    'customer_id' => $customer->id,
+                    'source' => 'online',
+                    'order_number' => $this->salesOrderNumber('SO', $store->tenant_id),
+                    'invoice_number' => $this->salesOrderNumber('INV', $store->tenant_id),
+                    'receipt_number' => $this->salesOrderNumber('RCT', $store->tenant_id),
+                    'order_status' => SalesOrderStatus::Pending->value,
+                    'payment_status' => SalesPaymentStatus::Pending->value,
+                    'order_date' => now()->toDateString(),
+                    'is_credit_sale' => false,
+                    'subtotal_minor' => $subtotalMinor,
+                    'tax_minor' => $taxMinor,
+                    'shipping_minor' => $shippingMinor,
+                    'total_minor' => $totalMinor,
+                    'paid_minor' => 0,
+                    'change_due_minor' => 0,
+                    'payment_method' => $data['payment_method'] ?? null,
+                    'delivery_method' => $data['shipping_option'],
+                    'delivery_status' => 'pending',
+                    'delivery_address' => $customerData['address'],
                 ]);
-            }
 
-            return $order->refresh();
-        });
+                foreach ($items as $item) {
+                    $variant = $item['variant'];
+                    $order->items()->create([
+                        'tenant_id' => $store->tenant_id,
+                        'product_variant_id' => $variant->id,
+                        'item_name' => $variant->product?->name.' / '.$variant->variant_name,
+                        'sku' => $variant->sku,
+                        'quantity' => $item['quantity'],
+                        'unit_price_minor' => $item['unit_price_minor'],
+                        'unit_cost_minor' => $item['unit_cost_minor'],
+                        'tax_minor' => $item['tax_minor'],
+                        'line_total_minor' => $item['line_subtotal_minor'] + $item['tax_minor'],
+                    ]);
+                }
+
+                return $order->refresh();
+            });
+        } catch (ValidationException $exception) {
+            // Surface sold-out / reservation errors as JSON so the checkout UI can
+            // show them instead of following a redirect to an HTML page.
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'errors' => $exception->errors(),
+            ], 422);
+        }
+
+        $this->sendOrderConfirmation($store, $order);
 
         return response()->json([
             'order_id' => $order->id,
             'order_reference' => $order->order_number,
+        ]);
+    }
+
+    public function lookupCustomer(OnlineStore $store, Request $request): JsonResponse
+    {
+        $store = $this->preparedStore($store);
+        $data = $request->validate([
+            'email' => ['required', 'email:rfc', 'max:160'],
+        ]);
+        $customer = Customer::query()
+            ->with(['addresses' => fn ($query) => $query
+                ->orderByDesc('is_default')
+                ->orderByDesc('last_used_at')
+                ->orderBy('label')])
+            ->where('tenant_id', $store->tenant_id)
+            ->whereRaw('LOWER(email) = ?', [Str::lower(trim($data['email']))])
+            ->first();
+
+        if (! $customer) {
+            return response()->json(['found' => false]);
+        }
+
+        return response()->json([
+            'found' => true,
+            'customer' => [
+                'name' => $customer->name,
+                'phone' => $customer->phone,
+                'address' => $customer->address,
+                'addresses' => $customer->addresses->map(fn ($address): array => [
+                    'id' => $address->id,
+                    'label' => $address->label,
+                    'address' => $address->address,
+                    'is_default' => $address->is_default,
+                ])->values(),
+            ],
         ]);
     }
 
@@ -473,10 +725,25 @@ final class StorefrontController extends Controller
                 'payment_status' => $paidMinor >= $lockedOrder->total_minor
                     ? SalesPaymentStatus::Paid->value
                     : SalesPaymentStatus::PartiallyPaid->value,
-                'order_status' => $paidMinor >= $lockedOrder->total_minor
-                    ? SalesOrderStatus::Completed->value
-                    : $lockedOrder->order_status->value,
+                // Paid orders no longer auto-cancel; the reservation is held until
+                // the order is completed (stock deducted) or later cancelled.
+                'reserved_until' => null,
             ]);
+
+            // Recognise the gateway receipt now: debit Online Payment Clearing and
+            // credit Customer Deposits (unearned revenue) until the order completes.
+            app(PostJournalEntryAction::class)->execute(
+                $lockedOrder->tenant_id,
+                now()->toDateString(),
+                'Online deposit received for '.$lockedOrder->order_number,
+                [
+                    ['account_code' => '1060', 'branch_id' => $lockedOrder->branch_id, 'debit_minor' => (int) $payment->amount_minor, 'party_type' => 'customer', 'party_id' => $lockedOrder->customer_id],
+                    ['account_code' => '2310', 'branch_id' => $lockedOrder->branch_id, 'credit_minor' => (int) $payment->amount_minor, 'party_type' => 'customer', 'party_id' => $lockedOrder->customer_id],
+                ],
+                'sales_order_payment',
+                $payment->id,
+                'deposit_received',
+            );
         });
 
         if ($request->expectsJson()) {
@@ -496,7 +763,46 @@ final class StorefrontController extends Controller
     {
         abort_unless($store->is_active, 404);
 
-        return $store->loadMissing(['tenant', 'categories.children', 'fulfilmentBranch']);
+        return $store->loadMissing([
+            'tenant',
+            'categories.children',
+            'fulfilmentBranch',
+            'productCollections' => fn ($query) => $query
+                ->where('collection_type', 'manual')
+                ->where('is_visible', true)
+                ->where(fn ($dateQuery) => $dateQuery->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+                ->where(fn ($dateQuery) => $dateQuery->whereNull('ends_at')->orWhere('ends_at', '>=', now()))
+                ->whereHas('products', fn ($productQuery) => $productQuery
+                    ->where('products.tenant_id', $store->tenant_id)
+                    ->where('product_type', ProductType::Product->value)
+                    ->where('status', ProductStatus::Active->value))
+                ->orderByRaw('sort_order is null')
+                ->orderBy('sort_order')
+                ->orderBy('name'),
+        ]);
+    }
+
+    private function sendOrderConfirmation(OnlineStore $store, SalesOrder $order): void
+    {
+        if (! app()->environment('production')) {
+            return;
+        }
+
+        $order->loadMissing(['customer', 'items', 'branch']);
+
+        if (! filled($order->customer?->email)) {
+            return;
+        }
+
+        try {
+            Mail::to($order->customer->email)->send(new OnlineOrderConfirmationMail($store, $order));
+        } catch (Throwable $exception) {
+            Log::warning('Online order confirmation email could not be sent.', [
+                'sales_order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'exception' => $exception->getMessage(),
+            ]);
+        }
     }
 
     private function productsFor(OnlineStore $store, ProductType $type)
@@ -505,6 +811,7 @@ final class StorefrontController extends Controller
 
         return Product::query()
             ->with([
+                'badges' => fn ($query) => $query->where('is_visible', true),
                 'category',
                 'images',
                 'variants' => fn ($query) => $query
@@ -537,6 +844,7 @@ final class StorefrontController extends Controller
         );
 
         $product->load([
+            'badges' => fn ($query) => $query->where('is_visible', true),
             'category',
             'images',
             'variants' => fn ($query) => $query

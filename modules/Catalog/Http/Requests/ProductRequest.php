@@ -54,6 +54,19 @@ final class ProductRequest extends FormRequest
                 })
                 ->all(),
             'tag_ids' => array_values((array) $this->input('tag_ids', [])),
+            'badge_ids' => array_values((array) $this->input('badge_ids', [])),
+            'collection_ids' => array_values((array) $this->input('collection_ids', [])),
+            'new_badge' => [
+                'name' => trim((string) $this->input('new_badge.name')),
+                'background_color' => strtolower((string) ($this->input('new_badge.background_color') ?: '#111827')),
+                'text_color' => strtolower((string) ($this->input('new_badge.text_color') ?: '#ffffff')),
+            ],
+            'new_collection' => [
+                'name' => trim((string) $this->input('new_collection.name')),
+                'is_visible' => $this->has('new_collection.is_visible')
+                    ? $this->boolean('new_collection.is_visible')
+                    : true,
+            ],
             'attribute_value_ids' => array_values((array) $this->input('attribute_value_ids', [])),
             'tax_ids' => array_values((array) $this->input('tax_ids', [])),
             'new_tags' => $this->cleanCommaList($this->input('new_tags')),
@@ -108,6 +121,17 @@ final class ProductRequest extends FormRequest
             'images.*' => ['image', 'max:4096'],
             'tag_ids' => ['nullable', 'array'],
             'tag_ids.*' => ['integer', Rule::exists('product_tags', 'id')->where('tenant_id', $this->string('tenant_id')->toString())],
+            'badge_ids' => ['nullable', 'array'],
+            'badge_ids.*' => ['integer', Rule::exists('product_badges', 'id')->where('tenant_id', $this->string('tenant_id')->toString())],
+            'new_badge' => ['nullable', 'array'],
+            'new_badge.name' => ['nullable', 'string', 'max:40'],
+            'new_badge.background_color' => ['required_with:new_badge.name', 'regex:/^#[0-9a-f]{6}$/i'],
+            'new_badge.text_color' => ['required_with:new_badge.name', 'regex:/^#[0-9a-f]{6}$/i'],
+            'collection_ids' => ['nullable', 'array'],
+            'collection_ids.*' => ['integer', Rule::exists('product_collections', 'id')->where('tenant_id', $this->string('tenant_id')->toString())],
+            'new_collection' => ['nullable', 'array'],
+            'new_collection.name' => ['nullable', 'string', 'max:120'],
+            'new_collection.is_visible' => ['boolean'],
             'new_tags' => ['nullable', 'string', 'max:1000'],
             'attribute_value_ids' => ['nullable', 'array'],
             'attribute_value_ids.*' => ['integer'],

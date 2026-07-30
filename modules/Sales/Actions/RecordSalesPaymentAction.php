@@ -9,6 +9,7 @@ use Illuminate\Validation\ValidationException;
 use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Finance\Models\FinanceAccount;
+use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Enums\SalesPaymentStatus;
 use Modules\Sales\Models\SalesCashLocation;
 use Modules\Sales\Models\SalesOrder;
@@ -69,27 +70,49 @@ final class RecordSalesPaymentAction
                     : ($paidMinor > 0 ? SalesPaymentStatus::PartiallyPaid->value : SalesPaymentStatus::Unpaid->value),
             ]);
 
-            if ($order->customer && $order->is_credit_sale) {
-                $order->customer->update([
-                    'account_balance_minor' => max(0, $order->customer->account_balance_minor - $amountMinor),
-                ]);
-            }
+            if ($order->order_status === SalesOrderStatus::Completed) {
+                if ($order->customer && $order->is_credit_sale) {
+                    $order->customer->update([
+                        'account_balance_minor' => max(0, $order->customer->account_balance_minor - $amountMinor),
+                    ]);
+                }
 
-            $this->postJournalEntry->execute(
-                $order->tenant_id,
-                (string) $data['payment_date'],
-                'Customer payment for '.$order->order_number,
-                [
-                    ['account_code' => $this->cashAccountFor($data['payment_method'], $tillSession, $paymentAccount), 'branch_id' => $order->branch_id, 'debit_minor' => $amountMinor, 'party_type' => 'customer', 'party_id' => $order->customer_id],
-                    ['account_code' => '1100', 'branch_id' => $order->branch_id, 'credit_minor' => $amountMinor, 'party_type' => 'customer', 'party_id' => $order->customer_id],
-                ],
-                'sales_order_payment',
-                $payment->id,
-                'received',
-            );
+                $this->postJournalEntry->execute(
+                    $order->tenant_id,
+                    (string) $data['payment_date'],
+                    'Customer payment for '.$order->order_number,
+                    [
+                        ['account_code' => $this->cashAccountFor($data['payment_method'], $tillSession, $paymentAccount), 'branch_id' => $order->branch_id, 'debit_minor' => $amountMinor, 'party_type' => 'customer', 'party_id' => $order->customer_id],
+                        ['account_code' => '1100', 'branch_id' => $order->branch_id, 'credit_minor' => $amountMinor, 'party_type' => 'customer', 'party_id' => $order->customer_id],
+                    ],
+                    'sales_order_payment',
+                    $payment->id,
+                    'received',
+                );
 
-            if ($tillSession && $this->isCashMethod($data['payment_method'])) {
-                $this->ensureTillCashLocation($tillSession)->increment('balance_minor', $amountMinor);
+                if ($tillSession && $this->isCashMethod($data['payment_method'])) {
+                    $this->ensureTillCashLocation($tillSession)->increment('balance_minor', $amountMinor);
+                }
+            } else {
+                // Pending/processing order: recognise the cash or gateway asset now,
+                // offset by Customer Deposits (2310). The deposit is cleared into
+                // revenue when the order is completed.
+                $this->postJournalEntry->execute(
+                    $order->tenant_id,
+                    (string) $data['payment_date'],
+                    'Deposit received for '.$order->order_number,
+                    [
+                        ['account_code' => $this->cashAccountFor($data['payment_method'], $tillSession, $paymentAccount), 'branch_id' => $order->branch_id, 'debit_minor' => $amountMinor, 'party_type' => 'customer', 'party_id' => $order->customer_id],
+                        ['account_code' => '2310', 'branch_id' => $order->branch_id, 'credit_minor' => $amountMinor, 'party_type' => 'customer', 'party_id' => $order->customer_id],
+                    ],
+                    'sales_order_payment',
+                    $payment->id,
+                    'deposit_received',
+                );
+
+                if ($tillSession && $this->isCashMethod($data['payment_method'])) {
+                    $this->ensureTillCashLocation($tillSession)->increment('balance_minor', $amountMinor);
+                }
             }
 
             return $payment->refresh();

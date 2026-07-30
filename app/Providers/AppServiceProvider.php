@@ -6,9 +6,11 @@ use App\Models\User;
 use App\Support\ActiveBranchManager;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Modules\Access\Support\PermissionCatalogue;
 use Modules\Access\Support\PermissionService;
+use Modules\Catalog\Actions\EnsureDefaultProductCategoryAction;
 use Modules\Tenancy\Models\Tenant;
 
 class AppServiceProvider extends ServiceProvider
@@ -21,6 +23,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $permissions = null;
+
+        Tenant::created(function (Tenant $tenant): void {
+            if (Schema::hasTable('product_categories')) {
+                app(EnsureDefaultProductCategoryAction::class)->execute($tenant->id);
+            }
+        });
 
         // Gate integration: any catalogue permission slug becomes a Gate ability,
         // so @can('sales.view') and $user->can('sales.view') hide/deny UI at the
@@ -46,7 +54,16 @@ class AppServiceProvider extends ServiceProvider
                 return false;
             }
 
-            return app(PermissionService::class)->has($user, $tenant, $ability);
+            $permissionService = app(PermissionService::class);
+
+            // Mirror the route middleware's safety valve (EnforcePermissions): when a
+            // tenant has not opted into RBAC enforcement, permissions are not gated
+            // anywhere — UI or routes — so legacy/unmigrated tenants keep full access.
+            if (! $permissionService->enforcementEnabled($tenant)) {
+                return true;
+            }
+
+            return $permissionService->has($user, $tenant, $ability);
         });
 
         // @permission('slug') ... @endpermission — sugar over @can for readability.

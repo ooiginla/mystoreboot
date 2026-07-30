@@ -14,6 +14,8 @@ use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\Role;
 use Modules\Access\Models\TenantMembership;
+use Modules\Access\Support\AuditLogger;
+use Modules\Access\Support\PermissionCatalogue;
 use Modules\Business\Actions\CreateBranchAction;
 use Modules\Business\Actions\CreateDepartmentAction;
 use Modules\Business\Actions\SaveBusinessProfileAction;
@@ -27,6 +29,7 @@ use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Business\Models\Department;
 use Modules\Business\Models\OnlineStore;
 use Modules\Business\Support\OnlineStoreContentDefaults;
+use Modules\Catalog\Actions\EnsureDefaultProductCategoryAction;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
@@ -117,7 +120,7 @@ final class BusinessSetupController extends Controller
             'productCategories' => $tenant
                 ? ProductCategory::query()->where('tenant_id', $tenant->id)->orderBy('name')->get()
                 : collect(),
-            'approvableActions' => \Modules\Access\Support\PermissionCatalogue::approvable(),
+            'approvableActions' => PermissionCatalogue::approvable(),
             'approvalsEnabled' => (bool) ($tenant->settings['approvals']['enabled'] ?? false),
             'approvalActions' => (array) ($tenant->settings['approvals']['actions'] ?? []),
         ];
@@ -173,7 +176,7 @@ final class BusinessSetupController extends Controller
         $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
         $tenant = Tenant::query()->findOrFail($request->string('tenant_id')->toString());
 
-        $actionKeys = array_keys(\Modules\Access\Support\PermissionCatalogue::approvable());
+        $actionKeys = array_keys(PermissionCatalogue::approvable());
 
         $data = $request->validate([
             'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
@@ -193,7 +196,7 @@ final class BusinessSetupController extends Controller
         ]);
         $tenant->save();
 
-        app(\Modules\Access\Support\AuditLogger::class)->log(
+        app(AuditLogger::class)->log(
             $tenant->id,
             $request->user(),
             'approvals.settings.changed',
@@ -284,8 +287,10 @@ final class BusinessSetupController extends Controller
             ->with('status', "Department {$department->name} created.");
     }
 
-    public function saveOnlineStore(OnlineStoreRequest $request): RedirectResponse
-    {
+    public function saveOnlineStore(
+        OnlineStoreRequest $request,
+        EnsureDefaultProductCategoryAction $ensureDefaultCategory,
+    ): RedirectResponse {
         $data = $request->validated();
         $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
 
@@ -380,7 +385,14 @@ final class BusinessSetupController extends Controller
             'maintenance_mode' => (bool) ($data['maintenance_mode'] ?? false),
         ]);
         $store->save();
-        $store->categories()->sync($data['category_ids'] ?? []);
+        $defaultCategory = $ensureDefaultCategory->execute($store->tenant_id);
+        $store->categories()->sync(
+            collect($data['category_ids'] ?? [])
+                ->push($defaultCategory->id)
+                ->unique()
+                ->values()
+                ->all()
+        );
 
         return redirect()
             ->to(route('admin.business.online-store.index', [

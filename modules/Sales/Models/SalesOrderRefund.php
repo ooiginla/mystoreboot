@@ -1,0 +1,45 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Modules\Sales\Models;
+
+use App\Models\User;
+use App\Shared\Concerns\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Business\Models\BusinessPaymentAccount;
+
+final class SalesOrderRefund extends Model
+{
+    use BelongsToTenant;
+
+    protected $guarded = [];
+
+    protected function casts(): array
+    {
+        return [
+            'refund_date' => 'date',
+        ];
+    }
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrder::class, 'sales_order_id');
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function tillSession(): BelongsTo
+    {
+        return $this->belongsTo(SalesTillSession::class, 'sales_till_session_id');
+    }
+
+    public function paymentAccount(): BelongsTo
+    {
+        return $this->belongsTo(BusinessPaymentAccount::class, 'business_payment_account_id');
+    }
+}

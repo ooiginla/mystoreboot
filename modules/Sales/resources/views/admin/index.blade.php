@@ -38,24 +38,37 @@
         'failed' => 'Failed delivery',
         'returned' => 'Returned',
     ];
+    $orderSourceLabel = fn (?string $source): string => match ($source) {
+        'online' => 'Online',
+        'offline' => 'Offline',
+        default => 'POS',
+    };
+    $orderSourceClass = fn (?string $source): string => match ($source) {
+        'online' => 'warning',
+        'offline' => 'neutral',
+        default => 'success',
+    };
+    $ordersWorkspace = request()->routeIs('admin.sales.orders.index');
 @endphp
 
 <x-layouts.admin title="Sales, Invoicing & POS">
-    <datalist id="sales-customer-options">
-        @foreach ($customers as $customer)
-            <option value="{{ $customer->name }} · {{ $customer->phone }}" data-customer-id="{{ $customer->id }}"></option>
-        @endforeach
-    </datalist>
-    <datalist id="sales-product-options">
-        @foreach ($variants as $variant)
-            @php
-                $selectedTaxRate = $variant->product?->taxes?->sum(fn ($tax) => (float) $tax->rate) ?? 0;
-                $taxRate = $variant->tax_behavior->value === 'taxable' ? (float) ($selectedTaxRate > 0 ? $selectedTaxRate : ($variant->tax_rate ?? $variant->product?->tax_rate ?? 0)) : 0;
-                $priceMinor = $variant->selling_price_minor;
-            @endphp
-            <option value="{{ $variantLabel($variant) }}" data-variant-id="{{ $variant->id }}" data-price="{{ $priceMinor / 100 }}" data-tax-rate="{{ $taxRate }}" data-sku="{{ $variant->sku }}"></option>
-        @endforeach
-    </datalist>
+    @unless ($ordersWorkspace)
+        <datalist id="sales-customer-options">
+            @foreach ($customers as $customer)
+                <option value="{{ $customer->name }} · {{ $customer->phone }}" data-customer-id="{{ $customer->id }}"></option>
+            @endforeach
+        </datalist>
+        <datalist id="sales-product-options">
+            @foreach ($variants as $variant)
+                @php
+                    $selectedTaxRate = $variant->product?->taxes?->sum(fn ($tax) => (float) $tax->rate) ?? 0;
+                    $taxRate = $variant->tax_behavior->value === 'taxable' ? (float) ($selectedTaxRate > 0 ? $selectedTaxRate : ($variant->tax_rate ?? $variant->product?->tax_rate ?? 0)) : 0;
+                    $priceMinor = $variant->selling_price_minor;
+                @endphp
+                <option value="{{ $variantLabel($variant) }}" data-variant-id="{{ $variant->id }}" data-price="{{ $priceMinor / 100 }}" data-tax-rate="{{ $taxRate }}" data-sku="{{ $variant->sku }}"></option>
+            @endforeach
+        </datalist>
+    @endunless
 
     <style>
         .sales-header-context { margin-top: 8px; color: var(--muted); font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; }
@@ -104,6 +117,16 @@
         .btn.order-payment:hover { border-color: var(--brand-strong); background: var(--brand-strong); }
         .btn.order-return { border-color: #fed7aa; background: #fff7ed; color: #c2410c; }
         .btn.order-return:hover { border-color: #fdba74; background: #ffedd5; color: #9a3412; }
+        .order-dialog-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+        .order-dialog-action { display: inline-flex; align-items: center; gap: 7px; }
+        .order-dialog-action svg { width: 16px; height: 16px; flex: none; }
+        .form-grid.order-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        @media (max-width: 1100px) {
+            .form-grid.order-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 760px) {
+            .form-grid.order-filter-grid { grid-template-columns: 1fr; }
+        }
         .cart-row { border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: var(--radius-sm); padding: 9px 12px; display: grid; grid-template-columns: minmax(0, 1fr) 58px 112px 28px; gap: 8px; align-items: center; background: var(--brand-050); }
         .cart-row strong { font-weight: 700; color: var(--ink); font-size: 14px; }
         .cart-row > span { font-weight: 750; color: var(--brand-strong); text-align: right; font-variant-numeric: tabular-nums; }
@@ -228,12 +251,18 @@
 
     <div class="topbar">
         <div>
-            <div class="eyebrow">Offline sales · invoicing · payments</div>
-            <h1>Record Sale</h1>
-            <p class="subtle">Record offline and back-office sales at any time, without opening a till. Manage invoices, receipts, credit sales, returns and refunds for {{ $tenant->name }}. For live counter selling with till sessions, use <a href="{{ route('admin.sales.retail-pos', ['tenant' => $tenant->id]) }}" style="color:var(--brand-strong); font-weight:700;">Retail POS</a>.</p>
+            @if ($ordersWorkspace)
+                <div class="eyebrow">Orders · returns · refunds</div>
+                <h1>Orders</h1>
+                <p class="subtle">Manage sales orders, invoices, payments, returns and refunds for {{ $tenant->name }}.</p>
+            @else
+                <div class="eyebrow">Offline sales · invoicing · payments</div>
+                <h1>Record Sale</h1>
+                <p class="subtle">Record offline and back-office sales at any time, without opening a till. For live counter selling with till sessions, use <a href="{{ route('admin.sales.retail-pos', ['tenant' => $tenant->id]) }}" style="color:var(--brand-strong); font-weight:700;">Retail POS</a>.</p>
+            @endif
         </div>
         @if ($isPlatformAdmin)
-            <form method="GET" action="{{ route('admin.sales.index') }}" style="min-width: 260px;">
+            <form method="GET" action="{{ route($ordersWorkspace ? 'admin.sales.orders.index' : 'admin.sales.index') }}" style="min-width: 260px;">
                 <select name="tenant" onchange="this.form.submit()">
                     @foreach ($tenants as $visibleTenant)
                         <option value="{{ $visibleTenant->id }}" @selected($visibleTenant->id === $tenant->id)>{{ $visibleTenant->name }}</option>
@@ -251,22 +280,25 @@
     @endif
 
     <div class="tab-layout">
-        <nav class="pill-nav" aria-label="Sales sections" role="tablist">
-            <a href="#pos" role="tab" data-tab-target="pos">Record sale</a>
-            <a href="#orders" role="tab" data-tab-target="orders">Orders <span class="badge neutral">{{ $orders->count() }}</span></a>
-            <a href="#returns" role="tab" data-tab-target="returns">Returns</a>
-        </nav>
+        <span data-default-tab="{{ $ordersWorkspace ? 'orders' : 'pos' }}" hidden></span>
+        @if ($ordersWorkspace)
+            <nav class="pill-nav" aria-label="Order sections" role="tablist">
+                <a href="#orders" role="tab" data-tab-target="orders">Orders <span class="badge neutral">{{ $orders->count() }}</span></a>
+                <a href="#returns" role="tab" data-tab-target="returns">Returns</a>
+            </nav>
+        @endif
 
         <div class="content-stack">
+            @unless ($ordersWorkspace)
             <section class="panel tab-panel" id="pos" role="tabpanel" data-tab-panel hidden>
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Record Offline Sale</h2>
-                        <p class="subtle">Search customers and products, record payment, and update stock without a till session.</p>
+                        <h2 class="panel-title">Record Sale or Customer Order</h2>
+                        <p class="subtle">Complete an offline sale now, or save an unpaid customer order for later processing.</p>
                         @if ($recordSaleBranch)
                             <div class="sales-header-context">
                                 <span>Branch: <strong>{{ $recordSaleBranch->name }}</strong></span>
-                                <span>Inventory location: <strong>{{ $recordSaleLocation?->name ?? 'No location' }}</strong></span>
+                                <span>Inventory: <strong>{{ $inventoryEnabled ? ($recordSaleLocation?->name ?? 'No location') : 'Not enabled' }}</strong></span>
                                 <span>Order date: <strong>{{ now()->toDateString() }}</strong></span>
                             </div>
                         @endif
@@ -285,6 +317,14 @@
                                 <div class="sales-card">
                                     <h3 class="sales-card-title">Sale Information</h3>
                                     <div class="sales-customer-grid">
+                                        <div class="field">
+                                            <label>Record as</label>
+                                            <select name="record_as" data-sales-record-as required>
+                                                <option value="completed_sale" @selected(old('record_as', 'completed_sale') === 'completed_sale')>Completed Sale</option>
+                                                <option value="customer_order" @selected(old('record_as') === 'customer_order')>Customer Order</option>
+                                            </select>
+                                            <span class="subtle" data-sales-record-as-hint data-inventory-enabled="{{ $inventoryEnabled ? '1' : '0' }}">{{ $inventoryEnabled ? 'Posts the sale and deducts inventory immediately.' : 'Posts the sale immediately without stock tracking.' }}</span>
+                                        </div>
                                         <div class="field" data-sales-customer-picker>
                                             <label>Customer</label>
                                             <div class="sales-search-picker" data-sales-search-picker>
@@ -362,58 +402,106 @@
                                     <div class="summary-line discount"><span>Admin Discount</span><strong data-sales-admin-discount-label>-{{ $currencySymbol }} 0.00</strong></div>
                                     <div class="sales-total-band"><span>Total</span><strong data-sales-total>{{ $currencySymbol }} 0.00</strong></div>
                                     <div class="summary-divider"></div>
-                                    <div class="field"><label>Payment Method</label><select name="payment_method" data-payment-method-selector>@foreach ($paymentMethods as $method)<option value="{{ $method }}">{{ strtoupper($method) }}</option>@endforeach</select></div>
-                                    <div class="field" data-payment-account-wrapper hidden>
-                                        <label>Receiving account</label>
-                                        <select name="business_payment_account_id" data-payment-account-selector disabled>
-                                            <option value="">Select receiving account</option>
-                                            @foreach ($paymentAccounts as $account)
-                                                @foreach ((array) $account->supported_payment_methods as $method)
-                                                    <option value="{{ $account->id }}" data-account-method="{{ $method }}">{{ $account->identifier }}</option>
-                                                @endforeach
-                                            @endforeach
+                                    <div class="field" data-sales-payment-received-control hidden>
+                                        <label>Has the customer paid anything?</label>
+                                        <select name="payment_received" data-sales-payment-received disabled>
+                                            <option value="0" @selected(old('payment_received', '0') === '0')>No — payment not received</option>
+                                            <option value="1" @selected(old('payment_received') === '1')>Yes — record payment now</option>
                                         </select>
-                                        <span class="subtle" data-payment-account-empty hidden>No active account supports this payment method for this branch.</span>
                                     </div>
-                                    <label class="sales-inline-check"><input type="checkbox" name="is_credit_sale" value="1" data-sales-credit> <span>Mark as Credit Sale</span></label>
+                                    <div data-sales-payment-details>
+                                        <div class="field"><label>Payment Method</label><select name="payment_method" data-payment-method-selector>@foreach ($paymentMethods as $method)<option value="{{ $method }}">{{ strtoupper($method) }}</option>@endforeach</select></div>
+                                        <div class="field" data-payment-account-wrapper hidden>
+                                            <label>Receiving account</label>
+                                            <select name="business_payment_account_id" data-payment-account-selector disabled>
+                                                <option value="">Select receiving account</option>
+                                                @foreach ($paymentAccounts as $account)
+                                                    @foreach ((array) $account->supported_payment_methods as $method)
+                                                        <option value="{{ $account->id }}" data-account-method="{{ $method }}">{{ $account->identifier }}</option>
+                                                    @endforeach
+                                                @endforeach
+                                            </select>
+                                            <span class="subtle" data-payment-account-empty hidden>No active account supports this payment method for this branch.</span>
+                                        </div>
+                                        <div class="form-grid" style="margin-top: 16px;">
+                                            <div class="field"><label>Amount Paid</label><input name="amount_paid" type="text" inputmode="decimal" data-money-input data-sales-paid value="0.00" style="font-size: 22px; font-weight: 900;"></div>
+                                            <div class="field"><label data-sales-change-label>Change</label><div class="sales-change-box" data-sales-change>{{ $currencySymbol }} 0.00</div></div>
+                                        </div>
+                                    </div>
+                                    <label class="sales-inline-check" data-sales-credit-control><input type="checkbox" name="is_credit_sale" value="1" data-sales-credit> <span>Mark as Credit Sale</span></label>
                                     <p class="subtle" data-sales-credit-hint hidden style="margin: 6px 0 0;">Collect a deposit (part payment) or nothing now — the balance is recorded as the customer's outstanding credit.</p>
-                                    <div class="form-grid" style="margin-top: 16px;">
-                                        <div class="field"><label>Amount Paid</label><input name="amount_paid" type="text" inputmode="decimal" data-money-input data-sales-paid value="0.00" style="font-size: 22px; font-weight: 900;"></div>
-                                        <div class="field"><label data-sales-change-label>Change</label><div class="sales-change-box" data-sales-change>{{ $currencySymbol }} 0.00</div></div>
-                                    </div>
                                     <div class="sales-pos-error" data-pos-error hidden></div>
-                                    <button class="sales-primary-button sales-submit-action" type="submit">Create sales order</button>
+                                    <button class="sales-primary-button sales-submit-action" type="submit" data-sales-submit-label>Create completed sale</button>
                                 </div>
                             </div>
                         </div>
                     </form>
                 </div>
             </section>
+            @endunless
 
+            @if ($ordersWorkspace)
             <section class="panel tab-panel" id="orders" role="tabpanel" data-tab-panel hidden>
                 <div class="panel-header"><div><h2 class="panel-title">Order listing</h2><p class="subtle">Sales orders, invoices, receipts, payment status, and credit balances.</p></div></div>
                 <div class="panel-body">
-                    <form class="form-grid" method="GET" action="{{ route('admin.sales.index') }}#orders" style="margin-bottom: 16px;">
+                    <form class="form-grid order-filter-grid" method="GET" action="{{ route('admin.sales.orders.index') }}#orders" style="margin-bottom: 16px;">
                         <input type="hidden" name="tenant" value="{{ $tenant->id }}">
                         <div class="field"><label>Search orders</label><input name="order_search" value="{{ $orderSearch }}" placeholder="Order, invoice, receipt, customer, phone"></div>
-                        <div class="button-row" style="justify-content: flex-start;"><button class="btn primary" type="submit">Search</button><a class="btn secondary" href="{{ route('admin.sales.index', ['tenant' => $tenant->id]).'#orders' }}">Reset</a></div>
+                        <div class="field">
+                            <label>Branch</label>
+                            <select name="order_branch">
+                                <option value="">All branches</option>
+                                @foreach ($branches as $branch)
+                                    <option value="{{ $branch->id }}" @selected($orderBranchId === $branch->id)>{{ $branch->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Source</label>
+                            <select name="order_source">
+                                <option value="">All sources</option>
+                                <option value="retail_pos" @selected($orderSource === 'retail_pos')>POS</option>
+                                <option value="online" @selected($orderSource === 'online')>Online</option>
+                                <option value="offline" @selected($orderSource === 'offline')>Offline</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Order status</label>
+                            <select name="order_status">
+                                <option value="">All order statuses</option>
+                                @foreach ($orderStatuses as $status)
+                                    <option value="{{ $status->value }}" @selected($orderStatus === $status->value)>{{ $status->label() }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Payment status</label>
+                            <select name="order_payment_status">
+                                <option value="">All payment statuses</option>
+                                @foreach ($paymentStatuses as $status)
+                                    <option value="{{ $status->value }}" @selected($orderPaymentStatus === $status->value)>{{ $status->label() }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="button-row" style="justify-content: flex-start;"><button class="btn primary" type="submit">Apply filters</button><a class="btn secondary" href="{{ route('admin.sales.orders.index', ['tenant' => $tenant->id]).'#orders' }}">Reset</a></div>
                     </form>
                     <table class="table">
-                        <thead><tr><th>Order</th><th>Customer</th><th>Branch</th><th>Status</th><th>Payment</th><th>Total</th><th>Paid</th><th></th></tr></thead>
+                        <thead><tr><th>Order</th><th>Customer</th><th>Branch</th><th>Source</th><th>Status</th><th>Payment</th><th>Total</th><th>Paid</th><th></th></tr></thead>
                         <tbody>
                             @forelse ($orders as $order)
                                 <tr>
-                                    <td><button class="link-button" type="button" data-dialog-open="order-view-{{ $order->id }}">{{ $order->order_number }}</button><br><span class="subtle">{{ $order->order_date->format('M j, Y') }}</span></td>
+                                    <td><button class="link-button" type="button" data-dialog-open="order-view-{{ $order->id }}">{{ $order->order_number }}</button><br><span class="subtle">{{ $order->created_at->format('g:i A') }} · {{ $order->order_date->format('M j, Y') }}</span></td>
                                     <td>{{ $order->customer?->name ?? 'Walk-In' }}</td>
                                     <td>{{ $order->branch?->name ?? 'Not set' }}</td>
+                                    <td><span class="sales-tag {{ $orderSourceClass($order->source) }}">{{ $orderSourceLabel($order->source) }}</span></td>
                                     <td><span class="sales-tag {{ $statusClass($order->order_status->value) }}">{{ $order->order_status->label() }}</span></td>
                                     <td><span class="sales-tag {{ $statusClass($order->payment_status->value) }}">{{ $order->payment_status->label() }}</span></td>
                                     <td>{{ $currencySymbol }} {{ $money($order->total_minor) }}</td>
                                     <td>{{ $currencySymbol }} {{ $money($order->paid_minor) }}</td>
-                                    <td><div class="order-actions"><button class="btn order-view" type="button" data-dialog-open="order-view-{{ $order->id }}">View</button><button class="btn order-receipt" type="button" data-dialog-open="sales-receipt-{{ $order->id }}">Receipt</button>@if ($order->balance_minor > 0 && $canRecordOrderPayment($order))<button class="btn order-payment" type="button" data-dialog-open="order-payment-{{ $order->id }}">Add payment</button>@endif<button class="btn order-return" type="button" data-dialog-open="order-return-{{ $order->id }}">Return</button></div></td>
+                                    <td><div class="order-actions" data-order-list-actions><button class="btn order-view" type="button" data-dialog-open="order-view-{{ $order->id }}">View</button></div></td>
                                 </tr>
                             @empty
-                                <tr><td colspan="8"><div class="empty">No sales orders yet.</div></td></tr>
+                                <tr><td colspan="9"><div class="empty">No sales orders yet.</div></td></tr>
                             @endforelse
                         </tbody>
                     </table>
@@ -426,10 +514,12 @@
                     <table class="table"><thead><tr><th>Return</th><th>Order</th><th>Date</th><th>Refund</th><th>Reason</th></tr></thead><tbody>@forelse ($allOrders->flatMap->returns as $return)<tr><td>{{ $return->return_number }}</td><td>{{ $return->order->order_number }}</td><td>{{ $return->return_date->format('M j, Y') }}</td><td>{{ $currencySymbol }} {{ $money($return->refund_minor) }}</td><td>{{ $return->reason ?: 'Not set' }}</td></tr>@empty<tr><td colspan="5"><div class="empty">No returns yet.</div></td></tr>@endforelse</tbody></table>
                 </div>
             </section>
+            @endif
         </div>
     </div>
 
     {{-- Till movement & breakdown dialogs now live in Retail POS. --}}
+    @unless ($ordersWorkspace)
     <dialog class="dialog" id="record-sale-customer-dialog" style="width:min(560px,calc(100vw - 24px));">
         <div class="dialog-header">
             <div>
@@ -460,7 +550,7 @@
     <dialog class="dialog" id="record-sale-confirmation-dialog" style="width:min(680px,calc(100vw - 24px));">
         <div class="dialog-header">
             <div>
-                <h2 class="panel-title">Confirm sales order</h2>
+                <h2 class="panel-title" data-confirm-order-title>Confirm completed sale</h2>
                 <p class="subtle">Review the details carefully before creating this order.</p>
             </div>
             <button class="icon-btn" type="button" data-dialog-close aria-label="Close">✕</button>
@@ -489,13 +579,18 @@
             </div>
             <div class="button-row">
                 <button class="btn secondary" type="button" data-dialog-close>Go back and edit</button>
-                <button class="btn primary" type="button" data-confirm-sales-order>Confirm &amp; create order</button>
+                <button class="btn primary" type="button" data-confirm-sales-order>Confirm &amp; create completed sale</button>
             </div>
         </div>
     </dialog>
+    @endunless
 
+    @if ($ordersWorkspace)
     @foreach ($allOrders as $order)
         @include('sales::admin.partials.order-view-dialog', ['order' => $order])
+        @if ($order->customer_credit_minor > 0)
+            @include('sales::admin.partials.refund-dialog', ['order' => $order])
+        @endif
         @include('sales::admin.partials.invoice-dialog', ['order' => $order])
         @include('sales::admin.partials.standard-receipt-dialog', ['order' => $order])
         @include('sales::admin.partials.payment-dialog', ['order' => $order])
@@ -504,15 +599,21 @@
             @include('sales::admin.partials.payment-receipt-dialog', ['order' => $order, 'payment' => $payment])
         @endforeach
     @endforeach
+    @endif
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         if (window.storebootSalesPosBound) return;
         window.storebootSalesPosBound = true;
         const autoInvoiceOrderId = @json(session('invoice_order_id'));
+        const autoViewOrderId = @json(session('view_order_id'));
         if (autoInvoiceOrderId) {
             window.setTimeout(() => {
                 document.getElementById(`invoice-${autoInvoiceOrderId}`)?.showModal();
+            }, 160);
+        } else if (autoViewOrderId) {
+            window.setTimeout(() => {
+                document.getElementById(`order-view-${autoViewOrderId}`)?.showModal();
             }, 160);
         }
         const currency = @json($currencySymbol);
@@ -766,6 +867,8 @@
                     paid: val('[data-sales-paid]'),
                     method: val('[data-payment-method-selector]'),
                     account: val('[data-payment-account-selector]'),
+                    recordAs: val('[data-sales-record-as]'),
+                    paymentReceived: val('[data-sales-payment-received]'),
                     credit: !!form.querySelector('[name="is_credit_sale"]')?.checked,
                     notes: val('[name="notes"]'),
                     deliveryMethod: val('[data-sales-delivery-method]'),
@@ -792,14 +895,15 @@
             set('[data-sales-shipping]', saved.shipping);
             set('[data-sales-paid]', saved.paid);
             set('[data-payment-method-selector]', saved.method);
+            set('[data-sales-record-as]', saved.recordAs);
+            set('[data-sales-payment-received]', saved.paymentReceived);
             set('[name="notes"]', saved.notes);
             set('[data-sales-delivery-method]', saved.deliveryMethod);
             set('[name="delivery_address"]', saved.deliveryAddress);
             set('[name="delivery_status"]', saved.deliveryStatus);
             const creditBox = form.querySelector('[name="is_credit_sale"]');
             if (creditBox) creditBox.checked = !!saved.credit;
-            const creditHint = form.querySelector('[data-sales-credit-hint]');
-            if (creditHint && creditBox) creditHint.hidden = !creditBox.checked;
+            syncRecordAs(form);
             renderCart(form);
             syncPaymentAccountSelector(form);
             if (saved.account) { const acc = form.querySelector('[data-payment-account-selector]'); if (acc && !acc.disabled) acc.value = saved.account; }
@@ -822,6 +926,62 @@
             const total = Math.max(0, subtotal + tax + shipping - couponDiscount - adminDiscount);
             const paid = clean(form.querySelector('[data-sales-paid]')?.value);
             return { subtotal, tax, couponDiscount, adminDiscount, total, paid };
+        }
+
+        function isCustomerOrder(form) {
+            return form?.querySelector('[data-sales-record-as]')?.value === 'customer_order';
+        }
+
+        function customerOrderHasPayment(form) {
+            return !isCustomerOrder(form)
+                || form?.querySelector('[data-sales-payment-received]')?.value === '1';
+        }
+
+        function syncCustomerOrderPayment(form) {
+            if (!form) return;
+            const customerOrder = isCustomerOrder(form);
+            const receivedControl = form.querySelector('[data-sales-payment-received-control]');
+            const receivedSelector = form.querySelector('[data-sales-payment-received]');
+            const paymentDetails = form.querySelector('[data-sales-payment-details]');
+            const paymentMethod = form.querySelector('[data-payment-method-selector]');
+            const paidField = form.querySelector('[data-sales-paid]');
+            const hasPayment = customerOrderHasPayment(form);
+
+            if (receivedControl) receivedControl.hidden = !customerOrder;
+            if (receivedSelector) receivedSelector.disabled = !customerOrder;
+            if (paymentDetails) paymentDetails.hidden = !hasPayment;
+            if (paymentMethod) paymentMethod.disabled = !hasPayment;
+            if (paidField) {
+                paidField.disabled = !hasPayment;
+                if (!hasPayment) paidField.value = '0.00';
+            }
+            syncPaymentAccountSelector(form);
+        }
+
+        function syncRecordAs(form) {
+            if (!form) return;
+            const customerOrder = isCustomerOrder(form);
+            const creditControl = form.querySelector('[data-sales-credit-control]');
+            const creditBox = form.querySelector('[data-sales-credit]');
+            const creditHint = form.querySelector('[data-sales-credit-hint]');
+            const recordHint = form.querySelector('[data-sales-record-as-hint]');
+            const submit = form.querySelector('[data-sales-submit-label]');
+
+            if (creditControl) creditControl.hidden = customerOrder;
+            if (creditBox) {
+                creditBox.disabled = customerOrder;
+                if (customerOrder) creditBox.checked = false;
+            }
+            if (creditHint) creditHint.hidden = customerOrder || !creditBox?.checked;
+            if (recordHint) {
+                recordHint.textContent = customerOrder
+                    ? 'Creates a pending order without posting accounting or deducting inventory.'
+                    : (recordHint.dataset.inventoryEnabled === '1'
+                        ? 'Posts the sale and deducts inventory immediately.'
+                        : 'Posts the sale immediately without stock tracking.');
+            }
+            if (submit) submit.textContent = customerOrder ? 'Create customer order' : 'Create completed sale';
+            syncCustomerOrderPayment(form);
         }
 
         // Recompute the summary panel + totals. Never rebuilds the editable cart
@@ -945,11 +1105,25 @@
                 syncPaymentAccountSelector(paymentMethod.closest('form'));
             }
 
+            const paymentReceived = event.target.closest('[data-sales-payment-received]');
+            if (paymentReceived) {
+                const form = paymentReceived.closest('[data-pos-form]');
+                syncCustomerOrderPayment(form);
+                if (form) renderSummary(form);
+            }
+
             const credit = event.target.closest('[data-sales-credit]');
             if (credit) {
                 const form = credit.closest('[data-pos-form]');
                 const hint = form?.querySelector('[data-sales-credit-hint]');
                 if (hint) hint.hidden = !credit.checked;
+                if (form) renderSummary(form);
+            }
+
+            const recordAs = event.target.closest('[data-sales-record-as]');
+            if (recordAs) {
+                const form = recordAs.closest('[data-pos-form]');
+                syncRecordAs(form);
                 if (form) renderSummary(form);
             }
         });
@@ -961,6 +1135,45 @@
             if (method.includes('transfer') || method.includes('bank')) return 'transfer';
             return 'cash';
         }
+
+        function syncRefundAccount(form) {
+            if (!form) return;
+            const rawMethod = String(form.querySelector('[data-refund-method]')?.value || '');
+            const method = canonicalPaymentMethod(rawMethod);
+            const till = form.querySelector('[data-refund-till]');
+            const accountWrapper = form.querySelector('[data-refund-account]');
+            const account = accountWrapper?.querySelector('select');
+            const empty = form.querySelector('[data-refund-account-empty]');
+            const isCash = rawMethod.toLowerCase().includes('cash');
+
+            if (till) till.hidden = !isCash;
+            const tillSelect = till?.querySelector('select');
+            if (tillSelect) tillSelect.disabled = !isCash;
+            if (!accountWrapper || !account) return;
+
+            accountWrapper.hidden = isCash;
+            account.disabled = isCash;
+            let matches = 0;
+            Array.from(account.options).forEach((option) => {
+                if (!option.value) return;
+                const branchMatches = !option.dataset.accountBranch || option.dataset.accountBranch === form.dataset.orderBranch;
+                const visible = branchMatches && canonicalPaymentMethod(option.dataset.accountMethod) === method;
+                option.hidden = !visible;
+                if (visible) matches++;
+            });
+            const selected = account.selectedOptions[0];
+            if (!isCash && (!selected || selected.hidden)) account.value = '';
+            account.required = !isCash && matches > 0;
+            if (empty) empty.hidden = isCash || matches > 0;
+        }
+
+        document.querySelectorAll('[data-order-refund-form]').forEach((form) => {
+            syncRefundAccount(form);
+            form.querySelector('[data-refund-method]')?.addEventListener('change', () => syncRefundAccount(form));
+            form.addEventListener('submit', (event) => {
+                if (!confirm(`Record this refund from the selected account?`)) event.preventDefault();
+            });
+        });
 
         function syncPaymentAccountSelector(form) {
             if (!form) return;
@@ -976,8 +1189,9 @@
             // paid 0, which the server posts without an account) aren't blocked. Forms
             // without an amount field (e.g. the add-payment dialog) always collect.
             const paidField = form.querySelector('[data-sales-paid]');
-            const collecting = paidField ? clean(paidField.value) > 0 : true;
-            const showAccount = method !== 'cash';
+            const paymentAllowed = customerOrderHasPayment(form);
+            const collecting = paymentAllowed && (paidField ? clean(paidField.value) > 0 : true);
+            const showAccount = paymentAllowed && method !== 'cash';
             wrapper.hidden = !showAccount;
             selector.disabled = !showAccount;
             selector.required = false;
@@ -1059,11 +1273,16 @@
 
             const paymentMethod = form.querySelector('[data-payment-method-selector]');
             const paymentAccount = form.querySelector('[data-payment-account-selector]');
-            const paymentParts = [paymentMethod?.selectedOptions[0]?.textContent?.trim() || 'Not selected'];
-            if (paymentAccount && !paymentAccount.disabled && paymentAccount.value) {
-                paymentParts.push(paymentAccount.selectedOptions[0]?.textContent?.trim());
+            const paymentParts = [isCustomerOrder(form) ? 'Customer order' : 'Completed sale'];
+            if (isCustomerOrder(form) && !customerOrderHasPayment(form)) {
+                paymentParts.push('No payment received');
+            } else {
+                paymentParts.push(paymentMethod?.selectedOptions[0]?.textContent?.trim() || 'Not selected');
+                if (paymentAccount && !paymentAccount.disabled && paymentAccount.value) {
+                    paymentParts.push(paymentAccount.selectedOptions[0]?.textContent?.trim());
+                }
+                if (form.querySelector('[name="is_credit_sale"]')?.checked) paymentParts.push('Credit sale');
             }
-            if (form.querySelector('[name="is_credit_sale"]')?.checked) paymentParts.push('Credit sale');
 
             const deliveryMethod = form.querySelector('[data-sales-delivery-method]');
             const deliveryStatus = form.querySelector('[name="delivery_status"]');
@@ -1088,10 +1307,31 @@
             setText('[data-confirm-admin-discount]', `-${fmt(totals.adminDiscount)}`);
             setText('[data-confirm-amount-paid]', fmt(totals.paid));
             setText('[data-confirm-total]', fmt(totals.total));
+            setText('[data-confirm-order-title]', isCustomerOrder(form) ? 'Confirm customer order' : 'Confirm completed sale');
+            const confirmButton = dialog.querySelector('[data-confirm-sales-order]');
+            if (confirmButton) {
+                confirmButton.textContent = isCustomerOrder(form)
+                    ? 'Confirm & create customer order'
+                    : 'Confirm & create completed sale';
+            }
             dialog.showModal();
         }
 
         document.addEventListener('submit', (event) => {
+            const orderStatusForm = event.target.closest('[data-order-status-form]');
+            if (orderStatusForm) {
+                const selectedStatus = orderStatusForm.querySelector('[name="order_status"]')?.value;
+                const currentStatus = orderStatusForm.dataset.currentOrderStatus;
+                if (
+                    selectedStatus === 'completed'
+                    && currentStatus !== 'completed'
+                    && !window.confirm(`Are you sure you want to complete Order ${orderStatusForm.dataset.orderNumber}?`)
+                ) {
+                    event.preventDefault();
+                    return;
+                }
+            }
+
             const paymentForm = event.target.closest('form');
             if (paymentForm?.querySelector('[data-payment-method-selector]')) {
                 syncPaymentAccountSelector(paymentForm);
@@ -1120,14 +1360,19 @@
             if (!cart.length) { fail('Add at least one item to the cart before creating the sale.'); return; }
 
             const totals = computeTotals(posForm);
-            const isCredit = !!posForm.querySelector('[name="is_credit_sale"]')?.checked;
+            const customerOrder = isCustomerOrder(posForm);
+            const isCredit = !customerOrder && !!posForm.querySelector('[name="is_credit_sale"]')?.checked;
             const customerValue = posForm.querySelector('[data-sales-customer-value]');
 
+            if (customerOrder && customerValue && walkInCustomerId !== null && customerValue.value === walkInCustomerId) {
+                fail('Select or create a real customer before recording a customer order.', '[data-sales-customer-search]');
+                return;
+            }
             if (isCredit && customerValue && walkInCustomerId !== null && customerValue.value === walkInCustomerId) {
                 fail('Select or create a real customer before booking a credit sale — the walk-in customer cannot carry a balance.', '[data-sales-customer-search]');
                 return;
             }
-            if (!isCredit && totals.paid + 0.001 < totals.total) {
+            if (!customerOrder && !isCredit && totals.paid + 0.001 < totals.total) {
                 fail(`Amount paid (${fmt(totals.paid)}) is less than the total (${fmt(totals.total)}). Collect the full amount, or tick “Mark as Credit Sale”.`, '[data-sales-paid]');
                 return;
             }
@@ -1152,8 +1397,9 @@
         // Restore an in-progress sale after a reload; clear it once a sale has completed.
         const posForm = document.querySelector('[data-pos-form]');
         if (posForm) {
-            if (autoInvoiceOrderId) clearPosState(posForm);
+            if (autoInvoiceOrderId || autoViewOrderId) clearPosState(posForm);
             else restorePosState(posForm);
+            syncRecordAs(posForm);
             setDeliveryPanel(posForm, hasEnteredDelivery(posForm));
             setDiscountPanel(posForm, hasEnteredDiscount(posForm));
         }

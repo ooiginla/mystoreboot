@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Mail\OnlineOrderConfirmationMail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Modules\Business\Models\OnlineStore;
 use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Enums\ProductStatus;
@@ -15,8 +17,10 @@ use Modules\Catalog\Models\ProductOption;
 use Modules\Catalog\Models\ProductOptionValue;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Customers\Models\Customer;
+use Modules\Customers\Models\CustomerAddress;
 use Modules\Customers\Models\SupportTicket;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Storefront\Http\Controllers\StorefrontController;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 use Tests\TestCase;
@@ -60,7 +64,7 @@ class StorefrontFrontendTest extends TestCase
             'base_price_minor' => 250000,
         ]);
 
-        $this->get(route('storefront.storefront.store.home', $store))
+        $response = $this->get(route('storefront.storefront.store.home', $store))
             ->assertOk()
             ->assertSee('Demo Store')
             ->assertSee('Free delivery today')
@@ -68,6 +72,9 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('Footwear')
             ->assertSee('data-mobile-nav-toggle', false)
             ->assertSee('id="store-mobile-nav"', false)
+            ->assertSee('data-continue-shopping', false)
+            ->assertSee('href="'.route('storefront.storefront.store.home', $store).'"', false)
+            ->assertSee('Your order has been placed successfully and your cart has been cleared.')
             ->assertSee('Launch collection')
             ->assertSee('Bulk delivery made easy')
             ->assertSee('data-store-hero-slider', false)
@@ -75,7 +82,71 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('Our Products')
             ->assertSee('City Runner')
             ->assertSee('Lagos (3-5 days)')
+            ->assertSee('Save this address for future use')
+            ->assertSee('Use a new address')
             ->assertSee('WhatsApp', false);
+
+        $this->assertLessThan(
+            strpos($response->getContent(), 'name="checkout_name"'),
+            strpos($response->getContent(), 'name="checkout_email"'),
+        );
+    }
+
+    public function test_checkout_customer_lookup_is_scoped_to_the_store_tenant(): void
+    {
+        [$tenant, $store] = $this->storeFixture();
+        $customer = Customer::query()->create([
+            'tenant_id' => $tenant->id,
+            'first_name' => 'Ada',
+            'last_name' => 'Buyer',
+            'email' => 'ADA@example.com',
+            'phone' => '08030000000',
+            'address' => '12 Marina Road, Lagos',
+        ]);
+        CustomerAddress::query()->create([
+            'tenant_id' => $tenant->id,
+            'customer_id' => $customer->id,
+            'label' => 'Home',
+            'address' => '12 Marina Road, Lagos',
+            'is_default' => true,
+            'last_used_at' => now(),
+        ]);
+        $otherTenant = Tenant::query()->create([
+            'name' => 'Another Tenant',
+            'slug' => 'another-tenant',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+        ]);
+        Customer::query()->create([
+            'tenant_id' => $otherTenant->id,
+            'first_name' => 'Wrong',
+            'email' => 'ada@example.com',
+            'phone' => '00000000000',
+            'address' => 'Wrong address',
+        ]);
+
+        $this->postJson(route('storefront.storefront.store.checkout.customer-lookup', $store), [
+            'email' => 'ada@example.com',
+        ])
+            ->assertOk()
+            ->assertJson([
+                'found' => true,
+                'customer' => [
+                    'name' => 'Ada Buyer',
+                    'phone' => '08030000000',
+                    'address' => '12 Marina Road, Lagos',
+                    'addresses' => [
+                        [
+                            'label' => 'Home',
+                            'address' => '12 Marina Road, Lagos',
+                            'is_default' => true,
+                        ],
+                    ],
+                ],
+            ]);
     }
 
     public function test_storefront_products_are_paginated_and_link_to_product_details(): void
@@ -118,6 +189,22 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('Reviews')
             ->assertSee('Share this product')
             ->assertSee('YOU MIGHT ALSO LIKE');
+
+        Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Uncategorised Product',
+            'slug' => 'uncategorised-product',
+            'status' => ProductStatus::Active->value,
+            'base_price_minor' => 50000,
+        ]);
+
+        $this->get(route('storefront.storefront.store.categories.show', [$store, $category->slug]))
+            ->assertOk()
+            ->assertSee('Accessories')
+            ->assertSee('Product 1')
+            ->assertDontSee('Uncategorised Product')
+            ->assertDontSee('<section class="store-hero', false)
+            ->assertDontSee('<div class="relative mt-8" data-collection-carousel>', false);
     }
 
     public function test_variant_products_show_from_price_and_expose_live_detail_pricing(): void
@@ -189,6 +276,9 @@ class StorefrontFrontendTest extends TestCase
             ->assertOk()
             ->assertSee('From ₦1,200.00')
             ->assertSee('data-variant-price-mode="from"', false)
+            ->assertSee('store-product-card', false)
+            ->assertSee('store-product-card-price', false)
+            ->assertSee('store-product-card-action', false)
             ->assertSee('Choose options')
             ->assertSee($detailsUrl, false)
             ->assertDontSee('₦9,999.99')
@@ -359,6 +449,7 @@ class StorefrontFrontendTest extends TestCase
 
     public function test_checkout_creates_pending_online_sales_order_and_returns_reference(): void
     {
+        Mail::fake();
         [$tenant, $store] = $this->storeFixture();
         $category = ProductCategory::query()->create([
             'tenant_id' => $tenant->id,
@@ -392,6 +483,8 @@ class StorefrontFrontendTest extends TestCase
                 'phone' => '08030000000',
                 'email' => 'ada@example.com',
                 'address' => '12 Marina Road, Lagos',
+                'save_address' => true,
+                'address_label' => 'Home',
             ],
             'shipping_option' => 'Lagos',
             'payment_method' => 'bank_account',
@@ -415,6 +508,57 @@ class StorefrontFrontendTest extends TestCase
         $this->assertSame('ada@example.com', $order->customer->email);
         $this->assertSame(1, Customer::query()->count());
         $this->assertSame(1, $order->items->count());
+        $this->assertDatabaseHas('customer_addresses', [
+            'tenant_id' => $tenant->id,
+            'customer_id' => $order->customer_id,
+            'label' => 'Home',
+            'address' => '12 Marina Road, Lagos',
+            'is_default' => true,
+        ]);
+        Mail::assertNothingSent();
+
+        (new OnlineOrderConfirmationMail($store->load('tenant'), $order))
+            ->assertSeeInHtml($order->order_number)
+            ->assertSeeInHtml('City Runner')
+            ->assertSeeInHtml('12 Marina Road, Lagos');
+    }
+
+    public function test_online_order_confirmation_is_sent_when_environment_is_production(): void
+    {
+        Mail::fake();
+        [$tenant, $store] = $this->storeFixture();
+        $customer = Customer::query()->create([
+            'tenant_id' => $tenant->id,
+            'first_name' => 'Ada',
+            'email' => 'ada@example.com',
+            'phone' => '08030000000',
+            'address' => '12 Marina Road, Lagos',
+        ]);
+        $order = SalesOrder::query()->create([
+            'tenant_id' => $tenant->id,
+            'customer_id' => $customer->id,
+            'source' => 'online',
+            'order_number' => 'SO-MAIL-001',
+            'invoice_number' => 'INV-MAIL-001',
+            'receipt_number' => 'RCT-MAIL-001',
+            'order_status' => 'pending',
+            'payment_status' => 'pending',
+            'order_date' => now()->toDateString(),
+            'total_minor' => 200000,
+            'delivery_address' => $customer->address,
+        ]);
+        $originalEnvironment = app()->environment();
+        $method = new \ReflectionMethod(StorefrontController::class, 'sendOrderConfirmation');
+        $method->setAccessible(true);
+
+        try {
+            app()->detectEnvironment(fn (): string => 'production');
+            $method->invoke(app(StorefrontController::class), $store->load('tenant'), $order);
+        } finally {
+            app()->detectEnvironment(fn (): string => $originalEnvironment);
+        }
+
+        Mail::assertSent(OnlineOrderConfirmationMail::class, fn (OnlineOrderConfirmationMail $mail): bool => $mail->hasTo('ada@example.com'));
     }
 
     public function test_storeboot_paystack_initializes_payment_for_pending_online_order(): void
@@ -590,7 +734,7 @@ class StorefrontFrontendTest extends TestCase
         $order->refresh();
 
         $this->assertSame('paid', $order->payment_status->value);
-        $this->assertSame('completed', $order->order_status->value);
+        $this->assertSame('pending', $order->order_status->value);
         $this->assertSame(659850, $order->paid_minor);
         $this->assertDatabaseHas('sales_order_payments', [
             'sales_order_id' => $order->id,

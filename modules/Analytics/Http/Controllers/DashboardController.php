@@ -140,7 +140,7 @@ final class DashboardController extends Controller
 
         // ---- Charts --------------------------------------------------------
         $statusLabels = [
-            'pending' => 'Pending', 'draft' => 'Draft', 'completed' => 'Completed',
+            'pending' => 'Pending', 'processing' => 'Processing', 'completed' => 'Completed',
             'cancelled' => 'Cancelled', 'returned' => 'Returned', 'partially_returned' => 'Partially returned',
         ];
         $orderStatusChart = $orders

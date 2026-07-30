@@ -45,14 +45,17 @@
         ->where('product_type', ProductType::Service->value)
         ->exists();
     $menuCategories = $store->categories->filter(fn ($category) => ($category->category_type?->value ?? (string) $category->category_type) === 'product');
+    $menuCollections = $store->productCollections;
     $navLinks = [
         ['label' => 'Products', 'href' => route('storefront.storefront.store.home', $store)],
         ...($hasServices ? [['label' => 'Services', 'href' => route('storefront.storefront.store.services', $store)]] : []),
         ['label' => 'About', 'href' => route('storefront.storefront.store.about', $store)],
+        ['label' => 'Track order', 'href' => route('storefront.storefront.store.track', $store)],
         ['label' => 'FAQ', 'href' => route('storefront.storefront.store.faq', $store)],
         ['label' => 'Contact', 'href' => route('storefront.storefront.store.contact', $store)],
     ];
     $footerPages = [
+        ['label' => 'Track order', 'href' => route('storefront.storefront.store.track', $store)],
         ['label' => 'Terms of Service', 'href' => route('storefront.storefront.store.terms', $store)],
         ['label' => 'Refunds', 'href' => route('storefront.storefront.store.refunds', $store)],
         ['label' => 'Privacy Policy', 'href' => route('storefront.storefront.store.privacy', $store)],
@@ -108,6 +111,12 @@
         .store-btn-primary { background: var(--store-primary); color: white; }
         .store-btn-secondary { background: var(--store-secondary); color: white; }
         .store-card { background: var(--store-surface); border: 1px solid var(--store-line); border-radius: 8px; box-shadow: 0 16px 40px rgba(15, 23, 42, .05); }
+        .store-product-card { display: flex; height: 100%; flex-direction: column; }
+        .store-product-card-body { display: flex; flex: 1; flex-direction: column; }
+        .store-product-card-title { height: 56px; }
+        .store-product-card-price { min-height: 48px; flex-wrap: wrap; align-content: flex-start; column-gap: 12px; row-gap: 0; }
+        .store-product-card-price strong { white-space: nowrap; }
+        .store-product-card-action { min-height: 44px; margin-top: auto; }
         .store-input { width: 100%; border: 1px solid var(--store-line); border-radius: 8px; background: #fff; padding: 12px 14px; outline: none; transition: border-color .16s ease, box-shadow .16s ease; }
         .store-input:focus { border-color: var(--store-primary); box-shadow: 0 0 0 4px color-mix(in srgb, var(--store-primary) 15%, transparent); }
         .drawer-open { overflow: hidden; }
@@ -146,12 +155,28 @@
                         </button>
                         <div class="store-card invisible absolute left-0 top-9 z-50 w-72 translate-y-2 p-2 opacity-0 transition" data-categories-menu>
                             @forelse ($menuCategories as $category)
-                                <a href="{{ route('storefront.storefront.store.home', [$store, 'category' => $category->slug]) }}" class="sf-body-md flex items-center justify-between rounded-md px-3 py-2 font-semibold hover:bg-[var(--store-soft)]">
+                                <a href="{{ route('storefront.storefront.store.categories.show', [$store, $category->slug]) }}" class="sf-body-md flex items-center justify-between rounded-md px-3 py-2 font-semibold hover:bg-[var(--store-soft)]">
                                     {{ $category->name }}
                                     @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
                                 </a>
                             @empty
                                 <span class="sf-body-md block px-3 py-2 text-[var(--store-muted)]">No categories yet</span>
+                            @endforelse
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <button type="button" class="sf-body-md flex items-center gap-1 font-bold text-[var(--store-muted)] hover:text-[var(--store-primary)]" data-collections-toggle aria-expanded="false">
+                            Collections
+                            @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-4 w-4 rotate-90'])
+                        </button>
+                        <div class="store-card invisible absolute left-0 top-9 z-50 w-64 translate-y-2 p-2 opacity-0 transition" data-collections-menu>
+                            @forelse ($menuCollections as $collection)
+                                <a href="{{ route('storefront.storefront.store.collections.show', [$store, $collection->slug ?: $collection->id]) }}" class="sf-body-md flex items-center justify-between rounded-md px-3 py-2 font-semibold hover:bg-[var(--store-soft)]">
+                                    {{ $collection->name }}
+                                    @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
+                                </a>
+                            @empty
+                                <span class="sf-body-md block px-3 py-2 text-[var(--store-muted)]">No collections yet</span>
                             @endforelse
                         </div>
                     </div>
@@ -189,9 +214,22 @@
                     </summary>
                     <div class="grid gap-1 pb-2 pl-4">
                         @forelse ($menuCategories as $category)
-                            <a href="{{ route('storefront.storefront.store.home', [$store, 'category' => $category->slug]) }}" class="sf-body-md rounded-lg px-3 py-2 font-semibold text-[var(--store-muted)] hover:bg-[var(--store-soft)] hover:text-[var(--store-primary)]">{{ $category->name }}</a>
+                            <a href="{{ route('storefront.storefront.store.categories.show', [$store, $category->slug]) }}" class="sf-body-md rounded-lg px-3 py-2 font-semibold text-[var(--store-muted)] hover:bg-[var(--store-soft)] hover:text-[var(--store-primary)]">{{ $category->name }}</a>
                         @empty
                             <span class="sf-body-md px-3 py-2 text-[var(--store-muted)]">No categories yet</span>
+                        @endforelse
+                    </div>
+                </details>
+                <details class="mt-2 border-t border-[var(--store-line)] pt-2">
+                    <summary class="sf-body-md flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-3 font-bold text-[var(--store-secondary)] hover:bg-[var(--store-soft)]">
+                        <span>Collections</span>
+                        @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5 rotate-90'])
+                    </summary>
+                    <div class="grid gap-1 pb-2 pl-4">
+                        @forelse ($menuCollections as $collection)
+                            <a href="{{ route('storefront.storefront.store.collections.show', [$store, $collection->slug ?: $collection->id]) }}" class="sf-body-md rounded-lg px-3 py-2 font-semibold text-[var(--store-muted)] hover:bg-[var(--store-soft)] hover:text-[var(--store-primary)]">{{ $collection->name }}</a>
+                        @empty
+                            <span class="sf-body-md px-3 py-2 text-[var(--store-muted)]">No collections yet</span>
                         @endforelse
                     </div>
                 </details>
@@ -281,6 +319,8 @@
             const backdrop = document.querySelector('[data-cart-backdrop]');
             const categoriesButton = document.querySelector('[data-categories-toggle]');
             const categoriesMenu = document.querySelector('[data-categories-menu]');
+            const collectionsButton = document.querySelector('[data-collections-toggle]');
+            const collectionsMenu = document.querySelector('[data-collections-menu]');
             const storeHeader = document.querySelector('[data-store-header]');
             const mobileNavButton = document.querySelector('[data-mobile-nav-toggle]');
             const mobileNav = document.querySelector('[data-mobile-nav]');
@@ -295,6 +335,9 @@
             const paystackMethods = ['storeboot_paystack', 'self_hosted_paystack'];
             const checkoutSteps = ['cart', 'shipping', 'payment', 'confirm'];
             const paystackInitializeUrl = @json(route('storefront.storefront.store.checkout.paystack.initialize', [$store, '__ORDER_ID__']));
+            const customerLookupUrl = @json(route('storefront.storefront.store.checkout.customer-lookup', $store));
+            let customerLookupTimer = null;
+            let lastCustomerLookupEmail = '';
 
             const setMobileNav = (open) => {
                 if (!mobileNav || !mobileNavButton) return;
@@ -328,6 +371,8 @@
                     phone: field('checkout_phone')?.value.trim() || '',
                     email: field('checkout_email')?.value.trim() || '',
                     address: field('checkout_address')?.value.trim() || '',
+                    save_address: field('checkout_save_address')?.checked || false,
+                    address_label: field('checkout_address_label')?.value.trim() || null,
                 },
                 shipping_option: selectedShipping()?.value || '',
                 payment_method: document.querySelector('input[name="payment_method"]:checked')?.value || null,
@@ -336,6 +381,119 @@
                     quantity: item.quantity,
                 })),
             });
+            const lookupCustomer = async () => {
+                const emailField = field('checkout_email');
+                const status = document.querySelector('[data-customer-lookup-status]');
+                const email = emailField?.value.trim().toLowerCase() || '';
+                if (!emailField?.checkValidity() || email === lastCustomerLookupEmail) return;
+
+                lastCustomerLookupEmail = email;
+                if (status) status.textContent = 'Checking for your saved details…';
+
+                try {
+                    const response = await fetch(customerLookupUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        },
+                        body: JSON.stringify({ email }),
+                    });
+                    const result = await response.json();
+                    if (!response.ok || !result.found) {
+                        showCustomerAddresses({ addresses: [], address: '' });
+                        if (status) status.textContent = '';
+                        return;
+                    }
+
+                    const customer = result.customer || {};
+                    [
+                        ['checkout_name', customer.name],
+                        ['checkout_phone', customer.phone],
+                    ].forEach(([name, value]) => {
+                        const input = field(name);
+                        if (input && !input.value.trim() && value) input.value = value;
+                    });
+                    showCustomerAddresses(customer);
+                    if (status) status.textContent = 'Welcome back — we filled in your saved details.';
+                } catch (error) {
+                    if (status) status.textContent = '';
+                }
+            };
+            const savedAddressSelect = document.querySelector('[data-saved-address-select]');
+            const savedAddressWrapper = document.querySelector('[data-saved-addresses]');
+            const saveAddressControl = document.querySelector('[data-save-address-control]');
+            const saveAddressCheckbox = field('checkout_save_address');
+            const addressLabelWrapper = document.querySelector('[data-address-label]');
+            const addressLabelInput = field('checkout_address_label');
+            let customerAddresses = [];
+            let addressWasAutofilled = false;
+
+            const syncSaveAddressFields = (showSaveOption) => {
+                if (saveAddressControl) {
+                    saveAddressControl.hidden = !showSaveOption;
+                    saveAddressControl.classList.toggle('hidden', !showSaveOption);
+                }
+                if (!showSaveOption && saveAddressCheckbox) saveAddressCheckbox.checked = false;
+                const showLabel = showSaveOption && !!saveAddressCheckbox?.checked;
+                if (addressLabelWrapper) addressLabelWrapper.hidden = !showLabel;
+                if (addressLabelInput) {
+                    addressLabelInput.required = showLabel;
+                    if (!showLabel) addressLabelInput.value = '';
+                }
+            };
+            const selectCustomerAddress = () => {
+                const selectedId = savedAddressSelect?.value || 'new';
+                const selected = customerAddresses.find((address) => String(address.id) === selectedId);
+                const addressInput = field('checkout_address');
+
+                if (selected) {
+                    if (addressInput) addressInput.value = selected.address || '';
+                    addressWasAutofilled = true;
+                    syncSaveAddressFields(false);
+                    return;
+                }
+
+                if (addressInput) {
+                    addressInput.value = '';
+                    addressInput.focus();
+                }
+                addressWasAutofilled = false;
+                syncSaveAddressFields(true);
+            };
+            const showCustomerAddresses = (customer) => {
+                customerAddresses = Array.isArray(customer.addresses) ? customer.addresses : [];
+                if (!savedAddressSelect || !savedAddressWrapper) return;
+
+                savedAddressSelect.innerHTML = '';
+                customerAddresses.forEach((address) => {
+                    const option = document.createElement('option');
+                    option.value = String(address.id);
+                    option.textContent = `${address.label} — ${address.address}`;
+                    savedAddressSelect.append(option);
+                });
+                const newOption = document.createElement('option');
+                newOption.value = 'new';
+                newOption.textContent = 'Use a new address';
+                savedAddressSelect.append(newOption);
+
+                savedAddressWrapper.hidden = customerAddresses.length === 0;
+                if (customerAddresses.length > 0) {
+                    savedAddressSelect.value = String(customerAddresses[0].id);
+                    selectCustomerAddress();
+                } else {
+                    const addressInput = field('checkout_address');
+                    if (addressInput && customer.address && (!addressInput.value.trim() || addressWasAutofilled)) {
+                        addressInput.value = customer.address;
+                        addressWasAutofilled = true;
+                    } else if (addressInput && !customer.address && addressWasAutofilled) {
+                        addressInput.value = '';
+                        addressWasAutofilled = false;
+                    }
+                    syncSaveAddressFields(true);
+                }
+            };
             const selectedPaymentMethod = () => document.querySelector('input[name="payment_method"]:checked')?.value || null;
             const syncBankTransferDetails = () => {
                 document.querySelectorAll('[data-bank-transfer-details]').forEach((node) => {
@@ -641,12 +799,29 @@
                     existing ? existing.quantity += requestedQuantity : cart.push({ ...product, quantity: requestedQuantity });
                     resetPendingCheckout();
                     save();
-                    render();
+                    showStep('cart');
                     openDrawer();
                 }
 
                 if (event.target.closest('[data-cart-open]')) openDrawer();
-                if (event.target.closest('[data-cart-close]') || event.target === backdrop) closeDrawer();
+
+                const continueShopping = event.target.closest('[data-continue-shopping]');
+                if (continueShopping) {
+                    resetPendingCheckout();
+                    setAlert('');
+                    showStep('cart');
+                    closeDrawer();
+                    return;
+                }
+
+                if (event.target.closest('[data-cart-close]') || event.target === backdrop) {
+                    if (step === 'confirm') {
+                        resetPendingCheckout();
+                        setAlert('');
+                        showStep('cart');
+                    }
+                    closeDrawer();
+                }
 
                 const qty = event.target.closest('[data-cart-qty]');
                 if (qty) {
@@ -701,9 +876,24 @@
                     categoriesMenu.classList.toggle('invisible', expanded);
                     categoriesMenu.classList.toggle('opacity-0', expanded);
                     categoriesMenu.classList.toggle('translate-y-2', expanded);
+                    collectionsButton?.setAttribute('aria-expanded', 'false');
+                    collectionsMenu?.classList.add('invisible', 'opacity-0', 'translate-y-2');
                 } else if (categoriesMenu && !event.target.closest('[data-categories-menu]')) {
                     categoriesButton?.setAttribute('aria-expanded', 'false');
                     categoriesMenu.classList.add('invisible', 'opacity-0', 'translate-y-2');
+                }
+
+                if (collectionsButton && event.target.closest('[data-collections-toggle]')) {
+                    const expanded = collectionsButton.getAttribute('aria-expanded') === 'true';
+                    collectionsButton.setAttribute('aria-expanded', String(!expanded));
+                    collectionsMenu.classList.toggle('invisible', expanded);
+                    collectionsMenu.classList.toggle('opacity-0', expanded);
+                    collectionsMenu.classList.toggle('translate-y-2', expanded);
+                    categoriesButton?.setAttribute('aria-expanded', 'false');
+                    categoriesMenu?.classList.add('invisible', 'opacity-0', 'translate-y-2');
+                } else if (collectionsMenu && !event.target.closest('[data-collections-menu]')) {
+                    collectionsButton?.setAttribute('aria-expanded', 'false');
+                    collectionsMenu.classList.add('invisible', 'opacity-0', 'translate-y-2');
                 }
 
                 const qtyControl = event.target.closest('[data-detail-qty]');
@@ -729,6 +919,21 @@
 
             document.addEventListener('change', (event) => {
                 if (event.target.matches('input[name="shipping_option"]')) render();
+                if (event.target.matches('[name="checkout_email"]')) lookupCustomer();
+            });
+
+            field('checkout_email')?.addEventListener('input', () => {
+                window.clearTimeout(customerLookupTimer);
+                customerLookupTimer = window.setTimeout(lookupCustomer, 500);
+            });
+            savedAddressSelect?.addEventListener('change', selectCustomerAddress);
+            saveAddressCheckbox?.addEventListener('change', () => syncSaveAddressFields(true));
+            field('checkout_address')?.addEventListener('input', () => {
+                addressWasAutofilled = false;
+                if (!savedAddressWrapper?.hidden && savedAddressSelect?.value !== 'new') {
+                    savedAddressSelect.value = 'new';
+                    syncSaveAddressFields(true);
+                }
             });
 
             const galleryImages = Array.from(document.querySelectorAll('[data-gallery-image]')).map((button) => button.dataset.galleryImage);

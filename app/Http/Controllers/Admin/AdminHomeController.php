@@ -25,7 +25,7 @@ final class AdminHomeController extends Controller
     private const DESTINATIONS = [
         ['dashboard.view', 'admin.analytics.index'],
         ['sales.create', 'admin.sales.retail-pos'],
-        ['sales.view', 'admin.sales.index'],
+        ['sales.view', 'admin.sales.orders.index'],
         ['inventory.view', 'admin.inventory.index'],
         ['catalog.view', 'admin.catalog.index'],
         ['customers.view', 'admin.customers.index'],

@@ -8,8 +8,10 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\ActiveBranchManager;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -18,6 +20,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
+use Modules\Access\Support\ApprovalService;
 use Modules\Business\Models\Branch;
 use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Catalog\Enums\ProductType;
@@ -25,14 +28,18 @@ use Modules\Catalog\Models\ProductVariant;
 use Modules\Customers\Models\Customer;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Finance\Models\FinanceAccount;
+use Modules\Inventory\Actions\AdjustInventoryReservationAction;
 use Modules\Inventory\Models\InventoryLocation;
+use Modules\Sales\Actions\CompleteSalesOrderAction;
 use Modules\Sales\Actions\CreateSalesOrderAction;
 use Modules\Sales\Actions\ProcessSalesReturnAction;
 use Modules\Sales\Actions\RecordSalesPaymentAction;
+use Modules\Sales\Actions\RefundCancelledOrderAction;
 use Modules\Sales\Enums\DiscountType;
 use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Enums\SalesPaymentStatus;
 use Modules\Sales\Http\Requests\SalesCouponRequest;
+use Modules\Sales\Http\Requests\SalesOrderRefundRequest;
 use Modules\Sales\Http\Requests\SalesOrderRequest;
 use Modules\Sales\Http\Requests\SalesPaymentRequest;
 use Modules\Sales\Http\Requests\SalesReturnRequest;
@@ -41,26 +48,41 @@ use Modules\Sales\Http\Requests\TillMovementRequest;
 use Modules\Sales\Http\Requests\TillOpenRequest;
 use Modules\Sales\Models\OnlineCollectedPayment;
 use Modules\Sales\Models\OnlinePaymentSettlement;
-use Modules\Sales\Models\SalesCoupon;
 use Modules\Sales\Models\SalesCashLocation;
+use Modules\Sales\Models\SalesCoupon;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesTillSession;
+use Modules\Subscriptions\Support\TenantModuleAccess;
 use Modules\Tenancy\Models\Tenant;
 
 final class SalesController extends Controller
 {
-    public function index(Request $request, ActiveBranchManager $branchManager): View
-    {
+    public function index(
+        Request $request,
+        ActiveBranchManager $branchManager,
+        TenantModuleAccess $moduleAccess,
+    ): View {
         /** @var User $user */
         $user = $request->user();
         $tenants = $this->visibleTenantsFor($user);
         $tenant = $this->resolveTenant($request, $tenants);
 
         abort_if(! $tenant, 403);
+        $inventoryEnabled = $moduleAccess->allows($tenant, 'inventory');
 
         $walkInCustomer = $this->walkInCustomer($tenant);
         $orderSearch = trim($request->string('order_search')->toString());
         $branches = Branch::query()->where('tenant_id', $tenant->id)->orderByDesc('is_primary')->orderBy('name')->get();
+        $requestedOrderBranchId = $request->integer('order_branch');
+        $orderBranchId = $requestedOrderBranchId > 0 && $branches->contains('id', $requestedOrderBranchId)
+            ? $requestedOrderBranchId
+            : null;
+        $requestedOrderSource = $request->string('order_source')->toString();
+        $orderSource = in_array($requestedOrderSource, ['retail_pos', 'online', 'offline'], true) ? $requestedOrderSource : '';
+        $requestedOrderStatus = $request->string('order_status')->toString();
+        $orderStatus = in_array($requestedOrderStatus, SalesOrderStatus::values(), true) ? $requestedOrderStatus : '';
+        $requestedOrderPaymentStatus = $request->string('order_payment_status')->toString();
+        $orderPaymentStatus = in_array($requestedOrderPaymentStatus, SalesPaymentStatus::values(), true) ? $requestedOrderPaymentStatus : '';
         $recordSaleBranch = $branchManager->stateForRequest($request, $user)['activeBranch'] ?? $branches->first();
         $locations = InventoryLocation::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
         $activeTill = SalesTillSession::query()
@@ -87,6 +109,12 @@ final class SalesController extends Controller
             ->get();
         $ordersQuery = SalesOrder::query()->with(['customer', 'branch', 'cashier', 'tillSession', 'items.variant.product', 'payments', 'returns.items.orderItem'])->where('tenant_id', $tenant->id);
         $orders = $ordersQuery
+            ->when($orderBranchId !== null, fn ($query) => $query->where('branch_id', $orderBranchId))
+            ->when($orderSource !== '', fn ($query) => $orderSource === 'retail_pos'
+                ? $query->whereIn('source', ['retail_pos', 'in_store'])
+                : $query->where('source', $orderSource))
+            ->when($orderStatus !== '', fn ($query) => $query->where('order_status', $orderStatus))
+            ->when($orderPaymentStatus !== '', fn ($query) => $query->where('payment_status', $orderPaymentStatus))
             ->when($orderSearch !== '', fn ($query) => $query->where(function ($query) use ($orderSearch): void {
                 $query->where('order_number', 'like', "%{$orderSearch}%")
                     ->orWhere('invoice_number', 'like', "%{$orderSearch}%")
@@ -106,6 +134,7 @@ final class SalesController extends Controller
             'branches' => $branches,
             'recordSaleBranch' => $recordSaleBranch,
             'locations' => $locations,
+            'inventoryEnabled' => $inventoryEnabled,
             'activeTill' => $activeTill,
             'activeTillRows' => $activeTillRows,
             'recentTillSessions' => $recentTillSessions,
@@ -115,8 +144,13 @@ final class SalesController extends Controller
             'allOrders' => $allOrders,
             'coupons' => $coupons,
             'orderSearch' => $orderSearch,
+            'orderBranchId' => $orderBranchId,
+            'orderSource' => $orderSource,
+            'orderStatus' => $orderStatus,
+            'orderPaymentStatus' => $orderPaymentStatus,
             'paymentMethods' => $tenant->settings['payment_methods'] ?? ['Cash', 'Bank transfer', 'POS/Card', 'Cheque'],
             'paymentAccounts' => $this->paymentAccountsFor($tenant->id, $recordSaleBranch?->id),
+            'refundPaymentAccounts' => $this->paymentAccountsFor($tenant->id),
             'deliveryMethods' => $branches->flatMap(fn (Branch $branch) => collect($branch->settings['delivery_methods'] ?? []))->where('status', 'active')->values(),
             'orderStatuses' => SalesOrderStatus::cases(),
             'paymentStatuses' => SalesPaymentStatus::cases(),
@@ -130,10 +164,12 @@ final class SalesController extends Controller
 
         $target = $order->source === 'retail_pos'
             ? route('admin.sales.retail-pos', ['tenant' => $order->tenant_id])
-            : route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders';
-        $completionDialogKey = $order->source === 'retail_pos'
-            ? 'receipt_order_id'
-            : 'invoice_order_id';
+            : route('admin.sales.orders.index', ['tenant' => $order->tenant_id]).'#orders';
+        $completionDialogKey = match (true) {
+            $order->source === 'retail_pos' => 'receipt_order_id',
+            $order->order_status === SalesOrderStatus::Pending => 'view_order_id',
+            default => 'invoice_order_id',
+        };
 
         return redirect()
             ->to($target)
@@ -222,7 +258,7 @@ final class SalesController extends Controller
         ]);
     }
 
-    public function storeQuickCustomer(Request $request): \Illuminate\Http\JsonResponse
+    public function storeQuickCustomer(Request $request): JsonResponse
     {
         $tenantId = $request->string('tenant_id')->toString();
         $this->authorizeTenantIdAccess($request->user(), $tenantId);
@@ -280,20 +316,31 @@ final class SalesController extends Controller
         $this->authorizeTenantIdAccess($request->user(), $order->tenant_id);
         $action->execute($order, $request->validated(), $request->user()->id);
 
-        return redirect()->to(route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Payment recorded for {$order->order_number}.");
+        return redirect()->to(route('admin.sales.orders.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Payment recorded for {$order->order_number}.");
     }
 
-    public function cancelOrder(Request $request, SalesOrder $order, PostJournalEntryAction $postJournalEntry): RedirectResponse
+    public function cancelOrder(Request $request, SalesOrder $order, PostJournalEntryAction $postJournalEntry, AdjustInventoryReservationAction $reservations): RedirectResponse
     {
         $this->authorizeTenantIdAccess($request->user(), $order->tenant_id);
 
-        DB::transaction(function () use ($order, $postJournalEntry): void {
-            $lockedOrder = SalesOrder::query()->lockForUpdate()->findOrFail($order->id);
+        DB::transaction(function () use ($order, $postJournalEntry, $reservations): void {
+            $lockedOrder = SalesOrder::query()->with('items.variant.product')->lockForUpdate()->findOrFail($order->id);
 
-            if ($lockedOrder->order_status !== SalesOrderStatus::Pending) {
+            if (! in_array($lockedOrder->order_status, [SalesOrderStatus::Pending, SalesOrderStatus::Processing], true)) {
                 throw ValidationException::withMessages([
-                    'order' => 'Only pending orders can be cancelled from here.',
+                    'order' => 'Only pending or processing orders can be cancelled from here.',
                 ]);
+            }
+
+            // Free any reserved stock so it becomes available to other shoppers.
+            if ($lockedOrder->stock_reserved && $lockedOrder->inventory_location_id) {
+                foreach ($lockedOrder->items as $item) {
+                    if ($item->variant?->product?->product_type !== ProductType::Product) {
+                        continue;
+                    }
+
+                    $reservations->release($lockedOrder->tenant_id, (int) $lockedOrder->inventory_location_id, (int) $item->product_variant_id, (int) $item->quantity);
+                }
             }
 
             $creditMinor = max(0, (int) $lockedOrder->paid_minor - (int) $lockedOrder->refunded_minor);
@@ -302,15 +349,20 @@ final class SalesController extends Controller
                 'payment_status' => $creditMinor > 0
                     ? SalesPaymentStatus::CustomerCredit->value
                     : SalesPaymentStatus::Unpaid->value,
+                'customer_credit_minor' => $creditMinor,
+                'stock_reserved' => false,
+                'reserved_until' => null,
             ]);
 
             if ($creditMinor > 0) {
+                // Deposits taken while pending are held in Customer Deposits (2310).
+                // Cancellation converts that unrefunded amount to Customer Credit (2300).
                 $postJournalEntry->execute(
                     $lockedOrder->tenant_id,
                     now()->toDateString(),
                     'Customer credit from cancelled order '.$lockedOrder->order_number,
                     [
-                        ['account_code' => '1100', 'branch_id' => $lockedOrder->branch_id, 'debit_minor' => $creditMinor, 'party_type' => 'customer', 'party_id' => $lockedOrder->customer_id],
+                        ['account_code' => '2310', 'branch_id' => $lockedOrder->branch_id, 'debit_minor' => $creditMinor, 'party_type' => 'customer', 'party_id' => $lockedOrder->customer_id],
                         ['account_code' => '2300', 'branch_id' => $lockedOrder->branch_id, 'credit_minor' => $creditMinor, 'party_type' => 'customer', 'party_id' => $lockedOrder->customer_id],
                     ],
                     'sales_order',
@@ -320,20 +372,21 @@ final class SalesController extends Controller
             }
         });
 
-        return redirect()->to(route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Order {$order->order_number} cancelled.");
+        return redirect()->to(route('admin.sales.orders.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Order {$order->order_number} cancelled.");
     }
 
     public function markOrderRefunded(
-        Request $request,
+        SalesOrderRefundRequest $request,
         SalesOrder $order,
-        \Modules\Sales\Actions\RefundCancelledOrderAction $refundAction,
-        \Modules\Access\Support\ApprovalService $approvals,
+        RefundCancelledOrderAction $refundAction,
+        ApprovalService $approvals,
     ): RedirectResponse {
         /** @var User $user */
         $user = $request->user();
         $this->authorizeTenantIdAccess($user, $order->tenant_id);
+        $data = $request->validated();
 
-        $redirect = route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders';
+        $redirect = route('admin.sales.orders.index', ['tenant' => $order->tenant_id]).'#orders';
         $refundMinor = $refundAction->refundableMinor($order->loadMissing('payments'));
 
         // Role refund cap: over the limit either routes to approval (if enabled) or is blocked.
@@ -346,7 +399,7 @@ final class SalesController extends Controller
                     $approvals->create($tenant, $user, 'refund', 'Refund · order '.$order->order_number, [
                         'branch_id' => $order->branch_id,
                         'amount_minor' => $refundMinor,
-                        'payload' => ['order_id' => $order->id],
+                        'payload' => ['order_id' => $order->id, 'data' => $data],
                         'description' => 'Refund of a cancelled order to customer credit.',
                     ]);
 
@@ -359,7 +412,7 @@ final class SalesController extends Controller
             }
         }
 
-        $refundAction->execute($order);
+        $refundAction->execute($order, $data, $user->id);
 
         return redirect()->to($redirect)->with('status', "Order {$order->order_number} marked as refunded.");
     }
@@ -896,22 +949,61 @@ final class SalesController extends Controller
 
         $order->update(['delivery_status' => $data['delivery_status']]);
 
-        return redirect()->to(route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Delivery status updated for {$order->order_number}.");
+        return redirect()->to(route('admin.sales.orders.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Delivery status updated for {$order->order_number}.");
+    }
+
+    public function updateOrderStatus(
+        Request $request,
+        SalesOrder $order,
+        CompleteSalesOrderAction $completeSalesOrder,
+    ): RedirectResponse {
+        $this->authorizeTenantIdAccess($request->user(), $order->tenant_id);
+        $data = $request->validate([
+            'order_status' => ['required', Rule::in([
+                SalesOrderStatus::Pending->value,
+                SalesOrderStatus::Processing->value,
+                SalesOrderStatus::Completed->value,
+            ])],
+        ]);
+
+        $requestedStatus = SalesOrderStatus::from($data['order_status']);
+        $currentStatus = $order->order_status;
+
+        if ($currentStatus === SalesOrderStatus::Completed && $requestedStatus !== SalesOrderStatus::Completed) {
+            throw ValidationException::withMessages([
+                'order_status' => 'A completed order cannot be moved back to pending or processing.',
+            ]);
+        }
+
+        if ($requestedStatus === SalesOrderStatus::Completed) {
+            $completeSalesOrder->execute($order);
+        } elseif ($currentStatus !== $requestedStatus) {
+            $order->update(['order_status' => $requestedStatus->value]);
+        }
+
+        return redirect()->to(route('admin.sales.orders.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Order status updated for {$order->order_number}.");
     }
 
     public function storeReturn(
         SalesReturnRequest $request,
         SalesOrder $order,
         ProcessSalesReturnAction $action,
-        \Modules\Access\Support\ApprovalService $approvals,
+        ApprovalService $approvals,
     ): RedirectResponse {
         /** @var User $user */
         $user = $request->user();
         $this->authorizeTenantIdAccess($user, $order->tenant_id);
 
         $order->load('items.variant', 'customer', 'branch');
+
+        if (! in_array($order->order_status, [SalesOrderStatus::Completed, SalesOrderStatus::PartiallyReturned], true)) {
+            throw ValidationException::withMessages([
+                'order' => 'Only completed orders can be returned.',
+            ]);
+        }
+
         $data = $request->validated();
-        $ordersUrl = route('admin.sales.index', ['tenant' => $order->tenant_id]).'#orders';
+        $ordersUrl = route('admin.sales.orders.index', ['tenant' => $order->tenant_id]).'#orders';
 
         if (! $user->is_platform_admin) {
             $tenant = Tenant::query()->findOrFail($order->tenant_id);
@@ -959,7 +1051,7 @@ final class SalesController extends Controller
 
         $salesReturn = $action->execute($order, $data);
 
-        return redirect()->to(route('admin.sales.index', ['tenant' => $salesReturn->tenant_id]).'#returns')->with('status', "Return {$salesReturn->return_number} processed.");
+        return redirect()->to(route('admin.sales.orders.index', ['tenant' => $salesReturn->tenant_id]).'#returns')->with('status', "Return {$salesReturn->return_number} processed.");
     }
 
     private function ensureCashShortOverAccount(string $tenantId): FinanceAccount
@@ -1112,9 +1204,9 @@ final class SalesController extends Controller
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, array{method: string, expected_minor: int, collected_minor: int, movement_minor: int}>
+     * @return Collection<int, array{method: string, expected_minor: int, collected_minor: int, movement_minor: int}>
      */
-    private function tillBreakdown(SalesTillSession $tillSession, Tenant $tenant): \Illuminate\Support\Collection
+    private function tillBreakdown(SalesTillSession $tillSession, Tenant $tenant): Collection
     {
         $paymentMethods = collect($tenant->settings['payment_methods'] ?? ['Cash', 'Bank transfer', 'POS/Card', 'Cheque'])
             ->map(fn (string $method): string => trim($method))
@@ -1185,7 +1277,7 @@ final class SalesController extends Controller
         };
     }
 
-    private function paymentAccountsFor(string $tenantId, ?int $branchId = null): \Illuminate\Database\Eloquent\Collection
+    private function paymentAccountsFor(string $tenantId, ?int $branchId = null): EloquentCollection
     {
         return BusinessPaymentAccount::query()
             ->with(['branch', 'financeAccount'])
@@ -1295,7 +1387,7 @@ final class SalesController extends Controller
             throw new \RuntimeException('XLSX uploads require the PHP zip extension. Upload CSV instead.');
         }
 
-        $zip = new \ZipArchive();
+        $zip = new \ZipArchive;
 
         if ($zip->open($path) !== true) {
             throw new \RuntimeException('The uploaded XLSX file could not be opened.');

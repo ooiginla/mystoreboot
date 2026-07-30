@@ -9,6 +9,8 @@ Route::prefix('store/{store:username}')
     ->name('store.')
     ->group(function (): void {
         Route::get('/', [StorefrontController::class, 'home'])->name('home');
+        Route::get('/categories/{categorySlug}', [StorefrontController::class, 'category'])->name('categories.show');
+        Route::get('/collections/{collectionSlug}', [StorefrontController::class, 'collection'])->name('collections.show');
         Route::get('/products/{productSlug}', [StorefrontController::class, 'product'])->name('products.show');
         Route::get('/services', [StorefrontController::class, 'services'])->name('services');
         Route::get('/services/{serviceSlug}', [StorefrontController::class, 'service'])->name('services.show');
@@ -20,6 +22,10 @@ Route::prefix('store/{store:username}')
         Route::get('/shipping-info', [StorefrontController::class, 'page'])->defaults('page', 'shipping_information')->name('shipping');
         Route::get('/contact', [StorefrontController::class, 'contact'])->name('contact');
         Route::post('/contact', [StorefrontController::class, 'submitContact'])->name('contact.submit');
+        Route::get('/track', [StorefrontController::class, 'track'])->name('track');
+        Route::post('/checkout/customer-lookup', [StorefrontController::class, 'lookupCustomer'])
+            ->middleware('throttle:30,1')
+            ->name('checkout.customer-lookup');
         Route::post('/checkout', [StorefrontController::class, 'checkout'])->name('checkout');
         Route::post('/checkout/{order}/paystack/initialize', [StorefrontController::class, 'initializePaystackPayment'])->name('checkout.paystack.initialize');
         Route::get('/checkout/{order}/paystack/verify', [StorefrontController::class, 'verifyPaystackPayment'])->name('checkout.paystack.verify');

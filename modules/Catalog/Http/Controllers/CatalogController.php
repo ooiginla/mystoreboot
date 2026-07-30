@@ -14,20 +14,28 @@ use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
 use Modules\Catalog\Actions\CreateCategoryAction;
+use Modules\Catalog\Actions\ImportProductsFromImagesAction;
 use Modules\Catalog\Actions\SaveProductAction;
 use Modules\Catalog\Actions\SaveProductAttributeAction;
+use Modules\Catalog\Actions\SaveProductCollectionAction;
+use Modules\Catalog\Actions\UpdateProductStatusAction;
 use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Enums\TaxBehavior;
 use Modules\Catalog\Http\Requests\ProductAttributeRequest;
+use Modules\Catalog\Http\Requests\ProductBadgeRequest;
 use Modules\Catalog\Http\Requests\ProductCategoryRequest;
+use Modules\Catalog\Http\Requests\ProductCollectionRequest;
 use Modules\Catalog\Http\Requests\ProductRequest;
+use Modules\Catalog\Http\Requests\ProductStatusRequest;
 use Modules\Catalog\Http\Requests\ProductTagRequest;
 use Modules\Catalog\Http\Requests\ProductTaxRequest;
 use Modules\Catalog\Models\Product;
 use Modules\Catalog\Models\ProductAttributeDefinition;
+use Modules\Catalog\Models\ProductBadge;
 use Modules\Catalog\Models\ProductCategory;
+use Modules\Catalog\Models\ProductCollection;
 use Modules\Catalog\Models\ProductTag;
 use Modules\Catalog\Models\ProductTax;
 use Modules\Catalog\Models\ProductVariant;
@@ -48,7 +56,9 @@ final class CatalogController extends Controller
 
         $productQuery = fn (ProductType $type) => Product::query()
             ->with([
+                'badges',
                 'category',
+                'collections',
                 'images',
                 'options.values',
                 'tags',
@@ -74,6 +84,11 @@ final class CatalogController extends Controller
             ->where('tenant_id', $tenant->id)
             ->orderBy('name')
             ->get();
+        $productCollections = ProductCollection::query()
+            ->withCount('products')
+            ->where('tenant_id', $tenant->id)
+            ->orderBy('name')
+            ->get();
 
         return view('catalog::admin.index', [
             'tenant' => $tenant,
@@ -83,6 +98,8 @@ final class CatalogController extends Controller
             'productItems' => $productItems,
             'serviceItems' => $serviceItems,
             'categories' => $categories,
+            'productBadges' => ProductBadge::query()->withCount('products')->where('tenant_id', $tenant->id)->orderBy('name')->get(),
+            'productCollections' => $productCollections,
             'tags' => ProductTag::query()->where('tenant_id', $tenant->id)->orderBy('name')->get(),
             'taxes' => ProductTax::query()->where('tenant_id', $tenant->id)->orderBy('name')->get(),
             'attributes' => ProductAttributeDefinition::query()->with('values')->where('tenant_id', $tenant->id)->orderBy('name')->get(),
@@ -98,6 +115,8 @@ final class CatalogController extends Controller
                 'products' => Product::query()->where('tenant_id', $tenant->id)->where('product_type', ProductType::Product->value)->count(),
                 'services' => Product::query()->where('tenant_id', $tenant->id)->where('product_type', ProductType::Service->value)->count(),
                 'categories' => $categories->count(),
+                'collections' => $productCollections->count(),
+                'badges' => ProductBadge::query()->where('tenant_id', $tenant->id)->count(),
                 'tags' => ProductTag::query()->where('tenant_id', $tenant->id)->count(),
                 'taxes' => ProductTax::query()->where('tenant_id', $tenant->id)->count(),
                 'attributes' => ProductAttributeDefinition::query()->where('tenant_id', $tenant->id)->count(),
@@ -117,6 +136,25 @@ final class CatalogController extends Controller
             ->with('status', "{$product->name} saved.");
     }
 
+    public function importProductsFromImages(Request $request, ImportProductsFromImagesAction $action): RedirectResponse
+    {
+        $tenantId = $request->string('tenant_id')->toString();
+        $this->authorizeTenantIdAccess($request->user(), $tenantId);
+
+        $data = $request->validate([
+            'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            'images' => ['required', 'array', 'min:1', 'max:40'],
+            'images.*' => ['image', 'mimes:jpeg,png,webp,gif', 'max:10240'],
+        ]);
+
+        $tenant = Tenant::query()->findOrFail($tenantId);
+        $result = $action->execute($data['images'], $tenantId, $tenant->currency_code ?? 'NGN');
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $tenantId]).'#products')
+            ->with('status', $result['count'].' draft product(s) imported from photos. Set prices and publish them when ready.');
+    }
+
     public function updateProduct(ProductRequest $request, Product $product, SaveProductAction $action): RedirectResponse
     {
         $this->authorizeTenantIdAccess($request->user(), $product->tenant_id);
@@ -127,6 +165,43 @@ final class CatalogController extends Controller
         return redirect()
             ->route('admin.catalog.index', ['tenant' => $updatedProduct->tenant_id])
             ->with('status', "{$updatedProduct->name} updated.");
+    }
+
+    public function updateProductStatus(
+        ProductStatusRequest $request,
+        Product $product,
+        UpdateProductStatusAction $action,
+    ): RedirectResponse {
+        $this->authorizeTenantIdAccess($request->user(), $product->tenant_id);
+        abort_unless($request->string('tenant_id')->toString() === $product->tenant_id, 403);
+
+        $status = ProductStatus::from($request->string('status')->toString());
+        $updatedProduct = $action->execute($product, $status);
+        $fragment = $updatedProduct->product_type === ProductType::Service ? 'services' : 'products';
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $updatedProduct->tenant_id]).'#'.$fragment)
+            ->with('status', "{$updatedProduct->name} is now {$status->label()}.");
+    }
+
+    public function destroyProduct(Request $request, Product $product): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $product->tenant_id);
+
+        $data = $request->validate([
+            'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+        ]);
+        abort_unless($data['tenant_id'] === $product->tenant_id, 403);
+
+        $tenantId = $product->tenant_id;
+        $name = $product->name;
+        $fragment = $product->product_type === ProductType::Service ? 'services' : 'products';
+
+        $product->delete();
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $tenantId]).'#'.$fragment)
+            ->with('status', "{$name} deleted.");
     }
 
     public function storeCategory(ProductCategoryRequest $request, CreateCategoryAction $action): JsonResponse|RedirectResponse
@@ -175,6 +250,61 @@ final class CatalogController extends Controller
         return redirect()
             ->to(route('admin.catalog.index', ['tenant' => $tag->tenant_id]).'#tags')
             ->with('status', "Tag {$tag->name} updated.");
+    }
+
+    public function storeBadge(ProductBadgeRequest $request): RedirectResponse
+    {
+        $data = $request->validated();
+        $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+
+        $badge = ProductBadge::query()->create($data);
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $badge->tenant_id]).'#badges')
+            ->with('status', "Badge {$badge->name} created.");
+    }
+
+    public function updateBadge(ProductBadgeRequest $request, ProductBadge $badge): RedirectResponse
+    {
+        $data = $request->validated();
+        $this->authorizeTenantIdAccess($request->user(), $badge->tenant_id);
+        abort_unless($data['tenant_id'] === $badge->tenant_id, 403);
+
+        $badge->update($data);
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $badge->tenant_id]).'#badges')
+            ->with('status', "Badge {$badge->name} updated.");
+    }
+
+    public function storeProductCollection(
+        ProductCollectionRequest $request,
+        SaveProductCollectionAction $action,
+    ): RedirectResponse {
+        $data = $request->validated();
+        $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+
+        $collection = $action->execute($data);
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $collection->tenant_id]).'#collections')
+            ->with('status', "Collection {$collection->name} created.");
+    }
+
+    public function updateProductCollection(
+        ProductCollectionRequest $request,
+        ProductCollection $collection,
+        SaveProductCollectionAction $action,
+    ): RedirectResponse {
+        $data = $request->validated();
+        $this->authorizeTenantIdAccess($request->user(), $collection->tenant_id);
+        abort_unless($data['tenant_id'] === $collection->tenant_id, 403);
+
+        $updatedCollection = $action->execute($data, $collection);
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $updatedCollection->tenant_id]).'#collections')
+            ->with('status', "Collection {$updatedCollection->name} updated.");
     }
 
     public function storeTax(ProductTaxRequest $request): RedirectResponse

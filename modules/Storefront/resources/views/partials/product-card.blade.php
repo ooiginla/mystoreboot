@@ -34,37 +34,35 @@
     $detailsUrl = route($detailRouteName, [$store, $product->slug]);
 @endphp
 
-<article class="store-card group cursor-pointer overflow-hidden p-2 transition-all duration-300 hover:shadow-2xl">
+<article class="store-card store-product-card group cursor-pointer overflow-hidden p-2 transition-all duration-300 hover:shadow-2xl">
     <a href="{{ $detailsUrl }}" class="relative mb-4 flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-[var(--store-soft)]">
+        @include('storefront::partials.product-badges', ['product' => $product])
         @if ($image)
             <img src="{{ $image }}" alt="{{ $product->name }}" class="h-4/5 w-4/5 object-contain transition-transform duration-500 group-hover:scale-110">
         @else
             <div class="sf-headline-lg flex h-full w-full items-center justify-center text-[var(--store-primary)]">{{ Str::of($product->name)->substr(0, 2)->upper() }}</div>
         @endif
-        @if ($compareMinor && $compareMinor > $priceMinor)
-            <span class="sf-label-md absolute left-3 top-3 rounded-full bg-black px-3 py-1 text-white">Sale</span>
-        @endif
     </a>
-    <div class="px-2 pb-2">
-        <a href="{{ $detailsUrl }}" class="sf-headline-md mt-2 block line-clamp-2 min-h-14 text-[var(--store-ink)] hover:text-[var(--store-primary)]">{{ $product->name }}</a>
-        <div class="mt-2 flex items-center gap-3">
-            <strong class="sf-body-lg font-bold text-[var(--store-secondary)]" @if ($showFromPrice) data-variant-price-mode="from" @endif>{{ $showFromPrice ? 'From ' : '' }}{{ $currencySymbol }}{{ $money($priceMinor) }}</strong>
+    <div class="store-product-card-body px-2 pb-2">
+        <a href="{{ $detailsUrl }}" class="sf-body-md store-product-card-title mt-2 block line-clamp-2 font-bold text-[var(--store-ink)] hover:text-[var(--store-primary)]">{{ $product->name }}</a>
+        <div class="store-product-card-price mt-2 flex items-center">
+            <strong class="sf-body-md font-bold text-[var(--store-secondary)]" @if ($showFromPrice) data-variant-price-mode="from" @endif>{{ $showFromPrice ? 'From ' : '' }}{{ $currencySymbol }}{{ $money($priceMinor) }}</strong>
             @if ($compareMinor && $compareMinor > $priceMinor)
                 <span class="sf-body-md text-[var(--store-muted)] line-through">{{ $currencySymbol }}{{ $money($compareMinor) }}</span>
             @endif
         </div>
         @if ($requiresVariantSelection)
-            <a href="{{ $detailsUrl }}" class="sf-label-md mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--store-secondary)] py-3 uppercase text-white transition-colors hover:brightness-90">
+            <a href="{{ $detailsUrl }}" class="sf-label-md store-product-card-action flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--store-secondary)] py-3 uppercase text-white transition-colors hover:brightness-90">
                 Choose options
                 @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
             </a>
         @elseif ($variant)
-            <button type="button" class="sf-label-md mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--store-secondary)] py-3 uppercase text-white transition-colors hover:brightness-90" data-add-to-cart data-product='@json($payload)'>
+            <button type="button" class="sf-label-md store-product-card-action flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--store-secondary)] py-3 uppercase text-white transition-colors hover:brightness-90" data-add-to-cart data-product='@json($payload)'>
                 @include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5'])
                 Add to Cart
             </button>
         @else
-            <a href="{{ $detailsUrl }}" class="sf-label-md mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--store-line)] py-3 uppercase text-[var(--store-muted)]">
+            <a href="{{ $detailsUrl }}" class="sf-label-md store-product-card-action flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--store-line)] py-3 uppercase text-[var(--store-muted)]">
                 View details
                 @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
             </a>

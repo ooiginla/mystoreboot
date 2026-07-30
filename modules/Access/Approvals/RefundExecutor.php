@@ -47,6 +47,10 @@ final class RefundExecutor implements ApprovalExecutor
             return;
         }
 
-        $this->refundCancelled->execute($order);
+        $this->refundCancelled->execute(
+            $order,
+            (array) ($payload['data'] ?? []),
+            $request->requested_by,
+        );
     }
 }

@@ -192,7 +192,7 @@
 
     <section class="store-shell border-t border-[var(--store-line)] py-12">
         <h2 class="sf-headline-lg text-[var(--store-primary)]">YOU MIGHT ALSO LIKE</h2>
-        <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5">
             @forelse ($relatedProducts as $product)
                 @include('storefront::partials.related-product-card', ['product' => $product, 'detailRouteName' => $detailRouteName])
             @empty

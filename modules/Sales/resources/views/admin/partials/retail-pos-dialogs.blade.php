@@ -173,7 +173,7 @@
             </tbody>
         </table>
         </div>
-        <p class="subtle" style="margin-top:14px;">Looking for online, offline &amp; historical orders? <a href="{{ route('admin.sales.index', ['tenant' => $tenant->id]) }}" style="color:var(--brand-strong); font-weight:700;">Open the full orders page →</a></p>
+        <p class="subtle" style="margin-top:14px;">Looking for online, offline &amp; historical orders? <a href="{{ route('admin.sales.orders.index', ['tenant' => $tenant->id]).'#orders' }}" style="color:var(--brand-strong); font-weight:700;">Open the full orders page →</a></p>
     </div>
 </dialog>
 

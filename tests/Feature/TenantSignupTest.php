@@ -57,7 +57,10 @@ class TenantSignupTest extends TestCase
             '_token' => 'local-test-token',
             'email' => 'local@bootup.test',
             'password' => 'password123',
-        ])->assertRedirect(route('admin.analytics.index'));
+        ])->assertRedirect(route('admin.home'));
+
+        // admin.home dispatches the owner to the first area their role can access.
+        $this->get(route('admin.home'))->assertRedirect(route('admin.analytics.index'));
 
         $this->assertAuthenticatedAs($user);
     }
@@ -142,7 +145,10 @@ class TenantSignupTest extends TestCase
         $this->post(route('login.store'), [
             'email' => 'owner@bootup.test',
             'password' => 'password123',
-        ])->assertRedirect(route('admin.analytics.index'));
+        ])->assertRedirect(route('admin.home'));
+
+        // admin.home dispatches the owner to the first area their role can access.
+        $this->get(route('admin.home'))->assertRedirect(route('admin.analytics.index'));
 
         $this->assertAuthenticatedAs($user);
     }

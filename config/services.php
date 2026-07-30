@@ -47,4 +47,29 @@ return [
         ],
     ],
 
+    // Powers AI drafting of product name/description/price from a photo.
+    // When the selected provider has no key, the importer still creates draft
+    // products — it just leaves the AI-filled fields blank for the merchant.
+    'ai' => [
+        // Which provider drafts products from photos: "anthropic" or "openai".
+        'provider' => env('AI_PROVIDER', 'anthropic'),
+    ],
+
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY'),
+        'base_url' => env('ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
+        'version' => env('ANTHROPIC_VERSION', '2023-06-01'),
+        // Latest Opus by default; set ANTHROPIC_MODEL=claude-haiku-4-5 for cheaper bulk imports.
+        'model' => env('ANTHROPIC_MODEL', 'claude-opus-5'),
+    ],
+
+    'openai' => [
+        // Requires an API key from platform.openai.com (billed separately from
+        // any ChatGPT subscription), not the chat.openai.com login.
+        'api_key' => env('OPENAI_API_KEY'),
+        'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com'),
+        // gpt-4o-mini is cheap and strong for product drafting; set OPENAI_MODEL to override.
+        'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+    ],
+
 ];

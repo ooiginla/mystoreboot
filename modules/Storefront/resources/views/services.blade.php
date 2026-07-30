@@ -19,7 +19,7 @@
                 </div>
             </div>
 
-            <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5">
                 @forelse ($services as $product)
                     @include('storefront::partials.product-card', ['product' => $product, 'detailRouteName' => 'storefront.storefront.store.services.show'])
                 @empty

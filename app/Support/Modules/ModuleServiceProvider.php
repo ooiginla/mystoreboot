@@ -15,6 +15,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
     {
         $this->loadModuleRoutes();
         $this->loadModuleMigrations();
+        $this->loadModuleCommands();
 
         $viewPath = $this->modulePath('resources/views');
 
@@ -73,6 +74,34 @@ abstract class ModuleServiceProvider extends ServiceProvider
 
         if (is_dir($path)) {
             $this->loadMigrationsFrom($path);
+        }
+    }
+
+    private function loadModuleCommands(): void
+    {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        $path = $this->modulePath('Console/Commands');
+
+        if (! is_dir($path)) {
+            return;
+        }
+
+        $namespace = 'Modules\\'.$this->moduleName().'\\Console\\Commands\\';
+        $commands = [];
+
+        foreach ((array) glob($path.'/*.php') as $file) {
+            $class = $namespace.basename((string) $file, '.php');
+
+            if (class_exists($class)) {
+                $commands[] = $class;
+            }
+        }
+
+        if ($commands !== []) {
+            $this->commands($commands);
         }
     }
 }

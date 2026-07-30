@@ -30,6 +30,25 @@
         .product-price-block { display: flex; align-items: center; gap: 12px; }
         .product-price { min-width: 104px; text-align: right; font-size: 18px; font-weight: 850; color: #101828; }
         .old-price { display: block; color: #667085; font-size: 13px; font-weight: 650; text-decoration: line-through; }
+        .catalog-product-actions { display: flex; align-items: center; gap: 8px; }
+        .catalog-status-menu { position: relative; }
+        .catalog-status-menu > summary { list-style: none; }
+        .catalog-status-menu > summary::-webkit-details-marker { display: none; }
+        .btn.catalog-status-trigger { width: 40px; height: 40px; display: grid; place-items: center; border-color: #a7f3d0; background: #ecfdf3; color: #067647; padding: 0; cursor: pointer; }
+        .btn.catalog-status-trigger:hover, .catalog-status-menu[open] > .catalog-status-trigger { border-color: var(--brand); background: var(--brand-100); color: var(--brand-strong); }
+        .catalog-status-trigger svg { width: 20px; height: 20px; }
+        .catalog-status-dropdown { position: absolute; z-index: 20; top: calc(100% + 7px); right: 0; width: 210px; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 6px; box-shadow: 0 16px 36px rgba(16,24,40,.16); }
+        .catalog-status-dropdown-title { padding: 7px 9px 8px; color: #667085; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+        .catalog-status-dropdown form { margin: 0; }
+        .catalog-status-option { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; align-items: center; border: 0; border-radius: 6px; background: transparent; color: #344054; padding: 9px; text-align: left; cursor: pointer; font-weight: 700; }
+        .catalog-status-option:hover:not(:disabled) { background: #f8fafc; color: #101828; }
+        .catalog-status-option:disabled { color: #101828; cursor: default; opacity: 1; }
+        .catalog-status-dot { width: 8px; height: 8px; border-radius: 999px; background: #98a2b3; }
+        .catalog-status-dot.live { background: #12b76a; box-shadow: 0 0 0 3px #d1fadf; }
+        .catalog-status-check { color: #067647; font-weight: 900; }
+        .catalog-product-actions > form { margin: 0; }
+        .btn.catalog-icon-action { width: 40px; height: 40px; display: grid; place-items: center; padding: 0; }
+        .btn.catalog-icon-action svg { width: 19px; height: 19px; }
         .dialog-local-tabs { display: flex; gap: 8px; flex-wrap: wrap; border: 1px solid #a6f4c5; border-radius: 999px; background: var(--brand-050); padding: 6px; }
         .dialog-local-tabs a { border: 1px solid transparent; border-radius: 999px; background: transparent; padding: 8px 12px; color: var(--brand-strong); font-size: 13px; font-weight: 850; transition: background .15s, border-color .15s, color .15s, box-shadow .15s; }
         .dialog-local-tabs a:hover { border-color: #a6f4c5; background: var(--brand-100); color: #05603a; }
@@ -75,7 +94,12 @@
         .inline-check { display: inline-flex; gap: 8px; align-items: center; color: #344054; font-weight: 750; }
         .inline-check input { width: auto; min-width: 16px; height: 16px; }
         .catalog-inline-box { border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; padding: 12px; display: grid; gap: 12px; }
-        .catalog-inline-create { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 10px; }
+        .catalog-inline-create { border-top: 1px solid var(--line); padding-top: 12px; }
+        .catalog-inline-create > summary { list-style: none; }
+        .catalog-inline-create > summary::-webkit-details-marker { display: none; }
+        .catalog-inline-create-link { width: fit-content; color: var(--brand-strong); cursor: pointer; font-weight: 800; }
+        .catalog-inline-create-link:hover { color: var(--brand); text-decoration: underline; }
+        .catalog-inline-create-form { margin-top: 12px; }
         .catalog-inline-heading { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
         .catalog-inline-add-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
         .catalog-value-tag-input { min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; border: 1px solid #d4ddd8; border-radius: var(--radius-sm); background: #fff; padding: 5px 7px; cursor: text; transition: border-color .15s, box-shadow .15s; }
@@ -102,17 +126,38 @@
         .btn.inline-add:hover { background: var(--brand-strong); }
         .category-type-pill { text-transform: capitalize; }
         .catalog-row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .btn.catalog-import-button { border-color: #c7d2fe; background: #eef2ff; color: #4338ca; box-shadow: 0 1px 2px rgba(67,56,202,.10); }
+        .btn.catalog-import-button:hover { border-color: #a5b4fc; background: #e0e7ff; color: #3730a3; }
         .btn.catalog-edit-button { border-color: #fdba74; background: #fff7ed; color: #c2410c; box-shadow: 0 1px 2px rgba(194,65,12,.08); }
         .btn.catalog-edit-button:hover { border-color: #f97316; background: #ffedd5; color: #9a3412; }
+        .btn.catalog-delete-button { border-color: #fecaca; background: #fef2f2; color: #b42318; box-shadow: 0 1px 2px rgba(180,35,24,.08); }
+        .btn.catalog-delete-button:hover { border-color: #f87171; background: #fee2e2; color: #991b1b; }
+        .catalog-badge-form-layout { display: grid; grid-template-columns: minmax(0, .9fr) minmax(300px, 1.1fr); gap: 24px; align-items: stretch; }
+        .catalog-badge-fields { display: grid; align-content: start; gap: 16px; }
+        .catalog-badge-colours { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        .catalog-badge-colours input[type="color"] { min-height: 48px; padding: 5px; cursor: pointer; }
+        .catalog-badge-preview-panel { border: 1px solid var(--line); border-radius: 10px; background: #f8fafc; padding: 18px; }
+        .catalog-badge-preview-panel > strong { display: block; margin-bottom: 12px; color: #344054; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+        .catalog-badge-preview-card { max-width: 260px; margin: 0 auto; overflow: hidden; border: 1px solid #e1e5ec; border-radius: 10px; background: #fff; padding: 8px; box-shadow: 0 14px 34px rgba(16,24,40,.10); }
+        .catalog-badge-preview-image { position: relative; display: grid; aspect-ratio: 4 / 3; place-items: center; overflow: hidden; border-radius: 8px; background: linear-gradient(145deg, #eef2f7, #dde4ed); }
+        .catalog-badge-preview-image::before { content: ''; width: 48%; aspect-ratio: 1; border-radius: 16px; background: rgba(255,255,255,.72); box-shadow: 48px 34px 0 -18px rgba(255,255,255,.5); transform: rotate(-12deg); }
+        .catalog-badge-preview-label { position: absolute; z-index: 2; top: 12px; left: 12px; max-width: calc(100% - 24px); overflow: hidden; border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 800; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; transition: opacity .15s ease; }
+        .catalog-badge-preview-label.is-hidden { opacity: .28; }
+        .catalog-badge-preview-copy { padding: 14px 8px 8px; }
+        .catalog-badge-preview-copy strong { display: block; color: #101828; font-size: 17px; }
+        .catalog-badge-preview-copy span { display: block; margin-top: 7px; color: var(--brand-strong); font-size: 17px; font-weight: 850; }
+        .catalog-badge-preview-state { margin: 12px 0 0; text-align: center; }
         @media (max-width: 900px) {
             .catalog-toolbar, .catalog-filter-row, .product-card { grid-template-columns: 1fr; }
             .product-card { align-items: start; }
             .product-price-block { justify-content: space-between; }
+            .catalog-product-actions { margin-left: auto; }
             .product-price { text-align: left; }
             .variant-grid { grid-template-columns: 1fr; }
             .check-grid { grid-template-columns: 1fr; }
             .catalog-inline-add-row { grid-template-columns: 1fr; }
             .detail-grid { grid-template-columns: 1fr; }
+            .catalog-badge-form-layout { grid-template-columns: 1fr; }
         }
     </style>
 
@@ -162,6 +207,8 @@
             <a href="#services" role="tab" data-tab-target="services">Services <span class="badge neutral">{{ $stats['services'] }}</span></a>
             <a href="#categories" role="tab" data-tab-target="categories">Categories <span class="badge neutral">{{ $categories->count() }}</span></a>
             <a href="#tags" role="tab" data-tab-target="tags">Tags <span class="badge neutral">{{ $tags->count() }}</span></a>
+            <a href="#badges" role="tab" data-tab-target="badges">Badges <span class="badge neutral">{{ $productBadges->count() }}</span></a>
+            <a href="#collections" role="tab" data-tab-target="collections">Collections <span class="badge neutral">{{ $productCollections->count() }}</span></a>
             <a href="#attributes" role="tab" data-tab-target="attributes">Attributes <span class="badge neutral">{{ $attributes->count() }}</span></a>
             <a href="#taxes" role="tab" data-tab-target="taxes">Taxes <span class="badge neutral">{{ $taxes->count() }}</span></a>
             <a href="#coupons" role="tab" data-tab-target="coupons">Coupons <span class="badge neutral">{{ $coupons->count() }}</span></a>
@@ -174,8 +221,33 @@
                         <h2 class="panel-title">Products</h2>
                         <p class="subtle">Physical items, grouped by product categories. Click a name to view details.</p>
                     </div>
-                    <button class="btn accent" type="button" data-dialog-open="product-dialog">Add product</button>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="btn catalog-import-button" type="button" data-dialog-open="product-import-dialog">Import from photos</button>
+                        <button class="btn accent" type="button" data-dialog-open="product-dialog">Add product</button>
+                    </div>
                 </div>
+                <dialog class="dialog" id="product-import-dialog">
+                    <div class="dialog-header">
+                        <div>
+                            <h2 class="panel-title">Import products from photos</h2>
+                            <p class="subtle">Upload your product photos and we'll draft a name, description, and price for each. They're saved as drafts for you to review and publish.</p>
+                        </div>
+                        <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
+                    </div>
+                    <form class="dialog-body" method="POST" action="{{ route('admin.catalog.products.import') }}" enctype="multipart/form-data">
+                        @csrf
+                        <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                        <div class="field">
+                            <label for="product-import-images">Product photos</label>
+                            <input id="product-import-images" name="images[]" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple required>
+                            <p class="subtle">Up to 40 photos, each under 10&nbsp;MB. One product is created per photo.</p>
+                        </div>
+                        <div class="dialog-actions" style="display:flex; gap:8px; justify-content:flex-end;">
+                            <button class="btn" type="button" data-dialog-close>Cancel</button>
+                            <button class="btn accent" type="submit">Import as drafts</button>
+                        </div>
+                    </form>
+                </dialog>
                 <div class="panel-body">
                     @include('catalog::admin.partials.catalog-filter', [
                         'scope' => 'products',
@@ -272,7 +344,7 @@
                 <div class="panel-header">
                     <div>
                         <h2 class="panel-title">Tags</h2>
-                        <p class="subtle">Reusable merchandising labels like 50% Off, Trending, or New Arrival.</p>
+                        <p class="subtle">Internal labels for organizing products. Use Badges for labels customers should see.</p>
                     </div>
                     <button class="btn accent" type="button" data-dialog-open="tag-dialog">Add tag</button>
                 </div>
@@ -289,7 +361,65 @@
                                 </div>
                             </div>
                         @empty
-                            <div class="empty">No tags yet. Add tags to highlight products in the store.</div>
+                            <div class="empty">No tags yet. Add tags to organize and find related products.</div>
+                        @endforelse
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel tab-panel" id="badges" role="tabpanel" data-tab-panel hidden>
+                <div class="panel-header">
+                    <div>
+                        <h2 class="panel-title">Product Badges</h2>
+                        <p class="subtle">Short customer-facing labels such as New, Sale, or Limited.</p>
+                    </div>
+                    <button class="btn accent" type="button" data-dialog-open="badge-dialog">Add badge</button>
+                </div>
+                <div class="panel-body">
+                    <div class="list">
+                        @forelse ($productBadges as $badge)
+                            <div class="item">
+                                <div>
+                                    <div class="item-title">
+                                        <span class="badge" style="background: {{ $badge->background_color }}; color: {{ $badge->text_color }};">{{ $badge->name }}</span>
+                                    </div>
+                                    <div class="subtle">{{ $badge->products_count }} {{ Str::plural('product', $badge->products_count) }}</div>
+                                </div>
+                                <div class="catalog-row-actions">
+                                    <span class="badge {{ $badge->is_visible ? 'success' : 'neutral' }}">{{ $badge->is_visible ? 'Visible' : 'Hidden' }}</span>
+                                    <button class="btn secondary" type="button" data-dialog-open="badge-edit-{{ $badge->id }}">Edit</button>
+                                </div>
+                            </div>
+                        @empty
+                            <div class="empty">No badges yet. Add one, then assign it from the product editor.</div>
+                        @endforelse
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel tab-panel" id="collections" role="tabpanel" data-tab-panel hidden>
+                <div class="panel-header">
+                    <div>
+                        <h2 class="panel-title">Product Collections</h2>
+                        <p class="subtle">Create simple manual groups for products you want to feature together.</p>
+                    </div>
+                    <button class="btn accent" type="button" data-dialog-open="product-collection-dialog">Add collection</button>
+                </div>
+                <div class="panel-body">
+                    <div class="list">
+                        @forelse ($productCollections as $collection)
+                            <div class="item">
+                                <div>
+                                    <div class="item-title">{{ $collection->name }}</div>
+                                    <div class="subtle">{{ $collection->products_count }} {{ Str::plural('product', $collection->products_count) }} · Manual collection</div>
+                                </div>
+                                <div class="catalog-row-actions">
+                                    <span class="badge {{ $collection->is_visible ? 'success' : 'neutral' }}">{{ $collection->is_visible ? 'Visible' : 'Hidden' }}</span>
+                                    <button class="btn secondary" type="button" data-dialog-open="product-collection-edit-{{ $collection->id }}">Edit</button>
+                                </div>
+                            </div>
+                        @empty
+                            <div class="empty">No product collections yet. Add one, then assign products from the product editor.</div>
                         @endforelse
                     </div>
                 </div>
@@ -515,6 +645,158 @@
         </dialog>
     @endforeach
 
+    <dialog class="dialog" id="badge-dialog">
+        <div class="dialog-header">
+            <div>
+                <h2 class="panel-title">Add product badge</h2>
+                <p class="subtle">Create a short visual label for storefront products.</p>
+            </div>
+            <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
+        </div>
+        <div class="dialog-body">
+            <form class="mini-form" method="POST" action="{{ route('admin.catalog.badges.store') }}" data-badge-form>
+                @csrf
+                <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                <input type="hidden" name="is_visible" value="0">
+                <div class="catalog-badge-form-layout">
+                    <div class="catalog-badge-fields">
+                        <div class="field"><label>Name</label><input name="name" placeholder="New" maxlength="40" required></div>
+                        <div class="catalog-badge-colours">
+                            <div class="field"><label>Background colour</label><input name="background_color" type="color" value="#111827" required></div>
+                            <div class="field"><label>Text colour</label><input name="text_color" type="color" value="#ffffff" required></div>
+                        </div>
+                        <label class="inline-check"><input type="checkbox" name="is_visible" value="1" checked> Visible on store</label>
+                    </div>
+                    <div class="catalog-badge-preview-panel" data-badge-preview>
+                        <strong>Storefront preview</strong>
+                        <div class="catalog-badge-preview-card">
+                            <div class="catalog-badge-preview-image">
+                                <span class="catalog-badge-preview-label" data-badge-preview-label>New</span>
+                            </div>
+                            <div class="catalog-badge-preview-copy">
+                                <strong>Sample product</strong>
+                                <span>{{ $tenant->currency_code }} 25,000.00</span>
+                            </div>
+                        </div>
+                        <p class="subtle catalog-badge-preview-state" data-badge-preview-state>Visible on storefront</p>
+                    </div>
+                </div>
+                <div class="button-row">
+                    <button class="btn secondary" type="button" data-dialog-close>Cancel</button>
+                    <button class="btn primary" type="submit">Save badge</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    @foreach ($productBadges as $badge)
+        <dialog class="dialog" id="badge-edit-{{ $badge->id }}">
+            <div class="dialog-header">
+                <div>
+                    <h2 class="panel-title">Edit product badge</h2>
+                    <p class="subtle">Update its label, colours, or storefront visibility.</p>
+                </div>
+                <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
+            </div>
+            <div class="dialog-body">
+                <form class="mini-form" method="POST" action="{{ route('admin.catalog.badges.update', $badge) }}" data-badge-form>
+                    @csrf
+                    @method('PUT')
+                    <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                    <input type="hidden" name="is_visible" value="0">
+                    <div class="catalog-badge-form-layout">
+                        <div class="catalog-badge-fields">
+                            <div class="field"><label>Name</label><input name="name" value="{{ $badge->name }}" maxlength="40" required></div>
+                            <div class="catalog-badge-colours">
+                                <div class="field"><label>Background colour</label><input name="background_color" type="color" value="{{ $badge->background_color }}" required></div>
+                                <div class="field"><label>Text colour</label><input name="text_color" type="color" value="{{ $badge->text_color }}" required></div>
+                            </div>
+                            <label class="inline-check"><input type="checkbox" name="is_visible" value="1" @checked($badge->is_visible)> Visible on store</label>
+                        </div>
+                        <div class="catalog-badge-preview-panel" data-badge-preview>
+                            <strong>Storefront preview</strong>
+                            <div class="catalog-badge-preview-card">
+                                <div class="catalog-badge-preview-image">
+                                    <span class="catalog-badge-preview-label" data-badge-preview-label>{{ $badge->name }}</span>
+                                </div>
+                                <div class="catalog-badge-preview-copy">
+                                    <strong>Sample product</strong>
+                                    <span>{{ $tenant->currency_code }} 25,000.00</span>
+                                </div>
+                            </div>
+                            <p class="subtle catalog-badge-preview-state" data-badge-preview-state>{{ $badge->is_visible ? 'Visible on storefront' : 'Hidden on storefront' }}</p>
+                        </div>
+                    </div>
+                    <div class="button-row">
+                        <button class="btn secondary" type="button" data-dialog-close>Cancel</button>
+                        <button class="btn primary" type="submit">Save badge</button>
+                    </div>
+                </form>
+            </div>
+        </dialog>
+    @endforeach
+
+    <dialog class="dialog" id="product-collection-dialog">
+        <div class="dialog-header">
+            <div>
+                <h2 class="panel-title">Add product collection</h2>
+                <p class="subtle">Create a manual group and decide whether it is visible on the store.</p>
+            </div>
+            <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
+        </div>
+        <div class="dialog-body">
+            <form class="mini-form" method="POST" action="{{ route('admin.catalog.product-collections.store') }}">
+                @csrf
+                <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                <div class="field">
+                    <label>Name</label>
+                    <input name="name" placeholder="Trending now" required>
+                </div>
+                <input type="hidden" name="is_visible" value="0">
+                <label class="inline-check">
+                    <input type="checkbox" name="is_visible" value="1" checked>
+                    Visible on store
+                </label>
+                <div class="button-row">
+                    <button class="btn secondary" type="button" data-dialog-close>Cancel</button>
+                    <button class="btn primary" type="submit">Save collection</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    @foreach ($productCollections as $collection)
+        <dialog class="dialog" id="product-collection-edit-{{ $collection->id }}">
+            <div class="dialog-header">
+                <div>
+                    <h2 class="panel-title">Edit product collection</h2>
+                    <p class="subtle">Update the collection name or storefront visibility.</p>
+                </div>
+                <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
+            </div>
+            <div class="dialog-body">
+                <form class="mini-form" method="POST" action="{{ route('admin.catalog.product-collections.update', $collection) }}">
+                    @csrf
+                    @method('PUT')
+                    <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                    <div class="field">
+                        <label>Name</label>
+                        <input name="name" value="{{ $collection->name }}" required>
+                    </div>
+                    <input type="hidden" name="is_visible" value="0">
+                    <label class="inline-check">
+                        <input type="checkbox" name="is_visible" value="1" @checked($collection->is_visible)>
+                        Visible on store
+                    </label>
+                    <div class="button-row">
+                        <button class="btn secondary" type="button" data-dialog-close>Cancel</button>
+                        <button class="btn primary" type="submit">Save collection</button>
+                    </div>
+                </form>
+            </div>
+        </dialog>
+    @endforeach
+
     <dialog class="dialog" id="attribute-dialog">
         <div class="dialog-header">
             <div>
@@ -629,6 +911,45 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            const syncCheckboxAccordion = (accordion) => {
+                const count = accordion?.querySelector('[data-checkbox-accordion-count]');
+                const selectedCount = accordion?.querySelectorAll('input[type="checkbox"]:checked').length || 0;
+
+                if (count) {
+                    count.textContent = `${selectedCount} ${selectedCount === 1 ? 'item' : 'items'}`;
+                }
+            };
+
+            document.querySelectorAll('[data-checkbox-accordion]').forEach((accordion) => {
+                accordion.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+                    checkbox.addEventListener('change', () => syncCheckboxAccordion(accordion));
+                });
+                syncCheckboxAccordion(accordion);
+            });
+
+            document.querySelectorAll('[data-badge-form]').forEach((form) => {
+                const name = form.querySelector('input[name="name"]');
+                const background = form.querySelector('input[name="background_color"]');
+                const text = form.querySelector('input[name="text_color"]');
+                const visibility = form.querySelector('input[name="is_visible"][type="checkbox"]');
+                const label = form.querySelector('[data-badge-preview-label]');
+                const state = form.querySelector('[data-badge-preview-state]');
+
+                if (!name || !background || !text || !visibility || !label || !state) return;
+
+                const syncBadgePreview = () => {
+                    label.textContent = name.value.trim() || 'Badge';
+                    label.style.backgroundColor = background.value;
+                    label.style.color = text.value;
+                    label.classList.toggle('is-hidden', !visibility.checked);
+                    state.textContent = visibility.checked ? 'Visible on storefront' : 'Hidden on storefront';
+                };
+
+                [name, background, text].forEach((input) => input.addEventListener('input', syncBadgePreview));
+                visibility.addEventListener('change', syncBadgePreview);
+                syncBadgePreview();
+            });
+
             const catalogButtonIcons = {
                 add: '<path d="M12 5v14M5 12h14"/>',
                 edit: '<path d="m4 20 4.3-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Zm9.8-12.8 3 3"/>',
@@ -1227,7 +1548,8 @@
                 nameInput.value = '';
                 valuesInput.value = '';
                 valueTagInput.querySelectorAll('[data-attribute-value-tag]').forEach((tag) => tag.remove());
-                nameInput.focus();
+                wrapper.removeAttribute('open');
+                wrapper.querySelector('summary')?.focus();
             };
 
             document.querySelectorAll('[data-attribute-value-tag-input]').forEach((wrapper) => {

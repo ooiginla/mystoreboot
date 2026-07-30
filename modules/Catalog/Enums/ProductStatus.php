@@ -14,7 +14,7 @@ enum ProductStatus: string
     public function label(): string
     {
         return match ($this) {
-            self::Active => 'Active',
+            self::Active => 'Live',
             self::Draft => 'Draft',
             self::OutOfStock => 'Out of stock',
             self::Discontinued => 'Discontinued',

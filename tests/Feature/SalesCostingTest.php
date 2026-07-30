@@ -18,6 +18,7 @@ use Modules\Inventory\Enums\InventoryLocationType;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Enums\StockCondition;
 use Modules\Inventory\Models\InventoryLocation;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\InventoryStockLevel;
 use Modules\Sales\Actions\CreateSalesOrderAction;
 use Modules\Sales\Models\SalesOrder;
@@ -99,17 +100,37 @@ class SalesCostingTest extends TestCase
         $this->actingAs($user)
             ->get(route('admin.sales.index', ['tenant' => $tenant->id]))
             ->assertOk()
-            ->assertSee('Record Offline Sale')
+            ->assertSee('Record Sale or Customer Order')
+            ->assertSee('name="record_as"', false)
+            ->assertSee('name="payment_received"', false)
+            ->assertSee('Has the customer paid anything?')
+            ->assertSee('No — payment not received')
+            ->assertSee('Completed Sale')
+            ->assertSee('Customer Order')
             ->assertSee('+ Add new customer')
             ->assertSee('data-record-sale-customer-form', false)
             ->assertSee(route('admin.sales.customers.quick'), false)
-            ->assertSee('Confirm sales order')
+            ->assertSee('Confirm completed sale')
             ->assertSee('data-confirm-sales-order', false)
             ->assertSee('name="shipping" type="text" inputmode="decimal" data-money-input data-sales-shipping', false)
             ->assertSee('value="pending" selected', false)
             ->assertSee('name="source" value="offline"', false)
             ->assertDontSee('data-tab-target="coupons"', false)
+            ->assertDontSee('aria-label="Order sections"', false)
+            ->assertDontSee('id="orders"', false)
             ->assertDontSee('Open a till before recording a sale');
+
+        $this->actingAs($user)
+            ->get(route('admin.sales.orders.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('<h1>Orders</h1>', false)
+            ->assertSee('aria-label="Order sections"', false)
+            ->assertSee('data-tab-target="orders"', false)
+            ->assertSee('data-tab-target="returns"', false)
+            ->assertDontSee('data-tab-target="pos"', false)
+            ->assertDontSee('name="record_as"', false)
+            ->assertSee(route('admin.sales.index', ['tenant' => $tenant->id]).'#pos', false)
+            ->assertSee(route('admin.sales.orders.index', ['tenant' => $tenant->id]).'#orders', false);
 
         $this->actingAs($user)
             ->postJson(route('admin.sales.customers.quick'), [
@@ -141,6 +162,7 @@ class SalesCostingTest extends TestCase
         $orderData = [
             'tenant_id' => $tenant->id,
             'source' => 'offline',
+            'record_as' => 'completed_sale',
             'branch_id' => $branch->id,
             'inventory_location_id' => $location->id,
             'customer_id' => $customer->id,
@@ -159,7 +181,7 @@ class SalesCostingTest extends TestCase
 
         $this->actingAs($user)
             ->post(route('admin.sales.orders.store'), $orderData)
-            ->assertRedirect(route('admin.sales.index', ['tenant' => $tenant->id]).'#orders')
+            ->assertRedirect(route('admin.sales.orders.index', ['tenant' => $tenant->id]).'#orders')
             ->assertSessionHas('invoice_order_id')
             ->assertSessionMissing('receipt_order_id');
 
@@ -183,7 +205,7 @@ class SalesCostingTest extends TestCase
                 'payment_method' => 'Cash',
                 'amount' => '500',
             ])
-            ->assertRedirect(route('admin.sales.index', ['tenant' => $tenant->id]).'#orders');
+            ->assertRedirect(route('admin.sales.orders.index', ['tenant' => $tenant->id]).'#orders');
 
         $latestPayment = $order->payments()->latest('id')->firstOrFail();
         $this->assertNull($latestPayment->sales_till_session_id);
@@ -191,7 +213,7 @@ class SalesCostingTest extends TestCase
         $this->assertDatabaseCount('sales_till_sessions', 0);
 
         $this->actingAs($user)
-            ->get(route('admin.sales.index', ['tenant' => $tenant->id]).'#orders')
+            ->get(route('admin.sales.orders.index', ['tenant' => $tenant->id]).'#orders')
             ->assertOk()
             ->assertSee('Order items paid for')
             ->assertSee('payment-receipt-'.$latestPayment->id, false)
@@ -201,13 +223,70 @@ class SalesCostingTest extends TestCase
 
         $this->actingAs($user)
             ->post(route('admin.sales.orders.store'), array_replace($orderData, [
+                'record_as' => 'customer_order',
+                'payment_received' => '0',
+                'is_credit_sale' => '0',
+                'amount_paid' => '500',
+                'payment_method' => 'Cash',
+                'delivery_status' => 'pending',
+            ]))
+            ->assertRedirect(route('admin.sales.orders.index', ['tenant' => $tenant->id]).'#orders')
+            ->assertSessionHas('view_order_id')
+            ->assertSessionMissing('invoice_order_id');
+
+        $customerOrder = SalesOrder::query()->where('tenant_id', $tenant->id)->latest('id')->firstOrFail();
+        $this->assertSame('pending', $customerOrder->order_status->value);
+        $this->assertSame('unpaid', $customerOrder->payment_status->value);
+        $this->assertSame(0, $customerOrder->paid_minor);
+        $this->assertNull($customerOrder->payment_method);
+        $this->assertFalse($customerOrder->payments()->exists());
+        $this->assertFalse($customerOrder->is_credit_sale);
+        $this->assertSame($location->id, $customerOrder->inventory_location_id);
+        $this->assertSame(0, $customer->refresh()->account_balance_minor);
+        $this->assertFalse(FinanceJournalEntry::query()
+            ->where('source_type', 'sales_order')
+            ->where('source_id', $customerOrder->id)
+            ->exists());
+        $this->assertFalse(InventoryMovement::query()
+            ->where('source_type', 'sales_order')
+            ->where('source_id', $customerOrder->id)
+            ->exists());
+        $this->assertSame(1, InventoryStockLevel::query()
+            ->where('inventory_location_id', $location->id)
+            ->where('product_variant_id', $variant->id)
+            ->value('quantity_on_hand'));
+
+        $this->actingAs($user)
+            ->post(route('admin.sales.orders.payments.store', $customerOrder), [
+                'payment_date' => '2026-07-23',
+                'payment_method' => 'Cash',
+                'amount' => '250',
+            ])
+            ->assertRedirect(route('admin.sales.orders.index', ['tenant' => $tenant->id]).'#orders');
+
+        $customerOrderPayment = $customerOrder->payments()->firstOrFail();
+        $this->assertSame('partially_paid', $customerOrder->refresh()->payment_status->value);
+        // A deposit taken on a pending order is recognised immediately as cash
+        // offset by Customer Deposits (2310) — not left off the ledger.
+        $depositJournal = FinanceJournalEntry::query()
+            ->with('lines.account')
+            ->where('source_type', 'sales_order_payment')
+            ->where('source_id', $customerOrderPayment->id)
+            ->where('source_event', 'deposit_received')
+            ->firstOrFail();
+        $this->assertTrue($depositJournal->lines->contains(fn ($line): bool => $line->account->code === '1000' && $line->debit_minor === 25000));
+        $this->assertTrue($depositJournal->lines->contains(fn ($line): bool => $line->account->code === '2310' && $line->credit_minor === 25000));
+        $this->assertSame(0, $customer->refresh()->account_balance_minor);
+
+        $this->actingAs($user)
+            ->post(route('admin.sales.orders.store'), array_replace($orderData, [
                 'source' => 'retail_pos',
                 'is_credit_sale' => '0',
                 'amount_paid' => '1000',
             ]))
             ->assertSessionHasErrors('sales_till_session_id');
 
-        $this->assertDatabaseCount('sales_orders', 1);
+        $this->assertDatabaseCount('sales_orders', 2);
     }
 
     public function test_sales_cogs_uses_inventory_average_cost_not_variant_default_cost(): void

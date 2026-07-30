@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Modules\Catalog\Actions;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\Product;
 use Modules\Catalog\Models\ProductAttributeDefinition;
+use Modules\Catalog\Models\ProductBadge;
+use Modules\Catalog\Models\ProductCollection;
 use Modules\Catalog\Models\ProductOption;
 use Modules\Catalog\Models\ProductTag;
 use Modules\Catalog\Models\ProductTax;
@@ -73,11 +76,27 @@ final class SaveProductAction
                 ->all();
 
             $product->tags()->sync($tagIds);
+            $product->badges()->sync(
+                collect($data['badge_ids'] ?? [])
+                    ->merge($this->syncInlineBadge($data))
+                    ->map(fn (mixed $id): int => (int) $id)
+                    ->unique()
+                    ->values()
+                    ->all()
+            );
+            $product->collections()->sync(
+                collect($data['collection_ids'] ?? [])
+                    ->merge($this->syncInlineCollection($data))
+                    ->map(fn (mixed $id): int => (int) $id)
+                    ->unique()
+                    ->values()
+                    ->all()
+            );
             $product->taxes()->sync($data['tax_behavior'] === 'taxable' ? collect($data['tax_ids'] ?? [])->map(fn (mixed $id): int => (int) $id)->unique()->values()->all() : []);
             $product->attributeValues()->sync($attributeValueIds);
             $this->syncProductImages($product, $data);
 
-            return $product->refresh()->load(['category', 'images', 'options.values', 'variants.optionValues.option', 'tags', 'taxes', 'attributeValues.definition']);
+            return $product->refresh()->load(['badges', 'category', 'collections', 'images', 'options.values', 'variants.optionValues.option', 'tags', 'taxes', 'attributeValues.definition']);
         });
     }
 
@@ -318,6 +337,65 @@ final class SaveProductAction
      * @param  array<string, mixed>  $data
      * @return list<int>
      */
+    private function syncInlineBadge(array $data): array
+    {
+        $badgeData = (array) ($data['new_badge'] ?? []);
+        $name = trim((string) ($badgeData['name'] ?? ''));
+
+        if ($name === '') {
+            return [];
+        }
+
+        $badge = ProductBadge::query()
+            ->where('tenant_id', $data['tenant_id'])
+            ->whereRaw('lower(name) = ?', [strtolower($name)])
+            ->first();
+
+        $badge ??= ProductBadge::query()->create([
+            'tenant_id' => $data['tenant_id'],
+            'name' => $name,
+            'slug' => $this->uniqueSlug(ProductBadge::class, $data['tenant_id'], $name),
+            'background_color' => $badgeData['background_color'] ?? '#111827',
+            'text_color' => $badgeData['text_color'] ?? '#ffffff',
+            'is_visible' => true,
+        ]);
+
+        return [(int) $badge->id];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<int>
+     */
+    private function syncInlineCollection(array $data): array
+    {
+        $collectionData = (array) ($data['new_collection'] ?? []);
+        $name = trim((string) ($collectionData['name'] ?? ''));
+
+        if ($name === '') {
+            return [];
+        }
+
+        $collection = ProductCollection::query()
+            ->where('tenant_id', $data['tenant_id'])
+            ->whereRaw('lower(name) = ?', [strtolower($name)])
+            ->first();
+
+        $collection ??= ProductCollection::query()->create([
+            'tenant_id' => $data['tenant_id'],
+            'name' => $name,
+            'slug' => $this->uniqueSlug(ProductCollection::class, $data['tenant_id'], $name),
+            'collection_type' => 'manual',
+            'is_visible' => (bool) ($collectionData['is_visible'] ?? true),
+        ]);
+
+        return [(int) $collection->id];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<int>
+     */
     private function syncInlineAttributeValues(array $data): array
     {
         $valueIds = [];
@@ -387,7 +465,7 @@ final class SaveProductAction
     }
 
     /**
-     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $modelClass
+     * @param  class-string<Model>  $modelClass
      */
     private function uniqueSlug(string $modelClass, string $tenantId, string $name): string
     {

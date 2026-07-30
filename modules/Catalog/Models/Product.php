@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Modules\Catalog\Actions\EnsureDefaultProductCategoryAction;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Enums\TaxBehavior;
@@ -20,6 +21,21 @@ final class Product extends Model
     use SoftDeletes;
 
     protected $guarded = [];
+
+    protected static function booted(): void
+    {
+        self::saving(function (Product $product): void {
+            $productType = $product->product_type instanceof ProductType
+                ? $product->product_type
+                : ProductType::tryFrom((string) $product->product_type);
+
+            if ($productType === ProductType::Product && ! $product->category_id && filled($product->tenant_id)) {
+                $product->category_id = app(EnsureDefaultProductCategoryAction::class)
+                    ->execute((string) $product->tenant_id)
+                    ->id;
+            }
+        });
+    }
 
     protected function casts(): array
     {
@@ -55,6 +71,22 @@ final class Product extends Model
     public function tags(): BelongsToMany
     {
         return $this->belongsToMany(ProductTag::class, 'product_product_tag')->withTimestamps();
+    }
+
+    public function badges(): BelongsToMany
+    {
+        return $this->belongsToMany(ProductBadge::class, 'product_badge_product')
+            ->orderByRaw('product_badges.sort_order is null')
+            ->orderBy('product_badges.sort_order')
+            ->orderBy('product_badges.name')
+            ->withTimestamps();
+    }
+
+    public function collections(): BelongsToMany
+    {
+        return $this->belongsToMany(ProductCollection::class, 'product_collection_items')
+            ->withPivot('sort_order')
+            ->withTimestamps();
     }
 
     public function taxes(): BelongsToMany

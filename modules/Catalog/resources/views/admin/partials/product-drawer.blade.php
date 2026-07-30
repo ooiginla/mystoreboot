@@ -37,6 +37,8 @@
             <dd>{{ $item->brand ?: 'Not set' }}</dd>
             <dt>Tags</dt>
             <dd>{{ $item->tags->pluck('name')->join(', ') ?: 'Not set' }}</dd>
+            <dt>Badges</dt>
+            <dd>{{ $item->badges->pluck('name')->join(', ') ?: 'Not set' }}</dd>
             <dt>Attributes</dt>
             <dd>
                 @php

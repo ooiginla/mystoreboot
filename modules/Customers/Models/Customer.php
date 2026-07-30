@@ -36,6 +36,11 @@ final class Customer extends Model
         return $this->hasMany(CustomerPurchase::class);
     }
 
+    public function addresses(): HasMany
+    {
+        return $this->hasMany(CustomerAddress::class);
+    }
+
     public function followUps(): HasMany
     {
         return $this->hasMany(CustomerFollowUp::class);

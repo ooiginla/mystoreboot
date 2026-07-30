@@ -6,6 +6,8 @@ namespace Modules\Sales\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Modules\Subscriptions\Support\TenantModuleAccess;
+use Modules\Tenancy\Models\Tenant;
 
 final class SalesOrderRequest extends FormRequest
 {
@@ -18,6 +20,7 @@ final class SalesOrderRequest extends FormRequest
     {
         $this->merge([
             'is_credit_sale' => $this->boolean('is_credit_sale'),
+            'payment_received' => $this->boolean('payment_received'),
             'shipping' => $this->cleanMoney($this->input('shipping')),
             'admin_discount_value' => $this->cleanMoney($this->input('admin_discount_value')),
             'amount_paid' => $this->cleanMoney($this->input('amount_paid')),
@@ -32,18 +35,28 @@ final class SalesOrderRequest extends FormRequest
     public function rules(): array
     {
         $tenantId = $this->string('tenant_id')->toString();
-        $requiresTill = ! in_array($this->string('source')->toString(), ['offline', 'online'], true);
+        $source = $this->string('source')->toString();
+        $requiresTill = ! in_array($source, ['offline', 'online'], true);
+        $isCustomerOrder = $source === 'offline'
+            && $this->string('record_as', 'completed_sale')->toString() === 'customer_order';
+        $paymentReceived = ! $isCustomerOrder || $this->boolean('payment_received');
+        $tenant = $tenantId !== '' ? Tenant::query()->find($tenantId) : null;
+        $inventoryEnabled = $tenant
+            ? app(TenantModuleAccess::class)->allows($tenant, 'inventory')
+            : true;
 
         return [
             'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
             'source' => ['nullable', Rule::in(['in_store', 'retail_pos', 'offline', 'online'])],
+            'record_as' => ['nullable', Rule::in(['completed_sale', 'customer_order'])],
             'sales_till_session_id' => ['nullable', Rule::requiredIf($requiresTill), 'integer', Rule::exists('sales_till_sessions', 'id')->where('tenant_id', $tenantId)->where('status', 'open')],
             'branch_id' => ['required', 'integer', Rule::exists('branches', 'id')->where('tenant_id', $tenantId)],
-            'inventory_location_id' => ['required', 'integer', Rule::exists('inventory_locations', 'id')->where('tenant_id', $tenantId)],
+            'inventory_location_id' => [Rule::requiredIf($inventoryEnabled), 'nullable', 'integer', Rule::exists('inventory_locations', 'id')->where('tenant_id', $tenantId)],
             'customer_id' => ['required', 'integer', Rule::exists('customers', 'id')->where('tenant_id', $tenantId)],
             'order_date' => ['required', 'date'],
             'is_credit_sale' => ['boolean'],
-            'payment_method' => ['nullable', 'string', 'max:80'],
+            'payment_received' => ['boolean'],
+            'payment_method' => [Rule::requiredIf($paymentReceived), 'nullable', 'string', 'max:80'],
             'business_payment_account_id' => ['nullable', 'integer', Rule::exists('business_payment_accounts', 'id')->where('tenant_id', $tenantId)->where('status', 'active')],
             'amount_paid' => ['nullable', 'numeric', 'min:0', 'max:999999999'],
             'coupon_code' => ['nullable', 'string', 'max:80'],

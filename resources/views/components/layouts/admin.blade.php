@@ -88,7 +88,13 @@
 
             /* ---------- Main + headings ---------- */
             .main { padding: 26px 30px 60px; max-width: 1560px; }
-            .admin-context-bar { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 16px; }
+            .admin-context-bar { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 16px; }
+            .business-context { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+            .business-context-icon { width: 38px; height: 38px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 10px; background: var(--brand-050); color: var(--brand-strong); }
+            .business-context-icon svg { width: 20px; height: 20px; }
+            .business-context-label { display: grid; gap: 1px; min-width: 0; }
+            .business-context-label span { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+            .business-context-label strong { color: var(--ink); font-size: 17px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
             .branch-switcher { display: inline-flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 8px 10px; box-shadow: var(--shadow-sm); min-width: min(100%, 330px); }
             .branch-switcher svg { width: 18px; height: 18px; color: var(--brand-strong); flex: 0 0 auto; }
             .branch-switcher-label { display: grid; gap: 1px; min-width: 88px; }
@@ -295,7 +301,7 @@
                 }
                 .admin-sidebar-backdrop.is-open { opacity: 1; pointer-events: auto; }
                 .main { padding: 20px 16px 48px; }
-                .admin-context-bar { justify-content: stretch; }
+                .admin-context-bar { align-items: stretch; flex-direction: column; }
                 .branch-switcher { width: 100%; }
                 .branch-switcher form { flex: 1; }
                 .grid { grid-template-columns: 1fr; }
@@ -429,8 +435,11 @@
                         @endpermission
                     @endif
                     @if ($hasTenantModule('sales'))
+                        @permission('sales.create')
+                        <a class="{{ request()->routeIs('admin.sales.index') ? 'active' : '' }}" href="{{ route('admin.sales.index', $activeTenantRouteParams) }}#pos"><svg viewBox="0 0 24 24"><use href="#i-cart"/></svg><span>Record Sale</span></a>
+                        @endpermission
                         @permission('sales.view')
-                        <a class="{{ request()->routeIs('admin.sales.index') ? 'active' : '' }}" href="{{ route('admin.sales.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-cart"/></svg><span>Record Sale</span></a>
+                        <a class="{{ request()->routeIs('admin.sales.orders.index') ? 'active' : '' }}" href="{{ route('admin.sales.orders.index', $activeTenantRouteParams) }}#orders"><svg viewBox="0 0 24 24"><use href="#i-receipt"/></svg><span>Orders</span></a>
                         @endpermission
                     @endif
 
@@ -480,25 +489,38 @@
             </aside>
 
             <main class="main">
-                @if ($activeBranchTenant && $activeBranchOptions->count() > 1)
+                @if ($activeBranchTenant)
                     <div class="admin-context-bar">
-                        <div class="branch-switcher">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-building"/></svg>
-                            <div class="branch-switcher-label">
-                                <span>Active branch</span>
-                                <strong>{{ $activeBranch?->name ?? 'Choose branch' }}</strong>
+                        <div class="business-context" data-business-context>
+                            <span class="business-context-icon">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-store"/></svg>
+                            </span>
+                            <div class="business-context-label">
+                                <span>Business</span>
+                                <strong>{{ $activeBranchTenant->name }}</strong>
                             </div>
-                            <form method="POST" action="{{ route('admin.active-branch.update') }}">
-                                @csrf
-                                <input type="hidden" name="tenant_id" value="{{ $activeBranchTenant->id }}">
-                                <select name="branch_id" onchange="this.form.submit()" aria-label="Active branch">
-                                    <option value="">Choose branch</option>
-                                    @foreach ($activeBranchOptions as $branchOption)
-                                        <option value="{{ $branchOption->id }}" @selected($activeBranch?->id === $branchOption->id)>{{ $branchOption->name }}</option>
-                                    @endforeach
-                                </select>
-                            </form>
                         </div>
+                        @if ($activeBranchOptions->isNotEmpty())
+                            <div class="branch-switcher">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-building"/></svg>
+                                <div class="branch-switcher-label">
+                                    <span>Active branch</span>
+                                    <strong>{{ $activeBranch?->name ?? 'Choose branch' }}</strong>
+                                </div>
+                                @if ($activeBranchOptions->count() > 1)
+                                    <form method="POST" action="{{ route('admin.active-branch.update') }}">
+                                        @csrf
+                                        <input type="hidden" name="tenant_id" value="{{ $activeBranchTenant->id }}">
+                                        <select name="branch_id" onchange="this.form.submit()" aria-label="Active branch">
+                                            <option value="">Choose branch</option>
+                                            @foreach ($activeBranchOptions as $branchOption)
+                                                <option value="{{ $branchOption->id }}" @selected($activeBranch?->id === $branchOption->id)>{{ $branchOption->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </form>
+                                @endif
+                            </div>
+                        @endif
                     </div>
                 @endif
 

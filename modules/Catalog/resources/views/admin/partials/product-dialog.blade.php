@@ -18,7 +18,13 @@
             });
     };
     $appendCategories();
+    $defaultProductCategoryId = $isService
+        ? null
+        : $availableCategories->first(fn ($category) => strtolower($category->name) === 'uncategorized')?->id;
+    $selectedCategoryId = old('category_id', $product?->category_id ?? $defaultProductCategoryId);
     $hasVariants = (bool) old('has_variants', $product?->has_variants ?? false);
+    $selectedCollectionIds = collect(old('collection_ids', $product?->collections?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id);
+    $selectedBadgeIds = collect(old('badge_ids', $product?->badges?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id);
     $selectedTagIds = collect(old('tag_ids', $product?->tags?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id);
     $selectedTaxIds = collect(old('tax_ids', $product?->taxes?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id);
     $selectedAttributeValueIds = collect(old('attribute_value_ids', $product?->attributeValues?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id);
@@ -109,7 +115,7 @@
             <div class="dialog-local-tabs" role="tablist">
                 <a href="#{{ $dialogId }}-basic" class="active" data-local-tab-target="{{ $dialogId }}-basic">Basic</a>
                 <a href="#{{ $dialogId }}-pricing" data-local-tab-target="{{ $dialogId }}-pricing">Pricing</a>
-                <a href="#{{ $dialogId }}-tags-attributes" data-local-tab-target="{{ $dialogId }}-tags-attributes">Tags & Attributes</a>
+                <a href="#{{ $dialogId }}-tags-attributes" data-local-tab-target="{{ $dialogId }}-tags-attributes">Tags, Badges & Attributes</a>
                 @if (! $isService)
                     <a href="#{{ $dialogId }}-variants" data-local-tab-target="{{ $dialogId }}-variants">Variants</a>
                 @endif
@@ -128,10 +134,12 @@
                     <div class="field">
                         <label>Category</label>
                         <select name="category_id" data-product-category-select>
-                            <option value="">Uncategorized</option>
+                            @if ($isService)
+                                <option value="">Uncategorized</option>
+                            @endif
                             <option value="__add_new__" data-add-category-option>+ Add new category</option>
                             @foreach ($categoryOptions as $option)
-                                <option value="{{ $option['category']->id }}" @selected((string) old('category_id', $product?->category_id) === (string) $option['category']->id)>{{ $option['label'] }}</option>
+                                <option value="{{ $option['category']->id }}" @selected((string) $selectedCategoryId === (string) $option['category']->id)>{{ $option['label'] }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -251,25 +259,120 @@
 
             <section data-local-tab-panel id="{{ $dialogId }}-tags-attributes" hidden>
                 <div class="form-grid">
+                    @if (! $isService)
+                        <div class="field full">
+                            <label>Collections</label>
+                            <div class="catalog-inline-box">
+                                <div class="variant-row-editor catalog-attribute-panel" data-attribute-panel data-checkbox-accordion>
+                                    <button class="catalog-attribute-toggle" type="button" data-attribute-toggle aria-expanded="false">
+                                        <span class="catalog-attribute-chevron">›</span>
+                                        <strong>Product collections</strong>
+                                        <span class="badge neutral" data-checkbox-accordion-count>{{ $selectedCollectionIds->count() }} {{ Str::plural('item', $selectedCollectionIds->count()) }}</span>
+                                    </button>
+                                    <div class="catalog-attribute-body" data-attribute-body hidden>
+                                        <div class="check-grid">
+                                            @forelse ($productCollections as $collection)
+                                                <label class="inline-check">
+                                                    <input type="checkbox" name="collection_ids[]" value="{{ $collection->id }}" @checked($selectedCollectionIds->contains($collection->id))>
+                                                    {{ $collection->name }}
+                                                </label>
+                                            @empty
+                                                <span class="subtle">No product collections yet.</span>
+                                            @endforelse
+                                        </div>
+                                        <details class="catalog-inline-create">
+                                            <summary class="catalog-inline-create-link">+ Create a new collection</summary>
+                                            <div class="variant-row-editor catalog-inline-create-form">
+                                                <div class="field">
+                                                    <label>Collection name</label>
+                                                    <input name="new_collection[name]" value="{{ old('new_collection.name') }}" placeholder="e.g. Summer picks">
+                                                </div>
+                                                <input type="hidden" name="new_collection[is_visible]" value="0">
+                                                <label class="inline-check">
+                                                    <input type="checkbox" name="new_collection[is_visible]" value="1" @checked(old('new_collection.is_visible', true))>
+                                                    Visible on store
+                                                </label>
+                                                <span class="subtle">The new collection will be created and assigned when you save the product.</span>
+                                            </div>
+                                        </details>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field full">
+                            <label>Badges</label>
+                            <div class="catalog-inline-box">
+                                <div class="variant-row-editor catalog-attribute-panel" data-attribute-panel data-checkbox-accordion>
+                                    <button class="catalog-attribute-toggle" type="button" data-attribute-toggle aria-expanded="false">
+                                        <span class="catalog-attribute-chevron">›</span>
+                                        <strong>Storefront badges</strong>
+                                        <span class="badge neutral" data-checkbox-accordion-count>{{ $selectedBadgeIds->count() }} {{ Str::plural('item', $selectedBadgeIds->count()) }}</span>
+                                    </button>
+                                    <div class="catalog-attribute-body" data-attribute-body hidden>
+                                        <div class="check-grid">
+                                            @forelse ($productBadges as $badge)
+                                                <label class="inline-check">
+                                                    <input type="checkbox" name="badge_ids[]" value="{{ $badge->id }}" @checked($selectedBadgeIds->contains($badge->id))>
+                                                    <span class="badge" style="background: {{ $badge->background_color }}; color: {{ $badge->text_color }};">{{ $badge->name }}</span>
+                                                </label>
+                                            @empty
+                                                <span class="subtle">No badges yet.</span>
+                                            @endforelse
+                                        </div>
+                                        <span class="subtle">You can assign several; the store displays the first two.</span>
+                                        <details class="catalog-inline-create">
+                                            <summary class="catalog-inline-create-link">+ Create a new badge</summary>
+                                            <div class="variant-row-editor catalog-inline-create-form">
+                                                <div class="field">
+                                                    <label>Badge name</label>
+                                                    <input name="new_badge[name]" value="{{ old('new_badge.name') }}" placeholder="e.g. New">
+                                                </div>
+                                                <div class="catalog-badge-colours">
+                                                    <div class="field">
+                                                        <label>Background colour</label>
+                                                        <input name="new_badge[background_color]" type="color" value="{{ old('new_badge.background_color', '#111827') }}">
+                                                    </div>
+                                                    <div class="field">
+                                                        <label>Text colour</label>
+                                                        <input name="new_badge[text_color]" type="color" value="{{ old('new_badge.text_color', '#ffffff') }}">
+                                                    </div>
+                                                </div>
+                                                <span class="subtle">The new badge will be created and assigned when you save the product.</span>
+                                            </div>
+                                        </details>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
                     <div class="field full">
                         <label>Tags</label>
                         <div class="catalog-inline-box">
-                            <div class="check-grid" data-inline-tag-list>
-                                @forelse ($tags as $tag)
-                                    <label class="inline-check"><input type="checkbox" name="tag_ids[]" value="{{ $tag->id }}" @checked($selectedTagIds->contains($tag->id))> {{ $tag->name }}</label>
-                                @empty
-                                    <span class="subtle">No tags yet.</span>
-                                @endforelse
-                                @foreach ($pendingNewTags as $tag)
-                                    <label class="inline-check"><input type="checkbox" checked data-inline-pending-value="{{ $tag }}"> {{ $tag }}</label>
-                                @endforeach
-                            </div>
-                            <input type="hidden" name="new_tags" value="{{ old('new_tags') }}" data-inline-tags-value>
-                            <div class="field">
-                                <label>Add new tag</label>
-                                <div class="catalog-inline-add-row">
-                                    <input type="text" value="" placeholder="e.g Summer" data-inline-tag-input data-inline-add-input>
-                                    <button class="btn inline-add" type="button" data-add-inline-tag>Add</button>
+                            <div class="variant-row-editor catalog-attribute-panel" data-attribute-panel>
+                                <button class="catalog-attribute-toggle" type="button" data-attribute-toggle aria-expanded="false">
+                                    <span class="catalog-attribute-chevron">›</span>
+                                    <strong>Available tags</strong>
+                                    <span class="badge neutral">{{ $tags->count() + $pendingNewTags->count() }}</span>
+                                </button>
+                                <div class="catalog-attribute-body" data-attribute-body hidden>
+                                    <div class="check-grid" data-inline-tag-list>
+                                        @forelse ($tags as $tag)
+                                            <label class="inline-check"><input type="checkbox" name="tag_ids[]" value="{{ $tag->id }}" @checked($selectedTagIds->contains($tag->id))> {{ $tag->name }}</label>
+                                        @empty
+                                            <span class="subtle">No tags yet.</span>
+                                        @endforelse
+                                        @foreach ($pendingNewTags as $tag)
+                                            <label class="inline-check"><input type="checkbox" checked data-inline-pending-value="{{ $tag }}"> {{ $tag }}</label>
+                                        @endforeach
+                                    </div>
+                                    <input type="hidden" name="new_tags" value="{{ old('new_tags') }}" data-inline-tags-value>
+                                    <div class="field">
+                                        <label>Add new tag</label>
+                                        <div class="catalog-inline-add-row">
+                                            <input type="text" value="" placeholder="e.g Summer" data-inline-tag-input data-inline-add-input>
+                                            <button class="btn inline-add" type="button" data-add-inline-tag>Add</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -331,11 +434,9 @@
                                 @endforeach
                             </div>
 
-                            <div class="catalog-inline-create" data-new-attribute-list>
-                                <div class="catalog-inline-heading">
-                                    <strong>Create new attribute</strong>
-                                </div>
-                                <div class="variant-row-editor">
+                            <details class="catalog-inline-create" data-new-attribute-list>
+                                <summary class="catalog-inline-create-link">+ Create new attribute</summary>
+                                <div class="variant-row-editor catalog-inline-create-form">
                                     <div class="variant-grid catalog-new-attribute-grid">
                                         <div class="field">
                                             <label>Attribute name</label>
@@ -353,7 +454,7 @@
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                            </details>
                         </div>
                     </div>
                 </div>

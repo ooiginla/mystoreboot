@@ -29,10 +29,23 @@
         <section data-checkout-step="shipping" hidden>
             <h3 class="sf-headline-md">Shipping information</h3>
             <div class="mt-4 grid gap-3">
+                <input class="store-input" name="checkout_email" type="email" placeholder="Email address" autocomplete="email" required>
+                <p class="sf-body-sm -mt-1 text-[var(--store-muted)]" data-customer-lookup-status aria-live="polite"></p>
                 <input class="store-input" name="checkout_name" placeholder="Full name" autocomplete="name" required>
                 <input class="store-input" name="checkout_phone" placeholder="Phone number" autocomplete="tel" required>
-                <input class="store-input" name="checkout_email" type="email" placeholder="Email address" autocomplete="email" required>
-                <textarea class="store-input min-h-24" name="checkout_address" placeholder="Delivery address" required></textarea>
+                <div data-saved-addresses hidden>
+                    <label class="sf-body-sm mb-1 block font-bold" for="checkout-saved-address">Saved delivery address</label>
+                    <select class="store-input" id="checkout-saved-address" data-saved-address-select></select>
+                </div>
+                <textarea class="store-input min-h-24" name="checkout_address" placeholder="Delivery address" autocomplete="street-address" required></textarea>
+                <label class="sf-body-sm flex cursor-pointer items-center gap-2" data-save-address-control>
+                    <input type="checkbox" name="checkout_save_address" value="1">
+                    <span>Save this address for future use</span>
+                </label>
+                <div data-address-label hidden>
+                    <label class="sf-body-sm mb-1 block font-bold" for="checkout-address-label">What should we call this address?</label>
+                    <input class="store-input" id="checkout-address-label" name="checkout_address_label" maxlength="80" placeholder="For example: Home or Office">
+                </div>
             </div>
             <h4 class="sf-body-md mt-5 font-bold">Shipping option</h4>
             <div class="mt-3 grid gap-2">
@@ -104,7 +117,7 @@
                     @include('storefront::partials.icon', ['name' => 'check', 'class' => 'h-12 w-12'])
                 </div>
                 <h3 class="sf-headline-lg-mobile mt-5">Order confirmed</h3>
-                <p class="sf-body-md mt-2 text-[var(--store-muted)]">Your cart has been cleared. Payment processing will be connected in the next task.</p>
+                <p class="sf-body-md mt-2 text-[var(--store-muted)]">Your order has been placed successfully and your cart has been cleared.</p>
             </div>
         </section>
     </div>
@@ -120,7 +133,7 @@
             <button type="button" class="store-btn store-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50" data-go-step="shipping" data-checkout-step="cart" data-requires-cart>Checkout</button>
             <button type="button" class="store-btn store-btn-primary w-full" data-go-step="payment" data-checkout-step="shipping">Continue to payment</button>
             <button type="button" class="store-btn store-btn-secondary w-full" data-confirm-order data-checkout-step="payment">Pay now</button>
-            <button type="button" class="store-btn store-btn-primary w-full" data-cart-close data-checkout-step="confirm">Continue shopping</button>
+            <a href="{{ route('storefront.storefront.store.home', $store) }}" class="store-btn store-btn-primary w-full" data-continue-shopping data-checkout-step="confirm">Continue shopping</a>
         </div>
     </div>
 </aside>

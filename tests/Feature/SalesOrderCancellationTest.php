@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Business\Models\Branch;
+use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Customers\Models\Customer;
+use Modules\Finance\Models\FinanceAccount;
 use Modules\Finance\Models\FinanceJournalEntry;
 use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Enums\SalesPaymentStatus;
@@ -44,13 +46,13 @@ class SalesOrderCancellationTest extends TestCase
         ]);
 
         $this->actingAs($user)
-            ->get(route('admin.sales.index', ['tenant' => $tenant->id]).'#orders')
+            ->get(route('admin.sales.orders.index', ['tenant' => $tenant->id]).'#orders')
             ->assertOk()
             ->assertSee('Cancel Order');
 
         $this->actingAs($user)
             ->post(route('admin.sales.orders.cancel', $order))
-            ->assertRedirect(route('admin.sales.index', ['tenant' => $tenant->id]).'#orders');
+            ->assertRedirect(route('admin.sales.orders.index', ['tenant' => $tenant->id]).'#orders');
 
         $order->refresh();
         $this->assertSame(SalesOrderStatus::Cancelled, $order->order_status);
@@ -65,24 +67,55 @@ class SalesOrderCancellationTest extends TestCase
             ->where('source_event', 'cancelled_to_customer_credit')
             ->firstOrFail();
 
-        $this->assertTrue($creditJournal->lines->contains(fn ($line): bool => $line->account->code === '1100' && $line->debit_minor === 50000));
+        $this->assertTrue($creditJournal->lines->contains(fn ($line): bool => $line->account->code === '2310' && $line->debit_minor === 50000));
         $this->assertTrue($creditJournal->lines->contains(fn ($line): bool => $line->account->code === '2300' && $line->credit_minor === 50000));
+        $refundFinanceAccount = FinanceAccount::query()->create([
+            'tenant_id' => $tenant->id,
+            'code' => 'PMT-REFUND',
+            'name' => 'Refund Bank Account',
+            'type' => 'asset',
+            'category' => 'Bank & Payment Accounts',
+            'normal_balance' => 'debit',
+            'is_system' => false,
+            'is_active' => true,
+        ]);
+        $refundPaymentAccount = BusinessPaymentAccount::query()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'finance_account_id' => $refundFinanceAccount->id,
+            'identifier' => 'Refund bank',
+            'provider_name' => 'Example Bank',
+            'supported_payment_methods' => ['Transfer'],
+            'status' => 'active',
+        ]);
 
         $this->actingAs($user)
-            ->get(route('admin.sales.index', ['tenant' => $tenant->id]).'#orders')
+            ->get(route('admin.sales.orders.index', ['tenant' => $tenant->id]).'#orders')
             ->assertOk()
             ->assertSee('Customer credit')
             ->assertSee('Customer credit held')
-            ->assertSee('Mark as Refunded');
+            ->assertSee('Record Refund');
 
         $this->actingAs($user)
-            ->post(route('admin.sales.orders.mark-refunded', $order))
-            ->assertRedirect(route('admin.sales.index', ['tenant' => $tenant->id]).'#orders');
+            ->post(route('admin.sales.orders.mark-refunded', $order), [
+                'refund_date' => now()->toDateString(),
+                'payment_method' => 'Bank transfer',
+                'business_payment_account_id' => $refundPaymentAccount->id,
+                'reference_number' => 'TRF-REFUND-001',
+            ])
+            ->assertRedirect(route('admin.sales.orders.index', ['tenant' => $tenant->id]).'#orders');
 
         $order->refresh();
         $this->assertSame(SalesOrderStatus::Cancelled, $order->order_status);
         $this->assertSame(SalesPaymentStatus::Refunded, $order->payment_status);
         $this->assertSame(50000, $order->refunded_minor);
+        $this->assertDatabaseHas('sales_order_refunds', [
+            'sales_order_id' => $order->id,
+            'payment_method' => 'Bank transfer',
+            'amount_minor' => 50000,
+            'business_payment_account_id' => $refundPaymentAccount->id,
+            'reference_number' => 'TRF-REFUND-001',
+        ]);
 
         $refundJournal = FinanceJournalEntry::query()
             ->with('lines.account')
@@ -93,10 +126,10 @@ class SalesOrderCancellationTest extends TestCase
             ->firstOrFail();
 
         $this->assertTrue($refundJournal->lines->contains(fn ($line): bool => $line->account->code === '2300' && $line->debit_minor === 50000));
-        $this->assertTrue($refundJournal->lines->contains(fn ($line): bool => $line->account->code === '1040' && $line->credit_minor === 50000));
+        $this->assertTrue($refundJournal->lines->contains(fn ($line): bool => $line->account->code === 'PMT-REFUND' && $line->credit_minor === 50000));
     }
 
-    public function test_pending_unpaid_order_can_be_cancelled_without_refund_credit(): void
+    public function test_processing_unpaid_order_can_be_cancelled_without_refund_credit(): void
     {
         [$tenant, $branch, $customer] = $this->salesFixture();
         $user = User::factory()->create(['is_platform_admin' => true]);
@@ -107,7 +140,7 @@ class SalesOrderCancellationTest extends TestCase
             'order_number' => 'SO-CANCEL-002',
             'invoice_number' => 'INV-CANCEL-002',
             'receipt_number' => 'RCT-CANCEL-002',
-            'order_status' => SalesOrderStatus::Pending->value,
+            'order_status' => SalesOrderStatus::Processing->value,
             'payment_status' => SalesPaymentStatus::Pending->value,
             'order_date' => now()->toDateString(),
             'total_minor' => 150000,
@@ -116,7 +149,7 @@ class SalesOrderCancellationTest extends TestCase
 
         $this->actingAs($user)
             ->post(route('admin.sales.orders.cancel', $order))
-            ->assertRedirect(route('admin.sales.index', ['tenant' => $tenant->id]).'#orders');
+            ->assertRedirect(route('admin.sales.orders.index', ['tenant' => $tenant->id]).'#orders');
 
         $order->refresh();
         $this->assertSame(SalesOrderStatus::Cancelled, $order->order_status);
