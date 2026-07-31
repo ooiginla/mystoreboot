@@ -92,7 +92,7 @@
                                 <p class="sf-body-lg mt-5 max-w-xl text-[var(--store-muted)]">{{ $slide['description'] ?: 'Explore our latest products, curated offers, and customer-first shopping experience.' }}</p>
                                 <div class="mt-8 flex flex-wrap gap-3">
                                     <a href="#products" class="store-btn store-btn-secondary">Shop products @include('storefront::partials.icon', ['name' => 'arrow_downward', 'class' => 'h-5 w-5'])</a>
-                                    <a href="{{ route('storefront.storefront.store.contact', $store) }}" class="store-btn border border-[var(--store-line)] bg-white text-[var(--store-primary)]">Contact us</a>
+                                    <a href="{{ $storefrontRoute($store, 'contact') }}" class="store-btn border border-[var(--store-line)] bg-white text-[var(--store-primary)]">Contact us</a>
                                 </div>
                             </div>
                         </div>
@@ -123,7 +123,7 @@
                             <div class="store-collection-track">
                                 @foreach ($collection->products as $product)
                                     <div class="store-collection-item">
-                                        @include('storefront::partials.product-card', ['product' => $product, 'detailRouteName' => 'storefront.storefront.store.products.show'])
+                                        @include('storefront::partials.product-card', ['product' => $product, 'detailRouteName' => 'products.show'])
                                     </div>
                                 @endforeach
                             </div>
@@ -149,9 +149,9 @@
                 </div>
                 @if ($productCategories->isNotEmpty())
                     <div class="flex gap-2 overflow-x-auto pb-1">
-                        <a href="{{ route('storefront.storefront.store.home', $store) }}#products" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === '' && ! $selectedCollection ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">All</a>
+                        <a href="{{ $storefrontRoute($store) }}#products" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === '' && ! $selectedCollection ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">All</a>
                         @foreach ($productCategories as $category)
-                            <a href="{{ route('storefront.storefront.store.categories.show', [$store, $category->slug]) }}" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === $category->slug ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">{{ $category->name }}</a>
+                            <a href="{{ $storefrontRoute($store, 'categories.show', ['categorySlug' => $category->slug]) }}" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === $category->slug ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">{{ $category->name }}</a>
                         @endforeach
                     </div>
                 @endif
@@ -159,7 +159,7 @@
 
             <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5">
                 @forelse ($products as $product)
-                    @include('storefront::partials.product-card', ['product' => $product, 'detailRouteName' => 'storefront.storefront.store.products.show'])
+                    @include('storefront::partials.product-card', ['product' => $product, 'detailRouteName' => 'products.show'])
                 @empty
                     <div class="store-card col-span-full p-10 text-center">
                         <h3 class="sf-headline-lg-mobile">No products available yet</h3>

@@ -2,8 +2,10 @@
     $variant = $product->variants->first();
     $imagePath = $variant?->image_path ?: $product->image_path;
     $image = $imagePath ? '/storage/'.ltrim($imagePath, '/') : null;
-    $detailRouteName = $detailRouteName ?? 'storefront.storefront.store.products.show';
-    $detailsUrl = route($detailRouteName, [$store, $product->slug]);
+    $detailRouteName = $detailRouteName ?? 'products.show';
+    $detailsUrl = $storefrontRoute($store, $detailRouteName, [
+        $detailRouteName === 'services.show' ? 'serviceSlug' : 'productSlug' => $product->slug,
+    ]);
 @endphp
 
 <a href="{{ $detailsUrl }}" class="group block overflow-hidden rounded-lg border border-[var(--store-line)] bg-white p-2 transition hover:shadow-xl">

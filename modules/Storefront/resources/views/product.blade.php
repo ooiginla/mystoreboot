@@ -69,8 +69,10 @@
         ];
     })->values();
     $isService = ($catalogType ?? $product->product_type) === \Modules\Catalog\Enums\ProductType::Service;
-    $detailRouteName = $isService ? 'storefront.storefront.store.services.show' : 'storefront.storefront.store.products.show';
-    $shareUrl = route($detailRouteName, [$store, $product->slug]);
+    $detailRouteName = $isService ? 'services.show' : 'products.show';
+    $shareUrl = $storefrontRoute($store, $detailRouteName, [
+        $isService ? 'serviceSlug' : 'productSlug' => $product->slug,
+    ]);
 @endphp
 
 @section('content')

@@ -47,19 +47,19 @@
     $menuCategories = $store->categories->filter(fn ($category) => ($category->category_type?->value ?? (string) $category->category_type) === 'product');
     $menuCollections = $store->productCollections;
     $navLinks = [
-        ['label' => 'Products', 'href' => route('storefront.storefront.store.home', $store)],
-        ...($hasServices ? [['label' => 'Services', 'href' => route('storefront.storefront.store.services', $store)]] : []),
-        ['label' => 'About', 'href' => route('storefront.storefront.store.about', $store)],
-        ['label' => 'Track order', 'href' => route('storefront.storefront.store.track', $store)],
-        ['label' => 'FAQ', 'href' => route('storefront.storefront.store.faq', $store)],
-        ['label' => 'Contact', 'href' => route('storefront.storefront.store.contact', $store)],
+        ['label' => 'Products', 'href' => $storefrontRoute($store)],
+        ...($hasServices ? [['label' => 'Services', 'href' => $storefrontRoute($store, 'services')]] : []),
+        ['label' => 'About', 'href' => $storefrontRoute($store, 'about')],
+        ['label' => 'Track order', 'href' => $storefrontRoute($store, 'track')],
+        ['label' => 'FAQ', 'href' => $storefrontRoute($store, 'faq')],
+        ['label' => 'Contact', 'href' => $storefrontRoute($store, 'contact')],
     ];
     $footerPages = [
-        ['label' => 'Track order', 'href' => route('storefront.storefront.store.track', $store)],
-        ['label' => 'Terms of Service', 'href' => route('storefront.storefront.store.terms', $store)],
-        ['label' => 'Refunds', 'href' => route('storefront.storefront.store.refunds', $store)],
-        ['label' => 'Privacy Policy', 'href' => route('storefront.storefront.store.privacy', $store)],
-        ['label' => 'Shipping Info', 'href' => route('storefront.storefront.store.shipping', $store)],
+        ['label' => 'Track order', 'href' => $storefrontRoute($store, 'track')],
+        ['label' => 'Terms of Service', 'href' => $storefrontRoute($store, 'terms')],
+        ['label' => 'Refunds', 'href' => $storefrontRoute($store, 'refunds')],
+        ['label' => 'Privacy Policy', 'href' => $storefrontRoute($store, 'privacy')],
+        ['label' => 'Shipping Info', 'href' => $storefrontRoute($store, 'shipping')],
     ];
     $paymentLabels = [
         'pay_on_delivery' => 'Pay on delivery',
@@ -139,7 +139,7 @@
     <header class="sticky top-0 z-50 border-b border-[var(--store-line)] bg-white/95 backdrop-blur" data-store-header>
         <div class="store-shell flex min-h-20 items-center justify-between gap-4">
             <div class="flex items-center gap-4 md:gap-8">
-                <a href="{{ route('storefront.storefront.store.home', $store) }}" class="flex min-w-0 items-center gap-3">
+                <a href="{{ $storefrontRoute($store) }}" class="flex min-w-0 items-center gap-3">
                     @if ($logoUrl)
                         <img src="{{ $logoUrl }}" alt="{{ $store->store_name }} logo" class="h-10 w-10 rounded-lg object-cover">
                     @else
@@ -155,7 +155,7 @@
                         </button>
                         <div class="store-card invisible absolute left-0 top-9 z-50 w-72 translate-y-2 p-2 opacity-0 transition" data-categories-menu>
                             @forelse ($menuCategories as $category)
-                                <a href="{{ route('storefront.storefront.store.categories.show', [$store, $category->slug]) }}" class="sf-body-md flex items-center justify-between rounded-md px-3 py-2 font-semibold hover:bg-[var(--store-soft)]">
+                                <a href="{{ $storefrontRoute($store, 'categories.show', ['categorySlug' => $category->slug]) }}" class="sf-body-md flex items-center justify-between rounded-md px-3 py-2 font-semibold hover:bg-[var(--store-soft)]">
                                     {{ $category->name }}
                                     @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
                                 </a>
@@ -171,7 +171,7 @@
                         </button>
                         <div class="store-card invisible absolute left-0 top-9 z-50 w-64 translate-y-2 p-2 opacity-0 transition" data-collections-menu>
                             @forelse ($menuCollections as $collection)
-                                <a href="{{ route('storefront.storefront.store.collections.show', [$store, $collection->slug ?: $collection->id]) }}" class="sf-body-md flex items-center justify-between rounded-md px-3 py-2 font-semibold hover:bg-[var(--store-soft)]">
+                                <a href="{{ $storefrontRoute($store, 'collections.show', ['collectionSlug' => $collection->slug ?: $collection->id]) }}" class="sf-body-md flex items-center justify-between rounded-md px-3 py-2 font-semibold hover:bg-[var(--store-soft)]">
                                     {{ $collection->name }}
                                     @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
                                 </a>
@@ -186,7 +186,7 @@
                 </nav>
             </div>
             <div class="flex items-center gap-2">
-                <a href="{{ route('storefront.storefront.store.contact', $store) }}" class="sf-body-md hidden rounded-md border border-[var(--store-line)] px-3 py-2 font-bold text-[var(--store-muted)] hover:text-[var(--store-primary)] md:inline-flex">Contact</a>
+                <a href="{{ $storefrontRoute($store, 'contact') }}" class="sf-body-md hidden rounded-md border border-[var(--store-line)] px-3 py-2 font-bold text-[var(--store-muted)] hover:text-[var(--store-primary)] md:inline-flex">Contact</a>
                 <button type="button" class="relative rounded-full p-3 hover:bg-[var(--store-soft)]" data-cart-open aria-label="Open cart">
                     @include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5 text-[var(--store-primary)]'])
                     <span class="sf-caption absolute right-1 top-1 hidden min-w-5 rounded-full bg-black px-1 text-center font-bold text-white" data-cart-count>0</span>
@@ -214,7 +214,7 @@
                     </summary>
                     <div class="grid gap-1 pb-2 pl-4">
                         @forelse ($menuCategories as $category)
-                            <a href="{{ route('storefront.storefront.store.categories.show', [$store, $category->slug]) }}" class="sf-body-md rounded-lg px-3 py-2 font-semibold text-[var(--store-muted)] hover:bg-[var(--store-soft)] hover:text-[var(--store-primary)]">{{ $category->name }}</a>
+                            <a href="{{ $storefrontRoute($store, 'categories.show', ['categorySlug' => $category->slug]) }}" class="sf-body-md rounded-lg px-3 py-2 font-semibold text-[var(--store-muted)] hover:bg-[var(--store-soft)] hover:text-[var(--store-primary)]">{{ $category->name }}</a>
                         @empty
                             <span class="sf-body-md px-3 py-2 text-[var(--store-muted)]">No categories yet</span>
                         @endforelse
@@ -227,7 +227,7 @@
                     </summary>
                     <div class="grid gap-1 pb-2 pl-4">
                         @forelse ($menuCollections as $collection)
-                            <a href="{{ route('storefront.storefront.store.collections.show', [$store, $collection->slug ?: $collection->id]) }}" class="sf-body-md rounded-lg px-3 py-2 font-semibold text-[var(--store-muted)] hover:bg-[var(--store-soft)] hover:text-[var(--store-primary)]">{{ $collection->name }}</a>
+                            <a href="{{ $storefrontRoute($store, 'collections.show', ['collectionSlug' => $collection->slug ?: $collection->id]) }}" class="sf-body-md rounded-lg px-3 py-2 font-semibold text-[var(--store-muted)] hover:bg-[var(--store-soft)] hover:text-[var(--store-primary)]">{{ $collection->name }}</a>
                         @empty
                             <span class="sf-body-md px-3 py-2 text-[var(--store-muted)]">No collections yet</span>
                         @endforelse
@@ -258,12 +258,12 @@
             <div>
                 <h3 class="sf-headline-md text-white">Shop</h3>
                 <div class="sf-body-md mt-3 grid gap-2 text-zinc-300">
-                    <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ route('storefront.storefront.store.home', $store) }}">Products</a>
+                    <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ $storefrontRoute($store) }}">Products</a>
                     @if ($hasServices)
-                        <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ route('storefront.storefront.store.services', $store) }}">Services</a>
+                        <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ $storefrontRoute($store, 'services') }}">Services</a>
                     @endif
-                    <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ route('storefront.storefront.store.faq', $store) }}">FAQ</a>
-                    <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ route('storefront.storefront.store.contact', $store) }}">Contact</a>
+                    <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ $storefrontRoute($store, 'faq') }}">FAQ</a>
+                    <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ $storefrontRoute($store, 'contact') }}">Contact</a>
                 </div>
             </div>
             <div>
@@ -334,8 +334,8 @@
             let gatewayChargeMinor = 0;
             const paystackMethods = ['storeboot_paystack', 'self_hosted_paystack'];
             const checkoutSteps = ['cart', 'shipping', 'payment', 'confirm'];
-            const paystackInitializeUrl = @json(route('storefront.storefront.store.checkout.paystack.initialize', [$store, '__ORDER_ID__']));
-            const customerLookupUrl = @json(route('storefront.storefront.store.checkout.customer-lookup', $store));
+            const paystackInitializeUrl = @json($storefrontRoute($store, 'checkout.paystack.initialize', ['order' => '__ORDER_ID__']));
+            const customerLookupUrl = @json($storefrontRoute($store, 'checkout.customer-lookup'));
             let customerLookupTimer = null;
             let lastCustomerLookupEmail = '';
 
@@ -560,7 +560,7 @@
                 setAlert('');
 
                 try {
-                    const response = await fetch(@json(route('storefront.storefront.store.checkout', $store)), {
+                    const response = await fetch(@json($storefrontRoute($store, 'checkout')), {
                         method: 'POST',
                         headers: {
                             'Accept': 'application/json',

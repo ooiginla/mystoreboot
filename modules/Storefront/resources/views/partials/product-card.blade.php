@@ -30,8 +30,10 @@
         'priceMinor' => $priceMinor,
         'image' => $image,
     ];
-    $detailRouteName = $detailRouteName ?? 'storefront.storefront.store.products.show';
-    $detailsUrl = route($detailRouteName, [$store, $product->slug]);
+    $detailRouteName = $detailRouteName ?? 'products.show';
+    $detailsUrl = $storefrontRoute($store, $detailRouteName, [
+        $detailRouteName === 'services.show' ? 'serviceSlug' : 'productSlug' => $product->slug,
+    ]);
 @endphp
 
 <article class="store-card store-product-card group cursor-pointer overflow-hidden p-2 transition-all duration-300 hover:shadow-2xl">

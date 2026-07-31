@@ -389,7 +389,7 @@
 
     @if ($onlineStoreOnly && $onlineStore)
         @php
-            $storefrontUrl = route('storefront.storefront.store.home', $onlineStore);
+            $storefrontUrl = \Modules\Storefront\Support\StorefrontUrl::route($onlineStore);
         @endphp
         <section class="store-url-card" aria-labelledby="store-url-label">
             <div class="store-url-details">
@@ -725,7 +725,11 @@
                                 <div class="setup-section online-store-section-panel" id="online-store-basics" role="tabpanel" data-online-store-section-panel>
                                     <h3 class="setup-section-title">Online Store Basics</h3>
                                     <div class="form-grid">
-                                        <div class="field"><label>Store username</label><input name="username" value="{{ old('username', $onlineStore?->username) }}" placeholder="abc-fashion" required></div>
+                                        <div class="field">
+                                            <label>Store address</label>
+                                            <input name="username" value="{{ old('username', $onlineStore?->username) }}" placeholder="abc-fashion" maxlength="63" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required>
+                                            <small>Use lowercase letters, numbers, and hyphens. This becomes your store subdomain.</small>
+                                        </div>
                                         <div class="field"><label>Name of Store</label><input name="store_name" value="{{ old('store_name', $onlineStore?->store_name ?? $tenant->name) }}" required></div>
                                         <div class="field full"><label>Description of Store</label><textarea name="description" rows="3" placeholder="A short description customers will see on your online store.">{{ old('description', $onlineStore?->description) }}</textarea></div>
                                         <div class="field">

@@ -34,7 +34,7 @@
     <h1 style="font-size: 26px; font-weight: 800; color: #0f1b16;">Track your order</h1>
     <p style="color: var(--store-muted); margin-top: 6px;">Enter the tracking reference from your order confirmation email.</p>
 
-    <form method="GET" action="{{ route('storefront.storefront.store.track', $store) }}" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px;">
+    <form method="GET" action="{{ $storefrontRoute($store, 'track') }}" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px;">
         <input
             type="text"
             name="reference"

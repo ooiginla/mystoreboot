@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 use Modules\Catalog\Actions\EnsureDefaultProductCategoryAction;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Catalog\Models\ProductCollection;
@@ -21,6 +22,12 @@ final class OnlineStore extends Model
 
     protected static function booted(): void
     {
+        self::creating(function (OnlineStore $store): void {
+            if (! filled($store->subdomain)) {
+                $store->subdomain = Str::slug((string) $store->username);
+            }
+        });
+
         self::created(function (OnlineStore $store): void {
             $category = app(EnsureDefaultProductCategoryAction::class)->execute((string) $store->tenant_id);
 

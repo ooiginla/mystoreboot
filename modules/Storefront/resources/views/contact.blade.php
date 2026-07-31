@@ -108,7 +108,7 @@
             <div class="contact-hero-overlay"></div>
             <div class="contact-hero-content store-shell">
                 <p class="sf-body-lg font-semibold">
-                    <a href="{{ route('storefront.storefront.store.home', $store) }}" class="hover:underline">Home</a>
+                    <a href="{{ $storefrontRoute($store) }}" class="hover:underline">Home</a>
                     <span aria-hidden="true"> / </span>
                     <span id="contact-page-title">Contact Us</span>
                 </p>
@@ -182,7 +182,7 @@
                     <div class="sf-body-md mt-6 rounded-lg border border-green-200 bg-green-50 p-4 font-semibold text-green-800">{{ session('status') }}</div>
                 @endif
 
-                <form method="POST" action="{{ route('storefront.storefront.store.contact.submit', $store) }}" class="mt-7 grid gap-5" data-disable-on-submit>
+                <form method="POST" action="{{ $storefrontRoute($store, 'contact.submit') }}" class="mt-7 grid gap-5" data-disable-on-submit>
                     @csrf
                     <div>
                         <label for="name" class="sf-body-md font-semibold">Name</label>

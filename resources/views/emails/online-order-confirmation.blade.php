@@ -46,7 +46,7 @@
                 </tr>
                 <tr>
                     <td style="padding:16px 32px 0;">
-                        <a href="{{ route('storefront.storefront.store.track', [$store, 'reference' => $order->tracking_reference]) }}"
+                        <a href="{{ \Modules\Storefront\Support\StorefrontUrl::route($store, 'track', ['reference' => $order->tracking_reference]) }}"
                            style="display:inline-block; background-color:#027a45; color:#ffffff; font-family:Arial,Helvetica,sans-serif; font-size:14px; font-weight:700; text-decoration:none; padding:12px 22px; border-radius:10px;">
                             Track your order
                         </a>

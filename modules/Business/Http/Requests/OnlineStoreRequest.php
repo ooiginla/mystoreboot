@@ -67,7 +67,15 @@ final class OnlineStoreRequest extends FormRequest
                 'online-store-pages',
                 'online-store-faq',
             ])],
-            'username' => ['required', 'string', 'max:80', 'alpha_dash:ascii', Rule::unique('online_stores', 'username')->ignore($onlineStoreId)],
+            'username' => [
+                'required',
+                'string',
+                'max:63',
+                'regex:/\A(?!-)[a-z0-9]+(?:-[a-z0-9]+)*\z/',
+                Rule::notIn(config('storefront.reserved_subdomains', [])),
+                Rule::unique('online_stores', 'username')->ignore($onlineStoreId),
+                Rule::unique('online_stores', 'subdomain')->ignore($onlineStoreId),
+            ],
             'store_name' => ['required', 'string', 'max:160'],
             'description' => ['nullable', 'string', 'max:1000'],
             'logo' => ['nullable', 'image', 'max:2048'],
@@ -122,6 +130,14 @@ final class OnlineStoreRequest extends FormRequest
             'faqs' => ['array', 'max:30'],
             'faqs.*.question' => ['nullable', 'string', 'max:255'],
             'faqs.*.answer' => ['nullable', 'string', 'max:1000'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'username.regex' => 'The store address may contain only lowercase letters, numbers, and single hyphens, and cannot start or end with a hyphen.',
+            'username.not_in' => 'That store address is reserved by Storeboot. Choose another one.',
         ];
     }
 

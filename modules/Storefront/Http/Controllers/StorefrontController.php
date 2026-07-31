@@ -10,6 +10,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -37,6 +38,7 @@ use Modules\Sales\Enums\SalesPaymentStatus;
 use Modules\Sales\Models\OnlineCollectedPayment;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderPayment;
+use Modules\Storefront\Support\StorefrontUrl;
 use Modules\Subscriptions\Support\TenantModuleAccess;
 use Throwable;
 
@@ -224,7 +226,7 @@ final class StorefrontController extends Controller
      * A buyer-facing progress timeline derived from the order's current
      * statuses and timestamps.
      *
-     * @return list<array{label: string, note: string, done: bool, at: \Illuminate\Support\Carbon|null}>
+     * @return list<array{label: string, note: string, done: bool, at: Carbon|null}>
      */
     private function orderTimeline(SalesOrder $order): array
     {
@@ -567,7 +569,7 @@ final class StorefrontController extends Controller
                 'amount' => $order->total_minor,
                 'currency' => $store->tenant?->currency_code ?? 'NGN',
                 'reference' => $reference,
-                'callback_url' => route('storefront.storefront.store.paystack.callback', $store),
+                'callback_url' => StorefrontUrl::route($store, 'paystack.callback'),
                 'metadata' => [
                     'store_id' => $store->id,
                     'tenant_id' => $store->tenant_id,
@@ -594,7 +596,7 @@ final class StorefrontController extends Controller
             'gateway_charge_minor' => $gatewayChargeMinor,
             'base_total_minor' => $baseTotalMinor,
             'currency' => $store->tenant?->currency_code ?? 'NGN',
-            'verify_url' => route('storefront.storefront.store.checkout.paystack.verify', [$store, $order]),
+            'verify_url' => StorefrontUrl::route($store, 'checkout.paystack.verify', ['order' => $order]),
         ]);
     }
 
@@ -604,7 +606,7 @@ final class StorefrontController extends Controller
 
         if (! preg_match('/^PSK-(\d+)-/i', $reference, $matches)) {
             return redirect()
-                ->route('storefront.storefront.store.home', $store)
+                ->to(StorefrontUrl::route($store))
                 ->with('payment_error', 'Paystack did not return a valid order reference.');
         }
 
@@ -612,7 +614,7 @@ final class StorefrontController extends Controller
 
         if (! $order) {
             return redirect()
-                ->route('storefront.storefront.store.home', $store)
+                ->to(StorefrontUrl::route($store))
                 ->with('payment_error', 'We could not find the order for this Paystack payment.');
         }
 
@@ -632,7 +634,7 @@ final class StorefrontController extends Controller
             }
 
             return redirect()
-                ->route('storefront.storefront.store.home', $store)
+                ->to(StorefrontUrl::route($store))
                 ->with('payment_error', 'Paystack did not return a payment reference.');
         }
 
@@ -653,7 +655,7 @@ final class StorefrontController extends Controller
             }
 
             return redirect()
-                ->route('storefront.storefront.store.home', $store)
+                ->to(StorefrontUrl::route($store))
                 ->with('payment_error', data_get($payload, 'message', 'Paystack could not verify this payment.'));
         }
 
@@ -666,7 +668,7 @@ final class StorefrontController extends Controller
             }
 
             return redirect()
-                ->route('storefront.storefront.store.home', $store)
+                ->to(StorefrontUrl::route($store))
                 ->with('payment_error', 'The verified Paystack payment did not match this order.');
         }
 
@@ -754,7 +756,7 @@ final class StorefrontController extends Controller
         }
 
         return redirect()
-            ->route('storefront.storefront.store.home', $store)
+            ->to(StorefrontUrl::route($store))
             ->with('status', 'Payment successful. Your order reference is '.$order->order_number.'.')
             ->with('clear_cart', true);
     }

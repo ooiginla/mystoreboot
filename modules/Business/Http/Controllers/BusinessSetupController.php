@@ -345,6 +345,7 @@ final class BusinessSetupController extends Controller
         $store->fill([
             'fulfilment_branch_id' => $data['fulfilment_branch_id'] ?? null,
             'username' => $data['username'],
+            'subdomain' => $data['username'],
             'store_name' => $data['store_name'],
             'description' => $data['description'] ?? null,
             'logo_path' => $logoPath,

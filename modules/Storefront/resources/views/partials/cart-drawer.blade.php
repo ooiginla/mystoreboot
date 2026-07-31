@@ -133,7 +133,7 @@
             <button type="button" class="store-btn store-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50" data-go-step="shipping" data-checkout-step="cart" data-requires-cart>Checkout</button>
             <button type="button" class="store-btn store-btn-primary w-full" data-go-step="payment" data-checkout-step="shipping">Continue to payment</button>
             <button type="button" class="store-btn store-btn-secondary w-full" data-confirm-order data-checkout-step="payment">Pay now</button>
-            <a href="{{ route('storefront.storefront.store.home', $store) }}" class="store-btn store-btn-primary w-full" data-continue-shopping data-checkout-step="confirm">Continue shopping</a>
+            <a href="{{ $storefrontRoute($store) }}" class="store-btn store-btn-primary w-full" data-continue-shopping data-checkout-step="confirm">Continue shopping</a>
         </div>
     </div>
 </aside>

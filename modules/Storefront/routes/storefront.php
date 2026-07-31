@@ -5,30 +5,38 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Modules\Storefront\Http\Controllers\StorefrontController;
 
+$routes = function (): void {
+    Route::get('/', [StorefrontController::class, 'home'])->name('home');
+    Route::get('/categories/{categorySlug}', [StorefrontController::class, 'category'])->name('categories.show');
+    Route::get('/collections/{collectionSlug}', [StorefrontController::class, 'collection'])->name('collections.show');
+    Route::get('/products/{productSlug}', [StorefrontController::class, 'product'])->name('products.show');
+    Route::get('/services', [StorefrontController::class, 'services'])->name('services');
+    Route::get('/services/{serviceSlug}', [StorefrontController::class, 'service'])->name('services.show');
+    Route::get('/about', [StorefrontController::class, 'page'])->defaults('page', 'about_us')->name('about');
+    Route::get('/faq', [StorefrontController::class, 'faq'])->name('faq');
+    Route::get('/terms-of-service', [StorefrontController::class, 'page'])->defaults('page', 'terms_of_use')->name('terms');
+    Route::get('/refunds', [StorefrontController::class, 'page'])->defaults('page', 'return_policy')->name('refunds');
+    Route::get('/privacy-policy', [StorefrontController::class, 'page'])->defaults('page', 'privacy_policy')->name('privacy');
+    Route::get('/shipping-info', [StorefrontController::class, 'page'])->defaults('page', 'shipping_information')->name('shipping');
+    Route::get('/contact', [StorefrontController::class, 'contact'])->name('contact');
+    Route::post('/contact', [StorefrontController::class, 'submitContact'])->name('contact.submit');
+    Route::get('/track', [StorefrontController::class, 'track'])->name('track');
+    Route::post('/checkout/customer-lookup', [StorefrontController::class, 'lookupCustomer'])
+        ->middleware('throttle:30,1')
+        ->name('checkout.customer-lookup');
+    Route::post('/checkout', [StorefrontController::class, 'checkout'])->name('checkout');
+    Route::post('/checkout/{order}/paystack/initialize', [StorefrontController::class, 'initializePaystackPayment'])->name('checkout.paystack.initialize');
+    Route::get('/checkout/{order}/paystack/verify', [StorefrontController::class, 'verifyPaystackPayment'])->name('checkout.paystack.verify');
+    Route::get('/paystack/callback', [StorefrontController::class, 'verifyPaystackStoreCallback'])->name('paystack.callback');
+    Route::get('/checkout/{order}/paystack/callback', [StorefrontController::class, 'verifyPaystackPayment'])->name('checkout.paystack.callback');
+};
+
+$baseDomain = trim((string) config('storefront.base_domain')) ?: 'storeboot.test';
+
+Route::domain('{store:subdomain}.'.$baseDomain)
+    ->name('subdomain.')
+    ->group($routes);
+
 Route::prefix('store/{store:username}')
     ->name('store.')
-    ->group(function (): void {
-        Route::get('/', [StorefrontController::class, 'home'])->name('home');
-        Route::get('/categories/{categorySlug}', [StorefrontController::class, 'category'])->name('categories.show');
-        Route::get('/collections/{collectionSlug}', [StorefrontController::class, 'collection'])->name('collections.show');
-        Route::get('/products/{productSlug}', [StorefrontController::class, 'product'])->name('products.show');
-        Route::get('/services', [StorefrontController::class, 'services'])->name('services');
-        Route::get('/services/{serviceSlug}', [StorefrontController::class, 'service'])->name('services.show');
-        Route::get('/about', [StorefrontController::class, 'page'])->defaults('page', 'about_us')->name('about');
-        Route::get('/faq', [StorefrontController::class, 'faq'])->name('faq');
-        Route::get('/terms-of-service', [StorefrontController::class, 'page'])->defaults('page', 'terms_of_use')->name('terms');
-        Route::get('/refunds', [StorefrontController::class, 'page'])->defaults('page', 'return_policy')->name('refunds');
-        Route::get('/privacy-policy', [StorefrontController::class, 'page'])->defaults('page', 'privacy_policy')->name('privacy');
-        Route::get('/shipping-info', [StorefrontController::class, 'page'])->defaults('page', 'shipping_information')->name('shipping');
-        Route::get('/contact', [StorefrontController::class, 'contact'])->name('contact');
-        Route::post('/contact', [StorefrontController::class, 'submitContact'])->name('contact.submit');
-        Route::get('/track', [StorefrontController::class, 'track'])->name('track');
-        Route::post('/checkout/customer-lookup', [StorefrontController::class, 'lookupCustomer'])
-            ->middleware('throttle:30,1')
-            ->name('checkout.customer-lookup');
-        Route::post('/checkout', [StorefrontController::class, 'checkout'])->name('checkout');
-        Route::post('/checkout/{order}/paystack/initialize', [StorefrontController::class, 'initializePaystackPayment'])->name('checkout.paystack.initialize');
-        Route::get('/checkout/{order}/paystack/verify', [StorefrontController::class, 'verifyPaystackPayment'])->name('checkout.paystack.verify');
-        Route::get('/paystack/callback', [StorefrontController::class, 'verifyPaystackStoreCallback'])->name('paystack.callback');
-        Route::get('/checkout/{order}/paystack/callback', [StorefrontController::class, 'verifyPaystackPayment'])->name('checkout.paystack.callback');
-    });
+    ->group($routes);
