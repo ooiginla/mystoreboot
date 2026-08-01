@@ -15,7 +15,10 @@ return new class extends Migration
             // keywords[], tags[], image_alt, generated_at. The storefront always
             // renders SEO directly from live product data as a fallback, so this
             // is an enrichment layer, never a hard dependency.
-            $table->json('seo')->nullable()->after('custom_fields');
+            // This migration runs before custom_fields is introduced. Do not
+            // position this column relative to a column that does not exist yet
+            // on a fresh/production database.
+            $table->json('seo')->nullable();
         });
     }
 
