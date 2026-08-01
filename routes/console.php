@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 // Free stock held by unpaid online orders whose reservation window has elapsed.
 Schedule::command('sales:expire-reservations')->everyFiveMinutes()->withoutOverlapping();
+
+// Keep product SEO metadata fresh once a day (new/changed products only).
+Schedule::command('catalog:refresh-product-seo')->dailyAt('02:30')->withoutOverlapping();

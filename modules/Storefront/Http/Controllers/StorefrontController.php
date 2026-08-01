@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Modules\Business\Models\OnlineStore;
@@ -317,13 +318,23 @@ final class StorefrontController extends Controller
             'customer.email' => ['required', 'email:rfc', 'max:160'],
             'customer.phone' => ['required', 'string', 'max:60'],
             'customer.address' => ['required', 'string', 'max:1000'],
+            'customer.city' => ['required', 'string', 'max:120'],
             'customer.save_address' => ['sometimes', 'boolean'],
             'customer.address_label' => ['nullable', 'required_if:customer.save_address,true', 'string', 'max:80'],
             'shipping_option' => ['required', 'string', 'max:120'],
             'payment_method' => ['nullable', 'string', 'max:80'],
+            'notes' => ['nullable', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1', 'max:100'],
             'items.*.product_variant_id' => ['required', 'integer'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
+            'items.*.custom_selections' => ['nullable', 'array', 'max:10'],
+            'items.*.custom_selections.*' => ['required', 'string', 'max:120'],
+            'items.*.personalization' => ['nullable', 'array'],
+            'items.*.personalization.requested' => ['required_with:items.*.personalization', 'boolean'],
+            'items.*.personalization.customized_text' => ['nullable', 'string', 'max:500'],
+            'items.*.personalization.additional_info' => ['nullable', 'string', 'max:2000'],
+            'items.*.personalization.photograph_token' => ['nullable', 'string', 'max:80', 'regex:/\A[0-9a-f-]{36}\.[a-z0-9]+\z/i'],
+            'items.*.personalization.photograph_name' => ['nullable', 'string', 'max:255'],
         ]);
 
         // Lazily release expired reservations before this checkout so a stalled
@@ -349,11 +360,13 @@ final class StorefrontController extends Controller
                     'email' => $email,
                     'phone' => $customerData['phone'],
                     'address' => $customerData['address'],
+                    'city' => $customerData['city'],
                     'status' => CustomerStatus::Active->value,
                 ])->save();
 
                 $matchingAddress = $customer->addresses()
                     ->where('address', $customerData['address'])
+                    ->where('city', $customerData['city'])
                     ->first();
 
                 if ((bool) ($customerData['save_address'] ?? false)) {
@@ -364,6 +377,7 @@ final class StorefrontController extends Controller
                         [
                             'tenant_id' => $store->tenant_id,
                             'address' => $customerData['address'],
+                            'city' => $customerData['city'],
                             'is_default' => $addressWithLabel?->is_default ?? ! $customer->addresses()->exists(),
                             'last_used_at' => now(),
                         ],
@@ -390,6 +404,24 @@ final class StorefrontController extends Controller
                     );
 
                     $quantity = (int) $item['quantity'];
+                    $customDefinitions = collect($variant->product->custom_fields ?? [])
+                        ->filter(fn (array $field): bool => (bool) ($field['is_customer_selectable'] ?? false))
+                        ->mapWithKeys(fn (array $field): array => [(string) ($field['key'] ?? '') => collect($field['values'] ?? [])->map(fn ($value): string => (string) $value)->all()]);
+                    $customSelections = collect((array) ($item['custom_selections'] ?? []))
+                        ->mapWithKeys(fn (mixed $value, mixed $key): array => [trim((string) $key) => trim((string) $value)]);
+
+                    abort_unless(
+                        $customSelections->count() === $customDefinitions->count()
+                        && $customDefinitions->every(fn (array $values, string $key): bool => $customSelections->has($key) && in_array($customSelections->get($key), $values, true)),
+                        422,
+                        'One or more custom product selections are invalid.',
+                    );
+                    $personalization = $this->validatedPersonalization(
+                        $store,
+                        $variant->product,
+                        (array) ($item['personalization'] ?? []),
+                    );
+
                     $unitPriceMinor = (int) $variant->selling_price_minor;
                     $lineSubtotalMinor = $quantity * $unitPriceMinor;
                     $selectedTaxRate = $variant->product?->taxes?->sum(fn ($tax): float => (float) $tax->rate) ?? 0.0;
@@ -400,6 +432,8 @@ final class StorefrontController extends Controller
                     return [
                         'variant' => $variant,
                         'quantity' => $quantity,
+                        'custom_selections' => $customSelections->all(),
+                        'personalization' => $personalization,
                         'unit_price_minor' => $unitPriceMinor,
                         'unit_cost_minor' => (bool) ($store->tenant?->settings['use_estimated_cost_for_cogs'] ?? false)
                             ? (int) ($variant->cost_price_minor ?: $variant->product?->base_cost_price_minor ?: 0)
@@ -433,7 +467,18 @@ final class StorefrontController extends Controller
                                 continue;
                             }
 
-                            $reservations->reserve($store->tenant_id, $reservationLocationId, (int) $item['variant']->id, (int) $item['quantity']);
+                            $variant = $item['variant'];
+                            $itemName = collect([$variant->product?->name, $variant->variant_name])
+                                ->filter(fn (?string $part): bool => filled($part))
+                                ->join(' / ');
+
+                            $reservations->reserve(
+                                $store->tenant_id,
+                                $reservationLocationId,
+                                (int) $variant->id,
+                                (int) $item['quantity'],
+                                $itemName,
+                            );
                         }
 
                         $reservedUntil = now()->addMinutes(max(1, (int) ($store->reservation_hold_minutes ?: 30)));
@@ -466,15 +511,35 @@ final class StorefrontController extends Controller
                     'delivery_method' => $data['shipping_option'],
                     'delivery_status' => 'pending',
                     'delivery_address' => $customerData['address'],
+                    'delivery_city' => $customerData['city'],
+                    'notes' => $data['notes'] ?? null,
                 ]);
 
                 foreach ($items as $item) {
                     $variant = $item['variant'];
+                    $personalization = $item['personalization'];
+
+                    if (is_array($personalization) && filled($personalization['photograph_token'] ?? null)) {
+                        $token = (string) $personalization['photograph_token'];
+                        $source = "tenants/{$store->tenant_id}/storefront/personalization-temp/{$token}";
+                        $destination = "tenants/{$store->tenant_id}/sales/orders/{$order->id}/personalizations/{$token}";
+
+                        if (Storage::disk('public')->exists($source)) {
+                            Storage::disk('public')->move($source, $destination);
+                        }
+
+                        abort_unless(Storage::disk('public')->exists($destination), 422, 'The personalization photograph could not be attached. Please upload it again.');
+                        $personalization['photograph_path'] = $destination;
+                        unset($personalization['photograph_token']);
+                    }
+
                     $order->items()->create([
                         'tenant_id' => $store->tenant_id,
                         'product_variant_id' => $variant->id,
                         'item_name' => $variant->product?->name.' / '.$variant->variant_name,
                         'sku' => $variant->sku,
+                        'custom_selections' => $item['custom_selections'],
+                        'personalization' => $personalization,
                         'quantity' => $item['quantity'],
                         'unit_price_minor' => $item['unit_price_minor'],
                         'unit_cost_minor' => $item['unit_cost_minor'],
@@ -499,6 +564,44 @@ final class StorefrontController extends Controller
         return response()->json([
             'order_id' => $order->id,
             'order_reference' => $order->order_number,
+        ]);
+    }
+
+    public function uploadPersonalizationPhoto(OnlineStore $store, Request $request): JsonResponse
+    {
+        $store = $this->preparedStore($store);
+        abort_if($store->maintenance_mode || ! $store->is_active, 422, 'This store is temporarily unavailable.');
+
+        $data = $request->validate([
+            'product_id' => ['required', 'integer'],
+            'photograph' => ['required', 'image', 'max:8192'],
+        ], [
+            'photograph.required' => 'Please choose a photograph to upload.',
+            'photograph.uploaded' => 'The photograph could not reach the server. Please choose a smaller image and try again.',
+            'photograph.image' => 'Please upload a JPG, PNG, GIF, BMP, or WebP image.',
+            'photograph.max' => 'The photograph must not be larger than 8 MB.',
+        ]);
+        $product = Product::query()
+            ->where('tenant_id', $store->tenant_id)
+            ->where('status', ProductStatus::Active->value)
+            ->findOrFail($data['product_id']);
+        $settings = (array) ($product->personalization_settings ?? []);
+        $fields = (array) ($settings['fields'] ?? []);
+
+        abort_unless(
+            (bool) ($settings['enabled'] ?? false) && (bool) ($fields['photograph'] ?? false),
+            422,
+            'Photograph personalization is not enabled for this product.',
+        );
+
+        $photograph = $request->file('photograph');
+        $token = (string) Str::uuid().'.'.$photograph->extension();
+        $photograph->storeAs("tenants/{$store->tenant_id}/storefront/personalization-temp", $token, 'public');
+
+        return response()->json([
+            'token' => $token,
+            'name' => $photograph->getClientOriginalName(),
+            'message' => 'Photograph uploaded.',
         ]);
     }
 
@@ -527,10 +630,12 @@ final class StorefrontController extends Controller
                 'name' => $customer->name,
                 'phone' => $customer->phone,
                 'address' => $customer->address,
+                'city' => $customer->city,
                 'addresses' => $customer->addresses->map(fn ($address): array => [
                     'id' => $address->id,
                     'label' => $address->label,
                     'address' => $address->address,
+                    'city' => $address->city,
                     'is_default' => $address->is_default,
                 ])->values(),
             ],
@@ -876,11 +981,18 @@ final class StorefrontController extends Controller
             $related = $related->concat($fallback);
         }
 
+        $seo = app(\Modules\Catalog\Support\ProductSeo::class)->forProduct($product, $store);
+        $seoImage = $product->image_path
+            ? url('/storage/'.ltrim($product->image_path, '/'))
+            : null;
+
         return view('storefront::product', [
             'store' => $store,
             'product' => $product,
             'relatedProducts' => $related,
             'catalogType' => $type,
+            'seo' => $seo,
+            'seoImage' => $seoImage,
         ]);
     }
 
@@ -929,6 +1041,59 @@ final class StorefrontController extends Controller
         }
 
         return (int) round(((float) ($option['price'] ?? 0)) * 100);
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>|null
+     */
+    private function validatedPersonalization(OnlineStore $store, Product $product, array $input): ?array
+    {
+        if (! filter_var($input['requested'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return null;
+        }
+
+        $settings = (array) ($product->personalization_settings ?? []);
+        $fields = (array) ($settings['fields'] ?? []);
+
+        if (! (bool) ($settings['enabled'] ?? false)) {
+            throw ValidationException::withMessages([
+                'items' => "Personalization is not available for {$product->name}.",
+            ]);
+        }
+
+        $personalization = ['requested' => true];
+
+        if ((bool) ($fields['customized_text'] ?? false)) {
+            $text = trim((string) ($input['customized_text'] ?? ''));
+            if ($text === '') {
+                throw ValidationException::withMessages([
+                    'items' => "Enter the customized text for {$product->name}.",
+                ]);
+            }
+            $personalization['customized_text'] = $text;
+        }
+
+        if ((bool) ($fields['additional_info'] ?? false)) {
+            $additionalInfo = trim((string) ($input['additional_info'] ?? ''));
+            if ($additionalInfo !== '') {
+                $personalization['additional_info'] = $additionalInfo;
+            }
+        }
+
+        if ((bool) ($fields['photograph'] ?? false)) {
+            $token = trim((string) ($input['photograph_token'] ?? ''));
+            $path = "tenants/{$store->tenant_id}/storefront/personalization-temp/{$token}";
+            if (! preg_match('/\A[0-9a-f-]{36}\.[a-z0-9]+\z/i', $token) || ! Storage::disk('public')->exists($path)) {
+                throw ValidationException::withMessages([
+                    'items' => "Upload the personalization photograph for {$product->name} again.",
+                ]);
+            }
+            $personalization['photograph_token'] = $token;
+            $personalization['photograph_name'] = trim((string) ($input['photograph_name'] ?? 'Photograph')) ?: 'Photograph';
+        }
+
+        return $personalization;
     }
 
     private function assertStoreOrder(OnlineStore $store, SalesOrder $order): void

@@ -18,18 +18,24 @@ use Modules\Inventory\Models\InventoryStockLevel;
  */
 final class AdjustInventoryReservationAction
 {
-    public function reserve(string $tenantId, int $locationId, int $variantId, int $quantity): void
+    public function reserve(string $tenantId, int $locationId, int $variantId, int $quantity, ?string $itemName = null): void
     {
         if ($quantity <= 0) {
             return;
         }
 
-        DB::transaction(function () use ($tenantId, $locationId, $variantId, $quantity): void {
+        DB::transaction(function () use ($tenantId, $locationId, $variantId, $quantity, $itemName): void {
             $stockLevel = $this->lockedStockLevel($tenantId, $locationId, $variantId);
 
             if ($stockLevel->quantity_available < $quantity) {
+                $available = max(0, (int) $stockLevel->quantity_available);
+                $displayName = filled($itemName) ? '“'.trim((string) $itemName).'”' : 'this item';
+                $message = $available === 0
+                    ? "Sorry, {$displayName} has just sold out. Please remove it from your cart to continue."
+                    : "Sorry, only {$available} of {$displayName} is available, but your cart has {$quantity}. Please reduce the quantity or remove it to continue.";
+
                 throw ValidationException::withMessages([
-                    'items' => 'One or more items just sold out or do not have enough stock available.',
+                    'items' => $message,
                 ]);
             }
 

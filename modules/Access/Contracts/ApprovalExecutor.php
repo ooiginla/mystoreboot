@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Access\Contracts;
 
+use App\Models\User;
 use Modules\Access\Models\ApprovalRequest;
 
 /**
@@ -12,5 +13,5 @@ use Modules\Access\Models\ApprovalRequest;
  */
 interface ApprovalExecutor
 {
-    public function execute(ApprovalRequest $request): void;
+    public function execute(ApprovalRequest $request, User $approver): void;
 }

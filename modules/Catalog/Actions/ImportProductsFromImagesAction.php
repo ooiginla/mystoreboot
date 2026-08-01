@@ -6,10 +6,13 @@ namespace Modules\Catalog\Actions;
 
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
+use Modules\Business\Models\OnlineStore;
+use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Enums\TaxBehavior;
 use Modules\Catalog\Models\Product;
+use Modules\Catalog\Models\ProductCategory;
 
 /**
  * Bulk-creates DRAFT products from uploaded photos. Each photo is drafted by AI
@@ -22,6 +25,7 @@ final class ImportProductsFromImagesAction
     public function __construct(
         private readonly DraftProductFromImageAction $draftFromImage,
         private readonly SaveProductAction $saveProduct,
+        private readonly EnsureDefaultProductCategoryAction $ensureDefaultCategory,
     ) {}
 
     /**
@@ -61,15 +65,69 @@ final class ImportProductsFromImagesAction
                 'status' => ProductStatus::Draft->value,
                 'sku' => '',
                 'image' => $image,
-                // Keep the AI's category guess and tags as tags so nothing is lost;
-                // the merchant assigns a real category during review.
-                'new_tags' => collect($draft['tags'])
-                    ->when($draft['category'] !== '', fn ($tags) => $tags->push($draft['category']))
-                    ->implode(','),
+                // Every imported product gets a category: an existing match, a new
+                // AI-suggested one, or Uncategorized when it's unclear / AI is off.
+                'category_id' => $this->resolveCategoryId($tenantId, $draft['category']),
+                'new_tags' => collect($draft['tags'])->implode(','),
             ]);
         }
 
         return ['count' => count($products), 'products' => $products];
+    }
+
+    /**
+     * Resolve the category for an imported product. Matches an existing product
+     * category by name (case-insensitive); otherwise creates the AI-suggested
+     * one and attaches it to the tenant's storefront(s). Falls back to
+     * Uncategorized when the AI gave no usable category.
+     */
+    private function resolveCategoryId(string $tenantId, string $categoryName): int
+    {
+        $categoryName = trim($categoryName);
+
+        if ($categoryName === '' || strcasecmp($categoryName, 'uncategorized') === 0) {
+            return $this->ensureDefaultCategory->execute($tenantId)->id;
+        }
+
+        $existing = ProductCategory::query()
+            ->where('tenant_id', $tenantId)
+            ->where('category_type', CategoryType::Product->value)
+            ->whereRaw('lower(name) = ?', [strtolower($categoryName)])
+            ->first();
+
+        if ($existing) {
+            return (int) $existing->id;
+        }
+
+        $category = ProductCategory::query()->create([
+            'tenant_id' => $tenantId,
+            'parent_id' => null,
+            'category_type' => CategoryType::Product->value,
+            'name' => $categoryName,
+            'slug' => $this->uniqueCategorySlug($tenantId, $categoryName),
+            'status' => 'active',
+        ]);
+
+        // Attach to storefront(s) so imported products remain visible online.
+        OnlineStore::query()
+            ->where('tenant_id', $tenantId)
+            ->each(fn (OnlineStore $store) => $store->categories()->syncWithoutDetaching([$category->id]));
+
+        return (int) $category->id;
+    }
+
+    private function uniqueCategorySlug(string $tenantId, string $name): string
+    {
+        $base = Str::slug($name) ?: 'category';
+        $slug = $base;
+        $counter = 2;
+
+        while (ProductCategory::query()->where('tenant_id', $tenantId)->where('slug', $slug)->exists()) {
+            $slug = $base.'-'.$counter;
+            $counter++;
+        }
+
+        return $slug;
     }
 
     private function fallbackName(UploadedFile $image): string

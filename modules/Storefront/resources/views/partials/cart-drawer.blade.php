@@ -11,7 +11,7 @@
             </button>
         </div>
         <div class="sf-caption mt-5 grid grid-cols-4 gap-2 text-center font-bold">
-            @foreach (['cart' => 'Cart', 'shipping' => 'Shipping', 'payment' => 'Payment', 'confirm' => 'Confirm'] as $key => $label)
+            @foreach (['cart' => 'Cart', 'shipping' => 'Shipping', 'additional' => 'Notes', 'payment' => 'Payment'] as $key => $label)
                 <button type="button" data-progress-step="{{ $key }}" data-progress-target="{{ $key }}" class="disabled:cursor-default disabled:opacity-60 [&[data-active=true]_.dot]:bg-[var(--store-primary)] [&[data-active=true]_.dot]:text-white [&[data-active=true]_.label]:text-[var(--store-primary)]">
                     <span class="dot mx-auto flex h-7 w-7 items-center justify-center rounded-full bg-[var(--store-soft)] text-[var(--store-muted)]">{{ $loop->iteration }}</span>
                     <span class="label mt-1 block text-[var(--store-muted)]">{{ $label }}</span>
@@ -31,13 +31,14 @@
             <div class="mt-4 grid gap-3">
                 <input class="store-input" name="checkout_email" type="email" placeholder="Email address" autocomplete="email" required>
                 <p class="sf-body-sm -mt-1 text-[var(--store-muted)]" data-customer-lookup-status aria-live="polite"></p>
-                <input class="store-input" name="checkout_name" placeholder="Full name" autocomplete="name" required>
-                <input class="store-input" name="checkout_phone" placeholder="Phone number" autocomplete="tel" required>
+                <input class="store-input" name="checkout_name" placeholder="Recipient Full name" autocomplete="name" required>
+                <input class="store-input" name="checkout_phone" placeholder="Recipient Phone Number(s)" autocomplete="tel" required>
                 <div data-saved-addresses hidden>
                     <label class="sf-body-sm mb-1 block font-bold" for="checkout-saved-address">Saved delivery address</label>
                     <select class="store-input" id="checkout-saved-address" data-saved-address-select></select>
                 </div>
-                <textarea class="store-input min-h-24" name="checkout_address" placeholder="Delivery address" autocomplete="street-address" required></textarea>
+                <textarea class="store-input min-h-24" name="checkout_address" placeholder="Recipient Delivery Address" autocomplete="street-address" required></textarea>
+                <input class="store-input" name="checkout_city" placeholder="Recipient City" autocomplete="address-level2" required>
                 <label class="sf-body-sm flex cursor-pointer items-center gap-2" data-save-address-control>
                     <input type="checkbox" name="checkout_save_address" value="1">
                     <span>Save this address for future use</span>
@@ -74,6 +75,13 @@
             </div>
         </section>
 
+        <section data-checkout-step="additional" hidden>
+            <h3 class="sf-headline-md">Additional Info</h3>
+            <p class="sf-body-md mt-2 text-[var(--store-muted)]">Add any notes or special instructions relating to your order.</p>
+            <textarea class="store-input mt-4 min-h-36" name="checkout_notes" maxlength="1000" placeholder="Notes or additional instructions relating to your order"></textarea>
+            <p class="sf-caption mt-2 text-[var(--store-muted)]">Optional</p>
+        </section>
+
         <section data-checkout-step="payment" hidden>
             <h3 class="sf-headline-md">Payment method</h3>
             <div class="sf-body-md mt-3 rounded-lg bg-[var(--store-soft)] p-3">
@@ -82,12 +90,26 @@
             </div>
             <div class="mt-4 grid gap-2">
                 @forelse ((array) $store->payment_methods as $method)
-                    <label class="cursor-pointer rounded-lg border border-[var(--store-line)] p-3 hover:bg-[var(--store-soft)]">
-                        <span class="flex items-center gap-3">
-                            <input type="radio" name="payment_method" value="{{ $method }}" @checked($loop->first)>
-                            <span class="sf-body-md font-semibold">{{ $paymentLabels[$method] ?? Str::headline($method) }}</span>
-                        </span>
-                    </label>
+                    <div class="grid gap-2">
+                        <label class="cursor-pointer rounded-lg border border-[var(--store-line)] p-3 hover:bg-[var(--store-soft)]">
+                            <span class="flex items-center gap-3">
+                                <input type="radio" name="payment_method" value="{{ $method }}" @checked($loop->first)>
+                                <span class="sf-body-md font-semibold">{{ $paymentLabels[$method] ?? Str::headline($method) }}</span>
+                            </span>
+                        </label>
+                        @if ($method === 'bank_account' && filled($store->bank_accounts))
+                            <div class="sf-body-md rounded-lg bg-[var(--store-soft)] p-4" data-bank-transfer-details hidden>
+                                <p class="font-bold">Bank transfer details</p>
+                                @foreach ((array) $store->bank_accounts as $account)
+                                    <div class="mt-3 space-y-1">
+                                        <p><span class="font-semibold">Bank Name:</span> {{ $account['bank_name'] ?? '' }}</p>
+                                        <p><span class="font-semibold">Account Name:</span> {{ $account['account_name'] ?? '' }}</p>
+                                        <p><span class="font-semibold">Account Number:</span> {{ $account['account_number'] ?? '' }}</p>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
                 @empty
                     <label class="cursor-pointer rounded-lg border border-[var(--store-line)] p-3">
                         <span class="flex items-center gap-3">
@@ -97,18 +119,6 @@
                     </label>
                 @endforelse
             </div>
-            @if (in_array('bank_account', (array) $store->payment_methods, true) && filled($store->bank_accounts))
-                <div class="sf-body-md mt-4 rounded-lg bg-[var(--store-soft)] p-4" data-bank-transfer-details hidden>
-                    <p class="font-bold">Bank transfer details</p>
-                    @foreach ((array) $store->bank_accounts as $account)
-                        <div class="mt-3 space-y-1">
-                            <p><span class="font-semibold">Bank Name:</span> {{ $account['bank_name'] ?? '' }}</p>
-                            <p><span class="font-semibold">Account Name:</span> {{ $account['account_name'] ?? '' }}</p>
-                            <p><span class="font-semibold">Account Number:</span> {{ $account['account_number'] ?? '' }}</p>
-                        </div>
-                    @endforeach
-                </div>
-            @endif
         </section>
 
         <section data-checkout-step="confirm" hidden>
@@ -131,7 +141,8 @@
         </div>
         <div class="mt-4 grid gap-2">
             <button type="button" class="store-btn store-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50" data-go-step="shipping" data-checkout-step="cart" data-requires-cart>Checkout</button>
-            <button type="button" class="store-btn store-btn-primary w-full" data-go-step="payment" data-checkout-step="shipping">Continue to payment</button>
+            <button type="button" class="store-btn store-btn-primary w-full" data-go-step="additional" data-checkout-step="shipping">Continue</button>
+            <button type="button" class="store-btn store-btn-primary w-full" data-go-step="payment" data-checkout-step="additional">Continue to payment</button>
             <button type="button" class="store-btn store-btn-secondary w-full" data-confirm-order data-checkout-step="payment">Pay now</button>
             <a href="{{ $storefrontRoute($store) }}" class="store-btn store-btn-primary w-full" data-continue-shopping data-checkout-step="confirm">Continue shopping</a>
         </div>

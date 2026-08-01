@@ -40,6 +40,20 @@
         ->all();
     $optionRows = old('options');
     $variantRows = old('variants');
+    $submittedCustomFields = old('custom_fields');
+    $selectedCustomFields = collect(is_array($submittedCustomFields) ? $submittedCustomFields : ($product?->custom_fields ?? []))
+        ->filter(fn (array $field): bool => (bool) ($field['is_assigned'] ?? true))
+        ->keyBy(fn (array $field): string => strtolower(trim((string) ($field['key'] ?? ''))));
+    $personalizationSettings = old('personalization', $product?->personalization_settings ?? [
+        'enabled' => false,
+        'fields' => [
+            'customized_text' => true,
+            'additional_info' => true,
+            'photograph' => false,
+        ],
+    ]);
+    $personalizationEnabled = filter_var($personalizationSettings['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $personalizationFields = (array) ($personalizationSettings['fields'] ?? []);
 
     if (! is_array($optionRows)) {
         $optionRows = $product?->options
@@ -117,6 +131,8 @@
                 <a href="#{{ $dialogId }}-pricing" data-local-tab-target="{{ $dialogId }}-pricing">Pricing</a>
                 <a href="#{{ $dialogId }}-tags-attributes" data-local-tab-target="{{ $dialogId }}-tags-attributes">Tags, Badges & Attributes</a>
                 @if (! $isService)
+                    <a href="#{{ $dialogId }}-custom" data-local-tab-target="{{ $dialogId }}-custom">Custom</a>
+                    <a href="#{{ $dialogId }}-personalization" data-local-tab-target="{{ $dialogId }}-personalization">Personalization</a>
                     <a href="#{{ $dialogId }}-variants" data-local-tab-target="{{ $dialogId }}-variants">Variants</a>
                 @endif
             </div>
@@ -461,6 +477,79 @@
             </section>
 
             @if (! $isService)
+                <section data-local-tab-panel id="{{ $dialogId }}-custom" hidden>
+                    <div class="panel catalog-variant-editor" data-product-custom-assignments>
+                        <div class="panel-header"><div><h3 class="panel-title">Custom product choices</h3><p class="subtle">Assign keys from the Custom library to this product, then choose whether customers can select a value on the online store.</p></div></div>
+                        <div class="panel-body">
+                            @forelse ($customDefinitions as $customIndex => $definition)
+                                @php($selectedCustomField = $selectedCustomFields->get(strtolower($definition->name)))
+                                <div class="variant-row-editor" data-product-custom-assignment>
+                                    <input type="hidden" name="custom_fields[{{ $customIndex }}][key]" value="{{ $definition->name }}">
+                                    <input type="hidden" name="custom_fields[{{ $customIndex }}][values]" value="{{ collect($definition->values)->implode(', ') }}">
+                                    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+                                        <div>
+                                            <strong>{{ $definition->name }}</strong>
+                                            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+                                                @foreach ($definition->values as $value)
+                                                    <span class="catalog-value-tag"><span>{{ $value }}</span></span>
+                                                @endforeach
+                                            </div>
+                                        </div>
+                                        <div style="display:grid; gap:8px;">
+                                            <input type="hidden" name="custom_fields[{{ $customIndex }}][is_assigned]" value="0">
+                                            <label class="inline-check"><input type="checkbox" name="custom_fields[{{ $customIndex }}][is_assigned]" value="1" data-custom-assigned @checked((bool) $selectedCustomField)> Assign to product</label>
+                                            <input type="hidden" name="custom_fields[{{ $customIndex }}][is_customer_selectable]" value="0">
+                                            <label class="inline-check"><input type="checkbox" name="custom_fields[{{ $customIndex }}][is_customer_selectable]" value="1" data-custom-customer-selectable @checked((bool) ($selectedCustomField['is_customer_selectable'] ?? $definition->is_customer_selectable))> Customer can select</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            @empty
+                                <div class="empty">No custom keys exist yet. Create one from the main Custom tab first.</div>
+                            @endforelse
+                        </div>
+                    </div>
+                </section>
+
+                <section data-local-tab-panel id="{{ $dialogId }}-personalization" hidden>
+                    <div class="panel catalog-variant-editor" data-product-personalization>
+                        <div class="panel-header">
+                            <div>
+                                <h3 class="panel-title">Product personalization</h3>
+                                <p class="subtle">Offer personalization for this product and choose the information customers must provide on the storefront.</p>
+                            </div>
+                        </div>
+                        <div class="panel-body" style="display:grid; gap:16px;">
+                            <input type="hidden" name="personalization[enabled]" value="0">
+                            <label class="inline-check">
+                                <input type="checkbox" name="personalization[enabled]" value="1" data-personalization-enabled @checked($personalizationEnabled)>
+                                Enable personalization for this product
+                            </label>
+
+                            <div class="variant-row-editor" data-personalization-fields>
+                                <div>
+                                    <strong>Information to collect</strong>
+                                    <p class="subtle" style="margin-top:4px;">Customized Text and Additional Info/Note are selected by default. Enable photograph upload only when the product requires an image.</p>
+                                </div>
+                                <input type="hidden" name="personalization[fields][customized_text]" value="0">
+                                <label class="inline-check">
+                                    <input type="checkbox" name="personalization[fields][customized_text]" value="1" @checked(filter_var($personalizationFields['customized_text'] ?? true, FILTER_VALIDATE_BOOLEAN))>
+                                    <span><strong>Customized Text</strong><span class="subtle" style="display:block;">The text the customer wants customized on the item.</span></span>
+                                </label>
+                                <input type="hidden" name="personalization[fields][additional_info]" value="0">
+                                <label class="inline-check">
+                                    <input type="checkbox" name="personalization[fields][additional_info]" value="1" @checked(filter_var($personalizationFields['additional_info'] ?? true, FILTER_VALIDATE_BOOLEAN))>
+                                    <span><strong>Additional Info/Note</strong><span class="subtle" style="display:block;">Text colour, font size, engraving position, or special instructions.</span></span>
+                                </label>
+                                <input type="hidden" name="personalization[fields][photograph]" value="0">
+                                <label class="inline-check">
+                                    <input type="checkbox" name="personalization[fields][photograph]" value="1" @checked(filter_var($personalizationFields['photograph'] ?? false, FILTER_VALIDATE_BOOLEAN))>
+                                    <span><strong>Upload photograph</strong><span class="subtle" style="display:block;">Require the customer to upload an image for this item.</span></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <section data-local-tab-panel id="{{ $dialogId }}-variants" hidden>
                     <div class="field">
                         <label>This item has sellable variants</label>

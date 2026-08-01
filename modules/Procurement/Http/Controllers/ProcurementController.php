@@ -10,8 +10,12 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Modules\Access\Enums\ApprovalStatus;
 use Modules\Access\Enums\MembershipStatus;
+use Modules\Access\Models\ApprovalRequest;
 use Modules\Access\Models\TenantMembership;
+use Modules\Access\Support\ApprovalService;
+use Modules\Access\Support\PermissionService;
 use Modules\Business\Models\Branch;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\ProductVariant;
@@ -35,7 +39,7 @@ use Modules\Tenancy\Models\Tenant;
 
 final class ProcurementController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, ApprovalService $approvals, PermissionService $permissions): View
     {
         /** @var User $user */
         $user = $request->user();
@@ -92,6 +96,8 @@ final class ProcurementController extends Controller
             'tenant' => $tenant,
             'tenants' => $tenants,
             'isPlatformAdmin' => $user->is_platform_admin,
+            'purchaseOrderApprovalsEnabled' => $approvals->requiresApproval($tenant, 'purchase_order'),
+            'canApprovePurchaseOrders' => $permissions->has($user, $tenant, 'procurement.approve'),
             'vendors' => $vendors,
             'allVendors' => $allVendors,
             'locations' => $locations,
@@ -145,12 +151,34 @@ final class ProcurementController extends Controller
         return redirect()->to(route('admin.procurement.index', ['tenant' => $vendor->tenant_id]).'#vendors')->with('status', "Vendor {$vendor->name} updated.");
     }
 
-    public function storePurchaseOrder(PurchaseOrderRequest $request, SavePurchaseOrderAction $action): RedirectResponse
+    public function storePurchaseOrder(
+        PurchaseOrderRequest $request,
+        SavePurchaseOrderAction $action,
+        ApprovePurchaseOrderAction $approvePurchaseOrder,
+        ApprovalService $approvals,
+    ): RedirectResponse
     {
-        $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
+        $user = $request->user();
+        $tenantId = $request->string('tenant_id')->toString();
+        $this->authorizeTenantIdAccess($user, $tenantId);
+        $tenant = Tenant::query()->findOrFail($tenantId);
         $purchaseOrder = $action->execute($request->validated());
 
-        return redirect()->to(route('admin.procurement.index', ['tenant' => $purchaseOrder->tenant_id]).'#purchase-orders')->with('status', "Purchase order {$purchaseOrder->po_number} created.");
+        if ($approvals->shouldDivert($tenant, $user, 'purchase_order', 'procurement.approve')) {
+            $approvals->create($tenant, $user, 'purchase_order', 'Purchase order · '.$purchaseOrder->po_number, [
+                'amount_minor' => $purchaseOrder->total_minor,
+                'description' => 'Purchase from '.$purchaseOrder->vendor->name.'.',
+                'payload' => ['purchase_order_id' => $purchaseOrder->id],
+            ]);
+
+            return redirect()->to(route('admin.procurement.index', ['tenant' => $purchaseOrder->tenant_id]).'#purchase-orders')
+                ->with('status', "Purchase order {$purchaseOrder->po_number} submitted for approval.");
+        }
+
+        $approvePurchaseOrder->execute($purchaseOrder, $user);
+
+        return redirect()->to(route('admin.procurement.index', ['tenant' => $purchaseOrder->tenant_id]).'#purchase-orders')
+            ->with('status', "Purchase order {$purchaseOrder->po_number} created and approved.");
     }
 
     public function updatePurchaseOrder(PurchaseOrderRequest $request, PurchaseOrder $purchaseOrder, SavePurchaseOrderAction $action): RedirectResponse
@@ -160,6 +188,11 @@ final class ProcurementController extends Controller
         $data = $request->validated();
         abort_unless($data['tenant_id'] === $purchaseOrder->tenant_id, 403);
         $updatedPurchaseOrder = $action->execute($data, $purchaseOrder);
+        $this->pendingPurchaseOrderApproval($updatedPurchaseOrder)?->update([
+            'title' => 'Purchase order · '.$updatedPurchaseOrder->po_number,
+            'description' => 'Purchase from '.$updatedPurchaseOrder->vendor->name.'.',
+            'amount_minor' => $updatedPurchaseOrder->total_minor,
+        ]);
 
         return redirect()->to(route('admin.procurement.index', ['tenant' => $updatedPurchaseOrder->tenant_id]).'#purchase-orders')->with('status', "Purchase order {$updatedPurchaseOrder->po_number} updated.");
     }
@@ -169,14 +202,32 @@ final class ProcurementController extends Controller
         $this->authorizeTenantIdAccess($request->user(), $purchaseOrder->tenant_id);
         abort_unless($purchaseOrder->status === PurchaseOrderStatus::PendingApproval, 422, 'Only purchase orders awaiting approval can be cancelled.');
         $purchaseOrder->update(['status' => PurchaseOrderStatus::Cancelled->value]);
+        $this->pendingPurchaseOrderApproval($purchaseOrder)?->update([
+            'status' => ApprovalStatus::Cancelled->value,
+            'decision_note' => 'The purchase order was cancelled.',
+            'decided_at' => now(),
+        ]);
 
         return redirect()->to(route('admin.procurement.index', ['tenant' => $purchaseOrder->tenant_id]).'#purchase-orders')->with('status', "Purchase order {$purchaseOrder->po_number} cancelled.");
     }
 
-    public function approve(Request $request, PurchaseOrder $purchaseOrder, ApprovePurchaseOrderAction $action): RedirectResponse
+    public function approve(
+        Request $request,
+        PurchaseOrder $purchaseOrder,
+        ApprovePurchaseOrderAction $action,
+        ApprovalService $approvals,
+    ): RedirectResponse
     {
         $this->authorizeTenantIdAccess($request->user(), $purchaseOrder->tenant_id);
-        $action->execute($purchaseOrder, $request->user());
+        $tenant = Tenant::query()->findOrFail($purchaseOrder->tenant_id);
+        abort_unless($approvals->requiresApproval($tenant, 'purchase_order'), 422, 'Purchase order approvals are not enabled for this business.');
+
+        $approvalRequest = $this->pendingPurchaseOrderApproval($purchaseOrder);
+        if ($approvalRequest) {
+            $approvals->approve($approvalRequest, $request->user());
+        } else {
+            $action->execute($purchaseOrder, $request->user());
+        }
 
         return redirect()->to(route('admin.procurement.index', ['tenant' => $purchaseOrder->tenant_id]).'#purchase-orders')->with('status', "{$purchaseOrder->po_number} approved.");
     }
@@ -218,6 +269,16 @@ final class ProcurementController extends Controller
                 'status' => 'active',
             ]);
         });
+    }
+
+    private function pendingPurchaseOrderApproval(PurchaseOrder $purchaseOrder): ?ApprovalRequest
+    {
+        return ApprovalRequest::query()
+            ->where('tenant_id', $purchaseOrder->tenant_id)
+            ->where('type', 'purchase_order')
+            ->where('status', ApprovalStatus::Pending->value)
+            ->get()
+            ->first(fn (ApprovalRequest $request): bool => (int) ($request->payload['purchase_order_id'] ?? 0) === $purchaseOrder->id);
     }
 
     /**

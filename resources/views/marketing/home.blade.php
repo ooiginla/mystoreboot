@@ -216,6 +216,36 @@
         </div>
     </section>
 
+    {{-- ============================================================= AI-ASSISTED --}}
+    <section id="ai" class="sb-section scroll-mt-24">
+        <div class="sb-container">
+            <div class="sb-reveal mx-auto max-w-2xl text-center">
+                <span class="sb-eyebrow">✨ AI-assisted</span>
+                <h2 class="sb-h2 mt-5">Let AI do the busywork of setting up shop.</h2>
+                <p class="sb-lead mt-5">Getting online usually means hours of typing product names, writing descriptions and fussing with SEO. Storeboot's built-in AI does the heavy lifting — so you go from products in a box to a store that sells in minutes, not days.</p>
+            </div>
+
+            <div class="mt-16 grid gap-5 sm:grid-cols-2">
+                @foreach ($aiFeatures as $feature)
+                    <div class="sb-reveal sb-card group relative overflow-hidden p-7 transition duration-300 hover:-translate-y-1 hover:border-brand-300 hover:shadow-lg dark:hover:border-brand-500/40">
+                        <span class="absolute right-5 top-5 inline-flex items-center gap-1 rounded-full bg-brand-500/12 px-2.5 py-1 text-[11px] font-bold uppercase tracking-widest text-brand-600 dark:text-brand-400">
+                            <span aria-hidden="true">✨</span> AI
+                        </span>
+                        <span class="grid h-12 w-12 place-items-center rounded-2xl bg-brand-500/12 text-brand-600 transition group-hover:bg-brand-500 group-hover:text-white dark:text-brand-400">
+                            {!! $feature['icon'] !!}
+                        </span>
+                        <h3 class="mt-5 font-display text-lg font-bold text-zinc-900 dark:text-white">{{ $feature['title'] }}</h3>
+                        <p class="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">{{ $feature['body'] }}</p>
+                    </div>
+                @endforeach
+            </div>
+
+            <p class="sb-reveal mx-auto mt-8 max-w-2xl text-center text-sm text-zinc-500 dark:text-zinc-400">
+                You stay in control — every AI suggestion is a draft you can edit before it goes live. Works out of the box, gets even smarter when you add your own AI key.
+            </p>
+        </div>
+    </section>
+
     {{-- ============================================================= PRODUCT SHOWCASE / VIDEO --}}
     <section id="showcase" class="sb-section scroll-mt-24">
         <div class="sb-container">

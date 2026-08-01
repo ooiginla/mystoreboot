@@ -63,8 +63,9 @@ class ProductPhotoImportTest extends TestCase
         $this->assertNotNull($product->image_path);
         // A default variant carries the drafted price.
         $this->assertSame(150000, (int) $product->variants()->value('selling_price_minor'));
-        // The AI category is preserved as a tag for the merchant to reconcile.
-        $this->assertTrue(ProductTag::query()->where('tenant_id', $tenant->id)->where('name', 'Beverages')->exists());
+        // The AI category becomes a real, assigned category (never left blank).
+        $this->assertNotNull($product->category_id);
+        $this->assertSame('Beverages', $product->category?->name);
     }
 
     public function test_photos_can_be_drafted_with_an_openai_key(): void
@@ -111,6 +112,7 @@ class ProductPhotoImportTest extends TestCase
         $this->assertSame('Ankara Midi Dress', $product->name);
         $this->assertSame(ProductStatus::Draft, $product->status);
         $this->assertSame(1200000, (int) $product->base_price_minor);
+        $this->assertSame('Fashion', $product->category?->name);
     }
 
     public function test_import_still_creates_drafts_when_no_ai_key_is_configured(): void
@@ -140,6 +142,8 @@ class ProductPhotoImportTest extends TestCase
         $this->assertSame('Blue Ankara Dress', $product->name);
         $this->assertSame(ProductStatus::Draft, $product->status);
         $this->assertSame(0, (int) $product->base_price_minor);
+        // AI unavailable → still categorized, under Uncategorized (never blank).
+        $this->assertSame('Uncategorized', $product->category?->name);
         $this->assertNotNull($product->image_path);
     }
 

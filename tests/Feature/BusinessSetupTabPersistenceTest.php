@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Business\Models\Branch;
+use Modules\Business\Models\Department;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 use Tests\TestCase;
@@ -46,6 +47,18 @@ final class BusinessSetupTabPersistenceTest extends TestCase
             'code' => 'SALES',
             'status' => 'active',
         ])->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#departments');
+
+        $department = Department::query()->where('tenant_id', $tenant->id)->where('code', 'SALES')->firstOrFail();
+
+        $this->put(route('admin.business.departments.update', $department), [
+            'name' => 'Retail Sales',
+        ])->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#departments');
+
+        $this->assertDatabaseHas('departments', [
+            'id' => $department->id,
+            'name' => 'Retail Sales',
+            'code' => 'SALES',
+        ]);
 
         $this->post(route('admin.access.roles.store'), [
             'tenant_id' => $tenant->id,

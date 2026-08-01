@@ -29,7 +29,8 @@ class CatalogProductCollectionTest extends TestCase
                 'name' => 'Trending Now',
                 'is_visible' => '1',
             ])
-            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#collections')
+            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#badges-collections')
+            ->assertSessionHas('catalog_accordion', 'collections')
             ->assertSessionHas('status', 'Collection Trending Now created.');
 
         $collection = ProductCollection::query()->where('tenant_id', $tenant->id)->firstOrFail();
@@ -65,6 +66,9 @@ class CatalogProductCollectionTest extends TestCase
             ->get(route('admin.catalog.index', ['tenant' => $tenant->id]))
             ->assertOk()
             ->assertSee('Product Collections')
+            ->assertSee('data-tab-target="badges-collections"', false)
+            ->assertSee('data-catalog-management-accordion="collections"', false)
+            ->assertSee('data-accordion-icon="collections"', false)
             ->assertSee('Trending Now')
             ->assertSee('Visible on store')
             ->assertSee('Create a new collection')

@@ -14,6 +14,7 @@ use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
 use Modules\Catalog\Actions\CreateCategoryAction;
+use Modules\Catalog\Actions\GenerateProductImageAction;
 use Modules\Catalog\Actions\ImportProductsFromImagesAction;
 use Modules\Catalog\Actions\SaveProductAction;
 use Modules\Catalog\Actions\SaveProductAttributeAction;
@@ -27,6 +28,7 @@ use Modules\Catalog\Http\Requests\ProductAttributeRequest;
 use Modules\Catalog\Http\Requests\ProductBadgeRequest;
 use Modules\Catalog\Http\Requests\ProductCategoryRequest;
 use Modules\Catalog\Http\Requests\ProductCollectionRequest;
+use Modules\Catalog\Http\Requests\ProductCustomDefinitionRequest;
 use Modules\Catalog\Http\Requests\ProductRequest;
 use Modules\Catalog\Http\Requests\ProductStatusRequest;
 use Modules\Catalog\Http\Requests\ProductTagRequest;
@@ -36,6 +38,7 @@ use Modules\Catalog\Models\ProductAttributeDefinition;
 use Modules\Catalog\Models\ProductBadge;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Catalog\Models\ProductCollection;
+use Modules\Catalog\Models\ProductCustomDefinition;
 use Modules\Catalog\Models\ProductTag;
 use Modules\Catalog\Models\ProductTax;
 use Modules\Catalog\Models\ProductVariant;
@@ -78,7 +81,13 @@ final class CatalogController extends Controller
             ->paginate(20, ['*'], 'services_page')
             ->withQueryString()
             ->fragment('services');
-        $visibleProducts = $productItems->getCollection()->merge($serviceItems->getCollection());
+        $customProducts = $productQuery(ProductType::Product)->get();
+        $customDefinitions = ProductCustomDefinition::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
+        $visibleProducts = $productItems->getCollection()
+            ->merge($serviceItems->getCollection())
+            ->merge($customProducts)
+            ->unique('id')
+            ->values();
 
         $categories = ProductCategory::query()
             ->where('tenant_id', $tenant->id)
@@ -97,6 +106,8 @@ final class CatalogController extends Controller
             'products' => $visibleProducts,
             'productItems' => $productItems,
             'serviceItems' => $serviceItems,
+            'customProducts' => $customProducts,
+            'customDefinitions' => $customDefinitions,
             'categories' => $categories,
             'productBadges' => ProductBadge::query()->withCount('products')->where('tenant_id', $tenant->id)->orderBy('name')->get(),
             'productCollections' => $productCollections,
@@ -120,6 +131,7 @@ final class CatalogController extends Controller
                 'tags' => ProductTag::query()->where('tenant_id', $tenant->id)->count(),
                 'taxes' => ProductTax::query()->where('tenant_id', $tenant->id)->count(),
                 'attributes' => ProductAttributeDefinition::query()->where('tenant_id', $tenant->id)->count(),
+                'custom_fields' => $customDefinitions->count(),
                 'variants' => ProductVariant::query()->where('tenant_id', $tenant->id)->count(),
             ],
         ]);
@@ -134,6 +146,24 @@ final class CatalogController extends Controller
         return redirect()
             ->route('admin.catalog.index', ['tenant' => $product->tenant_id])
             ->with('status', "{$product->name} saved.");
+    }
+
+    public function storeCustomDefinition(ProductCustomDefinitionRequest $request): RedirectResponse
+    {
+        $data = $request->validated();
+        $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+
+        ProductCustomDefinition::query()->create([
+            'tenant_id' => $data['tenant_id'],
+            'name' => $data['name'],
+            'values' => collect(explode(',', $data['values']))->map(fn (string $value): string => trim($value))->filter()->values()->all(),
+            'is_customer_selectable' => (bool) $data['is_customer_selectable'],
+        ]);
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $data['tenant_id']]).'#tags-attributes')
+            ->with('catalog_accordion', 'custom')
+            ->with('status', "Custom key {$data['name']} created.");
     }
 
     public function importProductsFromImages(Request $request, ImportProductsFromImagesAction $action): RedirectResponse
@@ -153,6 +183,21 @@ final class CatalogController extends Controller
         return redirect()
             ->to(route('admin.catalog.index', ['tenant' => $tenantId]).'#products')
             ->with('status', $result['count'].' draft product(s) imported from photos. Set prices and publish them when ready.');
+    }
+
+    public function generateProductImage(Request $request, Product $product, GenerateProductImageAction $action): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $product->tenant_id);
+
+        try {
+            $action->execute($product);
+        } catch (\RuntimeException $exception) {
+            return back()->withErrors(['product_image' => $exception->getMessage()]);
+        }
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $product->tenant_id]).'#products')
+            ->with('status', "AI image generated for {$product->name}.");
     }
 
     public function updateProduct(ProductRequest $request, Product $product, SaveProductAction $action): RedirectResponse
@@ -235,7 +280,8 @@ final class CatalogController extends Controller
         $tag = ProductTag::query()->create($data);
 
         return redirect()
-            ->to(route('admin.catalog.index', ['tenant' => $tag->tenant_id]).'#tags')
+            ->to(route('admin.catalog.index', ['tenant' => $tag->tenant_id]).'#tags-attributes')
+            ->with('catalog_accordion', 'tags')
             ->with('status', "Tag {$tag->name} created.");
     }
 
@@ -248,7 +294,8 @@ final class CatalogController extends Controller
         $tag->update($data);
 
         return redirect()
-            ->to(route('admin.catalog.index', ['tenant' => $tag->tenant_id]).'#tags')
+            ->to(route('admin.catalog.index', ['tenant' => $tag->tenant_id]).'#tags-attributes')
+            ->with('catalog_accordion', 'tags')
             ->with('status', "Tag {$tag->name} updated.");
     }
 
@@ -260,7 +307,8 @@ final class CatalogController extends Controller
         $badge = ProductBadge::query()->create($data);
 
         return redirect()
-            ->to(route('admin.catalog.index', ['tenant' => $badge->tenant_id]).'#badges')
+            ->to(route('admin.catalog.index', ['tenant' => $badge->tenant_id]).'#badges-collections')
+            ->with('catalog_accordion', 'badges')
             ->with('status', "Badge {$badge->name} created.");
     }
 
@@ -273,7 +321,8 @@ final class CatalogController extends Controller
         $badge->update($data);
 
         return redirect()
-            ->to(route('admin.catalog.index', ['tenant' => $badge->tenant_id]).'#badges')
+            ->to(route('admin.catalog.index', ['tenant' => $badge->tenant_id]).'#badges-collections')
+            ->with('catalog_accordion', 'badges')
             ->with('status', "Badge {$badge->name} updated.");
     }
 
@@ -287,7 +336,8 @@ final class CatalogController extends Controller
         $collection = $action->execute($data);
 
         return redirect()
-            ->to(route('admin.catalog.index', ['tenant' => $collection->tenant_id]).'#collections')
+            ->to(route('admin.catalog.index', ['tenant' => $collection->tenant_id]).'#badges-collections')
+            ->with('catalog_accordion', 'collections')
             ->with('status', "Collection {$collection->name} created.");
     }
 
@@ -303,7 +353,8 @@ final class CatalogController extends Controller
         $updatedCollection = $action->execute($data, $collection);
 
         return redirect()
-            ->to(route('admin.catalog.index', ['tenant' => $updatedCollection->tenant_id]).'#collections')
+            ->to(route('admin.catalog.index', ['tenant' => $updatedCollection->tenant_id]).'#badges-collections')
+            ->with('catalog_accordion', 'collections')
             ->with('status', "Collection {$updatedCollection->name} updated.");
     }
 
@@ -315,7 +366,8 @@ final class CatalogController extends Controller
         $tax = ProductTax::query()->create($data);
 
         return redirect()
-            ->to(route('admin.catalog.index', ['tenant' => $tax->tenant_id]).'#taxes')
+            ->to(route('admin.catalog.index', ['tenant' => $tax->tenant_id]).'#taxes-coupons')
+            ->with('catalog_accordion', 'taxes')
             ->with('status', "Tax {$tax->name} created.");
     }
 
@@ -328,7 +380,8 @@ final class CatalogController extends Controller
         $tax->update($data);
 
         return redirect()
-            ->to(route('admin.catalog.index', ['tenant' => $tax->tenant_id]).'#taxes')
+            ->to(route('admin.catalog.index', ['tenant' => $tax->tenant_id]).'#taxes-coupons')
+            ->with('catalog_accordion', 'taxes')
             ->with('status', "Tax {$tax->name} updated.");
     }
 
@@ -341,7 +394,8 @@ final class CatalogController extends Controller
         $tax->delete();
 
         return redirect()
-            ->to(route('admin.catalog.index', ['tenant' => $tenantId]).'#taxes')
+            ->to(route('admin.catalog.index', ['tenant' => $tenantId]).'#taxes-coupons')
+            ->with('catalog_accordion', 'taxes')
             ->with('status', "Tax {$name} deleted.");
     }
 
@@ -353,7 +407,8 @@ final class CatalogController extends Controller
         $attribute = $action->execute($data);
 
         return redirect()
-            ->to(route('admin.catalog.index', ['tenant' => $attribute->tenant_id]).'#attributes')
+            ->to(route('admin.catalog.index', ['tenant' => $attribute->tenant_id]).'#tags-attributes')
+            ->with('catalog_accordion', 'attributes')
             ->with('status', "Attribute {$attribute->name} created.");
     }
 
@@ -366,7 +421,8 @@ final class CatalogController extends Controller
         $updatedAttribute = $action->execute($data, $attribute);
 
         return redirect()
-            ->to(route('admin.catalog.index', ['tenant' => $updatedAttribute->tenant_id]).'#attributes')
+            ->to(route('admin.catalog.index', ['tenant' => $updatedAttribute->tenant_id]).'#tags-attributes')
+            ->with('catalog_accordion', 'attributes')
             ->with('status', "Attribute {$updatedAttribute->name} updated.");
     }
 

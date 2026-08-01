@@ -71,9 +71,12 @@ class CatalogProductBadgeTest extends TestCase
         $this->assertCount(4, $product->badges);
 
         $this->actingAs($user)
-            ->get(route('admin.catalog.index', ['tenant' => $tenant->id]).'#badges')
+            ->get(route('admin.catalog.index', ['tenant' => $tenant->id]).'#badges-collections')
             ->assertOk()
             ->assertSee('Product Badges')
+            ->assertSee('data-tab-target="badges-collections"', false)
+            ->assertSee('data-catalog-management-accordion="badges"', false)
+            ->assertSee('data-accordion-icon="badges"', false)
             ->assertSee('Storefront badges')
             ->assertSee('name="badge_ids[]"', false)
             ->assertSee('data-checkbox-accordion', false)

@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Mail\OnlineOrderConfirmationMail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Modules\Business\Models\OnlineStore;
 use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Enums\ProductStatus;
@@ -83,6 +85,14 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('City Runner')
             ->assertSee('Lagos (3-5 days)')
             ->assertSee('Save this address for future use')
+            ->assertSee('placeholder="Recipient Full name"', false)
+            ->assertSee('placeholder="Recipient Phone Number(s)"', false)
+            ->assertSee('placeholder="Recipient Delivery Address"', false)
+            ->assertSee('placeholder="Recipient City"', false)
+            ->assertSee('Additional Info')
+            ->assertSee('name="checkout_notes"', false)
+            ->assertSee('data-progress-step="payment"', false)
+            ->assertDontSee('data-progress-step="confirm"', false)
             ->assertSee('Use a new address')
             ->assertSee('WhatsApp', false);
 
@@ -102,12 +112,14 @@ class StorefrontFrontendTest extends TestCase
             'email' => 'ADA@example.com',
             'phone' => '08030000000',
             'address' => '12 Marina Road, Lagos',
+            'city' => 'Lagos',
         ]);
         CustomerAddress::query()->create([
             'tenant_id' => $tenant->id,
             'customer_id' => $customer->id,
             'label' => 'Home',
             'address' => '12 Marina Road, Lagos',
+            'city' => 'Lagos',
             'is_default' => true,
             'last_used_at' => now(),
         ]);
@@ -138,10 +150,12 @@ class StorefrontFrontendTest extends TestCase
                     'name' => 'Ada Buyer',
                     'phone' => '08030000000',
                     'address' => '12 Marina Road, Lagos',
+                    'city' => 'Lagos',
                     'addresses' => [
                         [
                             'label' => 'Home',
                             'address' => '12 Marina Road, Lagos',
+                            'city' => 'Lagos',
                             'is_default' => true,
                         ],
                     ],
@@ -364,7 +378,7 @@ class StorefrontFrontendTest extends TestCase
     {
         [, $store] = $this->storeFixture([
             'pages' => [
-                'about_us' => 'Built for careful shoppers.',
+                'about_us' => '<h2 onclick="alert(1)">Our <strong>story</strong></h2><script>alert("unsafe")</script><p>Built for careful shoppers. <a href="javascript:alert(1)">Bad link</a> <a href="https://example.com">Good link</a></p>',
                 'terms_of_use' => 'Use the store fairly.',
                 'return_policy' => 'Returns within seven days.',
                 'privacy_policy' => 'We protect your data.',
@@ -375,7 +389,15 @@ class StorefrontFrontendTest extends TestCase
             ],
         ]);
 
-        $this->get(route('storefront.storefront.store.about', $store))->assertOk()->assertSee('Built for careful shoppers.');
+        $this->get(route('storefront.storefront.store.about', $store))
+            ->assertOk()
+            ->assertSee('<h2>Our <strong>story</strong></h2>', false)
+            ->assertSee('Built for careful shoppers.')
+            ->assertSee('<a>Bad link</a>', false)
+            ->assertSee('<a href="https://example.com">Good link</a>', false)
+            ->assertDontSee('alert("unsafe")', false)
+            ->assertDontSee('onclick=', false)
+            ->assertDontSee('javascript:', false);
         $this->get(route('storefront.storefront.store.faq', $store))->assertOk()->assertSee('Do you deliver?')->assertSee('Yes, we do.');
         $this->get(route('storefront.storefront.store.refunds', $store))->assertOk()->assertSee('Returns within seven days.');
         $this->get(route('storefront.storefront.store.privacy', $store))->assertOk()->assertSee('We protect your data.');
@@ -385,12 +407,13 @@ class StorefrontFrontendTest extends TestCase
     public function test_bank_transfer_details_are_labeled_and_hidden_until_selected(): void
     {
         [, $store] = $this->storeFixture([
+            'payment_methods' => ['pay_on_delivery', 'bank_account', 'storeboot_paystack'],
             'bank_accounts' => [
                 ['bank_name' => 'GTB', 'account_name' => 'Reno Supermart', 'account_number' => '0009987892'],
             ],
         ]);
 
-        $this->get(route('storefront.storefront.store.home', $store))
+        $response = $this->get(route('storefront.storefront.store.home', $store))
             ->assertOk()
             ->assertSee('data-bank-transfer-details hidden', false)
             ->assertSee('Bank Name:', false)
@@ -400,6 +423,10 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('Account Number:', false)
             ->assertSee('0009987892')
             ->assertDontSee('GTB | Reno Supermart | 0009987892');
+
+        $content = $response->getContent();
+        $this->assertLessThan(strpos($content, 'Bank transfer details'), strpos($content, 'value="bank_account"'));
+        $this->assertLessThan(strpos($content, 'value="storeboot_paystack"'), strpos($content, 'Bank transfer details'));
     }
 
     public function test_contact_page_creates_customer_support_ticket(): void
@@ -450,6 +477,7 @@ class StorefrontFrontendTest extends TestCase
     public function test_checkout_creates_pending_online_sales_order_and_returns_reference(): void
     {
         Mail::fake();
+        Storage::fake('public');
         [$tenant, $store] = $this->storeFixture();
         $category = ProductCategory::query()->create([
             'tenant_id' => $tenant->id,
@@ -466,6 +494,23 @@ class StorefrontFrontendTest extends TestCase
             'slug' => 'city-runner',
             'status' => ProductStatus::Active->value,
             'base_price_minor' => 250000,
+            'custom_fields' => [
+                ['key' => 'Unit', 'values' => ['1', '2', '3'], 'is_customer_selectable' => true],
+                ['key' => 'Internal source', 'values' => ['Warehouse A'], 'is_customer_selectable' => false],
+            ],
+            'personalization_settings' => [
+                'enabled' => true,
+                'fields' => ['customized_text' => true, 'additional_info' => true, 'photograph' => true],
+            ],
+        ]);
+        Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'category_id' => $category->id,
+            'name' => 'Related Plain Product',
+            'slug' => 'related-plain-product',
+            'product_type' => ProductType::Product->value,
+            'status' => ProductStatus::Active->value,
+            'base_price_minor' => 100000,
         ]);
         $variant = ProductVariant::query()->create([
             'tenant_id' => $tenant->id,
@@ -477,19 +522,62 @@ class StorefrontFrontendTest extends TestCase
             'status' => ProductStatus::Active->value,
         ]);
 
+        $this->get(route('storefront.storefront.store.products.show', [$store, $product->slug]))
+            ->assertOk()
+            ->assertSee('data-custom-key="Unit"', false)
+            ->assertSee('<option value="2">2</option>', false)
+            ->assertSee('Would you like to personalise this item?')
+            ->assertSee('No, keep it plain')
+            ->assertSee('Yes, personalise it')
+            ->assertSee('Customized Text')
+            ->assertSee('Additional Info/Note')
+            ->assertSee('Upload photograph')
+            ->assertSee("body.append('product_id', {$product->id})", false)
+            ->assertDontSee('Internal source')
+            ->assertDontSee('Warehouse A');
+
+        $photoUpload = $this->post(route('storefront.storefront.store.personalization.photo', $store), [
+            'product_id' => $product->id,
+            'photograph' => UploadedFile::fake()->image('family-photo.jpg', 800, 600),
+        ], ['Accept' => 'application/json'])
+            ->assertOk()
+            ->assertJsonStructure(['token', 'name']);
+        $photoToken = $photoUpload->json('token');
+
+        $this->post(route('storefront.storefront.store.personalization.photo', $store), [
+            'product_id' => $product->id,
+            'photograph' => UploadedFile::fake()->create('instructions.txt', 10, 'text/plain'),
+        ], ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertHeader('content-type', 'application/json')
+            ->assertJsonValidationErrors('photograph');
+
         $response = $this->postJson(route('storefront.storefront.store.checkout', $store), [
             'customer' => [
                 'name' => 'Ada Lovelace',
                 'phone' => '08030000000',
                 'email' => 'ada@example.com',
                 'address' => '12 Marina Road, Lagos',
+                'city' => 'Lagos',
                 'save_address' => true,
                 'address_label' => 'Home',
             ],
             'shipping_option' => 'Lagos',
             'payment_method' => 'bank_account',
+            'notes' => 'Please call when you arrive.',
             'items' => [
-                ['product_variant_id' => $variant->id, 'quantity' => 2],
+                [
+                    'product_variant_id' => $variant->id,
+                    'quantity' => 2,
+                    'custom_selections' => ['Unit' => '2'],
+                    'personalization' => [
+                        'requested' => true,
+                        'customized_text' => 'Happy Birthday Ada',
+                        'additional_info' => 'Gold text, centred engraving.',
+                        'photograph_token' => $photoToken,
+                        'photograph_name' => 'family-photo.jpg',
+                    ],
+                ],
             ],
         ]);
 
@@ -508,11 +596,20 @@ class StorefrontFrontendTest extends TestCase
         $this->assertSame('ada@example.com', $order->customer->email);
         $this->assertSame(1, Customer::query()->count());
         $this->assertSame(1, $order->items->count());
+        $this->assertSame('Lagos', $order->delivery_city);
+        $this->assertSame('Please call when you arrive.', $order->notes);
+        $this->assertSame(['Unit' => '2'], $order->items->first()->custom_selections);
+        $this->assertTrue($order->items->first()->personalization['requested']);
+        $this->assertSame('Happy Birthday Ada', $order->items->first()->personalization['customized_text']);
+        $this->assertSame('Gold text, centred engraving.', $order->items->first()->personalization['additional_info']);
+        $this->assertSame('family-photo.jpg', $order->items->first()->personalization['photograph_name']);
+        Storage::disk('public')->assertExists($order->items->first()->personalization['photograph_path']);
         $this->assertDatabaseHas('customer_addresses', [
             'tenant_id' => $tenant->id,
             'customer_id' => $order->customer_id,
             'label' => 'Home',
             'address' => '12 Marina Road, Lagos',
+            'city' => 'Lagos',
             'is_default' => true,
         ]);
         Mail::assertNothingSent();

@@ -17,6 +17,9 @@
     $canDeleteItem = $catalogUser?->is_platform_admin
         || ! app(\Modules\Access\Support\PermissionService::class)->enforcementEnabled($tenant)
         || $catalogUser?->hasPermission($tenant, 'catalog.delete');
+    $canManageItem = $catalogUser?->is_platform_admin
+        || ! app(\Modules\Access\Support\PermissionService::class)->enforcementEnabled($tenant)
+        || $catalogUser?->hasPermission($tenant, 'catalog.update');
 @endphp
 
 <article
@@ -30,7 +33,13 @@
         @if ($imageUrl($item->image_path))
             <img src="{{ $imageUrl($item->image_path) }}" alt="{{ $item->name }}">
         @else
-            {{ strtoupper(substr($item->name, 0, 2)) }}
+            <span class="product-thumb-initials" style="display:block;">{{ strtoupper(substr($item->name, 0, 2)) }}</span>
+            @if ($canManageItem)
+                <form method="POST" action="{{ route('admin.catalog.products.generate-image', $item) }}" style="margin-top:6px;" onsubmit="const b=this.querySelector('button'); b.disabled=true; b.textContent='Generating…';">
+                    @csrf
+                    <button type="submit" title="Generate a product image with AI" style="padding:3px 8px; font-size:10px; font-weight:600; border:1px solid rgba(0,0,0,.15); border-radius:999px; background:#fff; color:#027a45; cursor:pointer; white-space:nowrap;">✨ Generate image</button>
+                </form>
+            @endif
         @endif
     </div>
 

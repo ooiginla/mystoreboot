@@ -43,7 +43,7 @@
             </legend>
             <div class="grid gap-4 sm:grid-cols-2">
                 <div class="sm:col-span-2">
-                    <label for="business_name" class="{{ $labelCls }}">Business name</label>
+                    <label for="business_name" class="{{ $labelCls }}">Store name</label>
                     <input id="business_name" name="business_name" value="{{ old('business_name') }}" required autofocus class="{{ $field }}" placeholder="e.g. FreshMart Grocery">
                 </div>
                 <div>

@@ -75,6 +75,15 @@
                         <tr>
                             <td>
                                 <strong>{{ $item->item_name }}</strong>
+                                @if ($item->custom_selections)<span>{{ collect($item->custom_selections)->map(fn ($value, $key) => $key.': '.$value)->join(' · ') }}</span>@endif
+                                @if (data_get($item->personalization, 'requested'))
+                                    <span>
+                                        Personalized
+                                        @if (data_get($item->personalization, 'customized_text')) · {{ data_get($item->personalization, 'customized_text') }} @endif
+                                        @if (data_get($item->personalization, 'additional_info')) · {{ data_get($item->personalization, 'additional_info') }} @endif
+                                        @if (data_get($item->personalization, 'photograph_path')) · Photo attached @endif
+                                    </span>
+                                @endif
                                 <span>@ {{ $receiptCurrencySymbol }} {{ $money($item->unit_price_minor) }}</span>
                             </td>
                             <td>{{ $item->quantity }}</td>
@@ -110,7 +119,7 @@
                     <strong>Delivery</strong>
                     <p>{{ $order->delivery_method ?: 'No delivery method' }} · {{ $deliveryStatusLabel($order->delivery_status ?? 'delivered') }}</p>
                     @if ($order->delivery_address)
-                        <p>{{ $order->delivery_address }}</p>
+                        <p>{{ collect([$order->delivery_address, $order->delivery_city])->filter()->join(', ') }}</p>
                     @endif
                 </div>
             @endif

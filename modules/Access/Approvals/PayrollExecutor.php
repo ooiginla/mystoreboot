@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Access\Approvals;
 
+use App\Models\User;
 use Modules\Access\Contracts\ApprovalExecutor;
 use Modules\Access\Models\ApprovalRequest;
 use Modules\HrPayroll\Actions\RunPayrollAction;
@@ -16,7 +17,7 @@ final class PayrollExecutor implements ApprovalExecutor
 {
     public function __construct(private readonly RunPayrollAction $action) {}
 
-    public function execute(ApprovalRequest $request): void
+    public function execute(ApprovalRequest $request, User $approver): void
     {
         $data = (array) ($request->payload['data'] ?? []);
 

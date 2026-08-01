@@ -138,6 +138,7 @@ final class OnlineStoreRequest extends FormRequest
         return [
             'username.regex' => 'The store address may contain only lowercase letters, numbers, and single hyphens, and cannot start or end with a hyphen.',
             'username.not_in' => 'That store address is reserved by Storeboot. Choose another one.',
+            'username.unique' => 'Sorry, that store address has already been taken. Please pick a new one.',
         ];
     }
 

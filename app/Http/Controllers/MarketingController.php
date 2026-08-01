@@ -20,6 +20,7 @@ final class MarketingController extends Controller
         return view('marketing.home', [
             'businessTypes' => $this->businessTypes(),
             'features' => $this->features(),
+            'aiFeatures' => $this->aiFeatures(),
             'testimonials' => $this->testimonials(),
             'plans' => $this->plans(),
             'faqs' => $this->faqs(),
@@ -67,6 +68,35 @@ final class MarketingController extends Controller
         ];
     }
 
+    /** @return list<array{icon: string, title: string, body: string}> */
+    private function aiFeatures(): array
+    {
+        $i = fn (string $path): string => '<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="'.$path.'"/></svg>';
+
+        return [
+            [
+                'icon' => $i('M4 16l4-4 3 3 5-5 4 4M4 5h16v14H4zM9 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z'),
+                'title' => 'Turn photos into products',
+                'body' => 'Upload your product photos — or import them straight from your gallery — and AI writes the name, description, price and category for each one. A pile of pictures becomes a ready-to-sell catalog in minutes, no typing required.',
+            ],
+            [
+                'icon' => $i('M12 3v4m0 0 2-2m-2 2-2-2M4 20l5-6 3 3.5L15 13l5 7M4 20h16'),
+                'title' => 'Generate product images',
+                'body' => 'Missing a photo for an item? Create a clean, professional product image with one click, so every product looks its best on your store — even the ones you never photographed.',
+            ],
+            [
+                'icon' => $i('M9 12h6m-6 4h4M8 3h8l4 4v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm8 0v4h4'),
+                'title' => 'Write your store pages',
+                'body' => 'Let AI draft your store description and your About, Returns, Privacy, Terms and Shipping pages from a single short prompt. Polished, on-brand copy in seconds — ready for you to tweak and publish.',
+            ],
+            [
+                'icon' => $i('M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.3-4.3M9 3v4m2-2h4'),
+                'title' => 'Get found on Google',
+                'body' => 'Storeboot automatically generates SEO meta titles, descriptions, keywords and image alt text — plus the rich product data Google needs to show your items in search. It refreshes on its own, so your store stays discoverable without you lifting a finger.',
+            ],
+        ];
+    }
+
     /** @return list<array{quote: string, name: string, role: string, initials: string, photo: string}> */
     private function testimonials(): array
     {
@@ -104,6 +134,7 @@ final class MarketingController extends Controller
     {
         return [
             ['q' => 'Do I need any technical knowledge to use Storeboot?', 'a' => 'Not at all. Storeboot is designed to be as easy as the apps you already use every day. If you can send a WhatsApp message, you can run your shop on Storeboot.'],
+            ['q' => 'Can AI help me set up my products and store?', 'a' => 'Yes. Upload your product photos and our AI drafts the names, descriptions, prices and categories for you. It can also generate product images, write your store pages, and auto-create SEO tags so customers find you on Google — everything stays editable before you publish.'],
             ['q' => 'Can I use the point of sale without internet?', 'a' => 'Yes. Our till is built offline-first — you can keep selling even when the network drops, and your data syncs safely to the cloud once you are back online.'],
             ['q' => 'Does it work for more than one branch?', 'a' => 'Absolutely. Manage every branch from one account, move stock between them, set roles for your staff, and see each branch or the whole business at a glance.'],
             ['q' => 'What does it cost to get started?', 'a' => 'You can start completely free for 14 days with no card required. After that, choose a plan that fits your size — and only pay for the modules you actually switch on.'],

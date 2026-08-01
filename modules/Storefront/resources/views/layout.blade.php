@@ -76,6 +76,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title ?? $store->store_name }}</title>
+    @php
+        $seoDescription = trim(strip_tags($metaDescription ?? $store->description ?? '')) ?: $store->store_name;
+        $seoDescription = \Illuminate\Support\Str::limit($seoDescription, 160, '');
+        $seoImage = $ogImage ?? ($store->hero_image_path ? url('/storage/'.ltrim($store->hero_image_path, '/')) : null);
+    @endphp
+    <meta name="description" content="{{ $seoDescription }}">
+    @if (! empty($metaKeywords))<meta name="keywords" content="{{ $metaKeywords }}">@endif
+    <link rel="canonical" href="{{ $canonical ?? url()->current() }}">
+    <meta property="og:type" content="{{ $ogType ?? 'website' }}">
+    <meta property="og:site_name" content="{{ $store->store_name }}">
+    <meta property="og:title" content="{{ $title ?? $store->store_name }}">
+    <meta property="og:description" content="{{ $seoDescription }}">
+    <meta property="og:url" content="{{ url()->current() }}">
+    @if ($seoImage)<meta property="og:image" content="{{ $seoImage }}">@endif
+    <meta name="twitter:card" content="{{ $seoImage ? 'summary_large_image' : 'summary' }}">
+    <meta name="twitter:title" content="{{ $title ?? $store->store_name }}">
+    <meta name="twitter:description" content="{{ $seoDescription }}">
+    @if ($seoImage)<meta name="twitter:image" content="{{ $seoImage }}">@endif
     @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     @endif
@@ -128,6 +146,7 @@
         @keyframes whatsappRipple { 0% { transform: scale(.85); opacity: .65; } 100% { transform: scale(1.9); opacity: 0; } }
     </style>
     @stack('styles')
+    @stack('head')
 </head>
 <body data-storefront data-cart-key="storefront-cart-{{ $store->username }}">
     @if ($store->announcement)
@@ -333,7 +352,7 @@
             let checkoutOrder = null;
             let gatewayChargeMinor = 0;
             const paystackMethods = ['storeboot_paystack', 'self_hosted_paystack'];
-            const checkoutSteps = ['cart', 'shipping', 'payment', 'confirm'];
+            const checkoutSteps = ['cart', 'shipping', 'additional', 'payment', 'confirm'];
             const paystackInitializeUrl = @json($storefrontRoute($store, 'checkout.paystack.initialize', ['order' => '__ORDER_ID__']));
             const customerLookupUrl = @json($storefrontRoute($store, 'checkout.customer-lookup'));
             let customerLookupTimer = null;
@@ -354,6 +373,9 @@
             @endif
 
             const money = (minor) => formatter.format((Number(minor) || 0) / 100);
+            const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;',
+            })[character]);
             const save = () => localStorage.setItem(cartKey, JSON.stringify(cart));
             const subtotal = () => cart.reduce((sum, item) => sum + (item.priceMinor * item.quantity), 0);
             const selectedShipping = () => document.querySelector('input[name="shipping_option"]:checked');
@@ -371,14 +393,18 @@
                     phone: field('checkout_phone')?.value.trim() || '',
                     email: field('checkout_email')?.value.trim() || '',
                     address: field('checkout_address')?.value.trim() || '',
+                    city: field('checkout_city')?.value.trim() || '',
                     save_address: field('checkout_save_address')?.checked || false,
                     address_label: field('checkout_address_label')?.value.trim() || null,
                 },
                 shipping_option: selectedShipping()?.value || '',
                 payment_method: document.querySelector('input[name="payment_method"]:checked')?.value || null,
+                notes: field('checkout_notes')?.value.trim() || null,
                 items: cart.map((item) => ({
                     product_variant_id: item.productVariantId,
                     quantity: item.quantity,
+                    custom_selections: item.customSelections || {},
+                    personalization: item.personalization || null,
                 })),
             });
             const lookupCustomer = async () => {
@@ -411,6 +437,7 @@
                     [
                         ['checkout_name', customer.name],
                         ['checkout_phone', customer.phone],
+                        ['checkout_city', customer.city],
                     ].forEach(([name, value]) => {
                         const input = field(name);
                         if (input && !input.value.trim() && value) input.value = value;
@@ -447,9 +474,11 @@
                 const selectedId = savedAddressSelect?.value || 'new';
                 const selected = customerAddresses.find((address) => String(address.id) === selectedId);
                 const addressInput = field('checkout_address');
+                const cityInput = field('checkout_city');
 
                 if (selected) {
                     if (addressInput) addressInput.value = selected.address || '';
+                    if (cityInput) cityInput.value = selected.city || '';
                     addressWasAutofilled = true;
                     syncSaveAddressFields(false);
                     return;
@@ -459,6 +488,7 @@
                     addressInput.value = '';
                     addressInput.focus();
                 }
+                if (cityInput) cityInput.value = '';
                 addressWasAutofilled = false;
                 syncSaveAddressFields(true);
             };
@@ -484,6 +514,7 @@
                     selectCustomerAddress();
                 } else {
                     const addressInput = field('checkout_address');
+                    const cityInput = field('checkout_city');
                     if (addressInput && customer.address && (!addressInput.value.trim() || addressWasAutofilled)) {
                         addressInput.value = customer.address;
                         addressWasAutofilled = true;
@@ -491,6 +522,7 @@
                         addressInput.value = '';
                         addressWasAutofilled = false;
                     }
+                    if (cityInput && customer.city && !cityInput.value.trim()) cityInput.value = customer.city;
                     syncSaveAddressFields(true);
                 }
             };
@@ -523,12 +555,12 @@
             };
 
             const validateShippingStep = () => {
-                const requiredFields = ['checkout_name', 'checkout_phone', 'checkout_email', 'checkout_address'];
+                const requiredFields = ['checkout_name', 'checkout_phone', 'checkout_email', 'checkout_address', 'checkout_city'];
                 const invalid = requiredFields.map(field).find((input) => !input?.checkValidity());
 
                 if (invalid) {
                     invalid.reportValidity();
-                    setAlert('Enter your name, email, phone, and delivery address to continue.');
+                    setAlert('Enter the recipient name, email, phone, delivery address, and city to continue.');
                     return false;
                 }
 
@@ -751,7 +783,9 @@
                     <div class="flex gap-3 rounded-lg border border-[var(--store-line)] p-3">
                         <div class="h-20 w-20 flex-none overflow-hidden rounded-md bg-[var(--store-soft)]">${item.image ? `<img src="${item.image}" alt="" class="h-full w-full object-cover">` : ''}</div>
                         <div class="min-w-0 flex-1">
-                            <p class="sf-body-md truncate font-bold">${item.name}</p>
+                            <p class="sf-body-md truncate font-bold">${escapeHtml(item.name)}</p>
+                            ${Object.keys(item.customSelections || {}).length ? `<p class="sf-caption mt-1 text-[var(--store-muted)]">${Object.entries(item.customSelections).map(([key, value]) => `${escapeHtml(key)}: ${escapeHtml(value)}`).join(' · ')}</p>` : ''}
+                            ${item.personalization?.requested ? `<p class="sf-caption mt-1 text-[var(--store-muted)]"><strong>Personalised</strong>${item.personalization.customized_text ? ` · Text: ${escapeHtml(item.personalization.customized_text)}` : ''}${item.personalization.additional_info ? ` · Note: ${escapeHtml(item.personalization.additional_info)}` : ''}${item.personalization.photograph_name ? ` · Photo: ${escapeHtml(item.personalization.photograph_name)}` : ''}</p>` : ''}
                             <p class="sf-body-md text-[var(--store-muted)]">${money(item.priceMinor)}</p>
                             <div class="mt-3 flex items-center gap-2">
                                 <button class="rounded border px-2" data-cart-qty="${item.id}" data-delta="-1" type="button">-</button>
@@ -791,7 +825,11 @@
 
                 const add = event.target.closest('[data-add-to-cart]');
                 if (add) {
-                    const product = JSON.parse(add.dataset.product);
+                    let product = JSON.parse(add.dataset.product);
+                    if (typeof window.storefrontPrepareCartProduct === 'function') {
+                        product = window.storefrontPrepareCartProduct(product, add);
+                        if (!product) return;
+                    }
                     const requestedQuantity = add.dataset.useDetailQuantity === 'true'
                         ? Number(document.querySelector('[data-detail-quantity]')?.textContent || 1)
                         : 1;
@@ -848,6 +886,9 @@
 
                 const stepButton = event.target.closest('[data-go-step]');
                 if (stepButton) {
+                    if (stepButton.dataset.goStep === 'additional' && !validateShippingStep()) {
+                        return;
+                    }
                     if (stepButton.dataset.goStep === 'payment') {
                         createCheckoutOrder(stepButton);
                         return;

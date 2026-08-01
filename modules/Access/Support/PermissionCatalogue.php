@@ -233,6 +233,7 @@ final class PermissionCatalogue
         return [
             'refund' => ['name' => 'Refunds', 'request' => 'sales.refunds.request', 'approve' => 'sales.refunds.approve', 'setting' => 'refund'],
             'inventory_adjustment' => ['name' => 'Inventory adjustments', 'request' => 'inventory.adjust', 'approve' => 'inventory.adjustments.approve', 'setting' => 'inventory_adjustment'],
+            'purchase_order' => ['name' => 'Purchase orders', 'request' => 'procurement.create', 'approve' => 'procurement.approve', 'setting' => 'purchase_order'],
             'expense' => ['name' => 'Expenses', 'request' => 'finance.expenses.create', 'approve' => 'finance.expenses.approve', 'setting' => 'expense'],
             'journal' => ['name' => 'Journal entries', 'request' => 'finance.journals.create', 'approve' => 'finance.journals.post', 'setting' => 'journal'],
             'payroll' => ['name' => 'Payroll', 'request' => 'payroll.prepare', 'approve' => 'payroll.approve', 'setting' => 'payroll'],

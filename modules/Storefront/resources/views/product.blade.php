@@ -1,4 +1,10 @@
-@extends('storefront::layout', ['title' => $product->name.' | '.$store->store_name])
+@extends('storefront::layout', [
+    'title' => $seo['title'] ?? ($product->name.' | '.$store->store_name),
+    'metaDescription' => $seo['description'] ?? null,
+    'metaKeywords' => $seo['keywords'] ?? null,
+    'ogType' => 'product',
+    'ogImage' => $seoImage ?? null,
+])
 
 @php
     $currency = $store->tenant?->currency_code ?? 'NGN';
@@ -35,6 +41,14 @@
             'values' => $values->unique('id')->sortBy('sort_order')->values(),
         ]);
     $attributeGroups = $product->attributeValues->groupBy(fn ($value) => $value->definition?->name ?? 'Attributes');
+    $customerCustomFields = collect($product->custom_fields ?? [])
+        ->filter(fn (array $field): bool => (bool) ($field['is_customer_selectable'] ?? false) && collect($field['values'] ?? [])->isNotEmpty())
+        ->values();
+    $isService = ($catalogType ?? $product->product_type) === \Modules\Catalog\Enums\ProductType::Service;
+    $personalizationSettings = (array) ($product->personalization_settings ?? []);
+    $personalizationFields = (array) ($personalizationSettings['fields'] ?? []);
+    $personalizationEnabled = ! $isService && (bool) ($personalizationSettings['enabled'] ?? false);
+    $personalizationProductId = (int) $product->id;
     $selectedOptionValueIds = $variant?->optionValues->pluck('id')->map(fn ($id) => (int) $id)->all() ?? [];
     $selectedImage = $variant?->image_path
         ? '/storage/'.ltrim($variant->image_path, '/')
@@ -68,12 +82,37 @@
             ],
         ];
     })->values();
-    $isService = ($catalogType ?? $product->product_type) === \Modules\Catalog\Enums\ProductType::Service;
     $detailRouteName = $isService ? 'services.show' : 'products.show';
     $shareUrl = $storefrontRoute($store, $detailRouteName, [
         $isService ? 'serviceSlug' : 'productSlug' => $product->slug,
     ]);
 @endphp
+
+@push('head')
+    @php
+        $ld = array_filter([
+            '@context' => 'https://schema.org/',
+            '@type' => $isService ? 'Service' : 'Product',
+            'name' => $product->name,
+            'description' => $seo['description'] ?? null,
+            'image' => $seoImage ? [$seoImage] : null,
+            'sku' => $variant?->sku ?: null,
+            'brand' => $product->brand ? ['@type' => 'Brand', 'name' => $product->brand] : null,
+            'category' => $product->category?->name ?: null,
+            'keywords' => $seo['keywords'] ?? null,
+            'offers' => [
+                '@type' => 'Offer',
+                'priceCurrency' => strtoupper($currency),
+                'price' => number_format(((int) $priceMinor) / 100, 2, '.', ''),
+                'availability' => $product->status === \Modules\Catalog\Enums\ProductStatus::Active
+                    ? 'https://schema.org/InStock'
+                    : 'https://schema.org/OutOfStock',
+                'url' => $shareUrl,
+            ],
+        ], fn ($value) => $value !== null && $value !== '');
+    @endphp
+    <script type="application/ld+json">{!! json_encode($ld, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
+@endpush
 
 @section('content')
     <section class="store-shell py-10 md:py-14">
@@ -81,7 +120,7 @@
             <div class="lg:col-span-7">
                 <div class="relative aspect-[4/5] overflow-hidden rounded-lg bg-[var(--store-soft)]">
                     @if ($primaryImage)
-                        <img src="{{ $primaryImage }}" alt="{{ $product->name }}" class="h-full w-full object-contain mix-blend-multiply" data-product-main-image>
+                        <img src="{{ $primaryImage }}" alt="{{ $seo['image_alt'] ?? $product->name }}" class="h-full w-full object-contain mix-blend-multiply" data-product-main-image>
                     @else
                         <div class="sf-display-xl flex h-full w-full items-center justify-center text-[var(--store-primary)]">{{ Str::of($product->name)->substr(0, 2)->upper() }}</div>
                     @endif
@@ -147,6 +186,56 @@
                             </select>
                         </label>
                     @endif
+
+                    @foreach ($customerCustomFields as $customField)
+                        <label class="grid gap-2">
+                            <span class="sf-body-md font-bold">{{ $customField['key'] }}</span>
+                            <select class="store-input" data-custom-selection data-custom-key="{{ $customField['key'] }}">
+                                @foreach ($customField['values'] as $customValue)
+                                    <option value="{{ $customValue }}">{{ $customValue }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                    @endforeach
+
+                    @if ($personalizationEnabled)
+                        <div class="rounded-lg border border-[var(--store-line)] bg-[var(--store-soft)] p-4" data-product-personalization>
+                            <p class="sf-body-md font-bold">Would you like to personalise this item?</p>
+                            <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                                <label class="sf-body-md flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--store-line)] bg-white p-3">
+                                    <input type="radio" name="product_personalization" value="no" checked data-personalization-choice>
+                                    <span>No, keep it plain</span>
+                                </label>
+                                <label class="sf-body-md flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--store-line)] bg-white p-3">
+                                    <input type="radio" name="product_personalization" value="yes" data-personalization-choice>
+                                    <span>Yes, personalise it</span>
+                                </label>
+                            </div>
+                            <div class="mt-4 grid gap-4" data-personalization-form hidden>
+                                @if ((bool) ($personalizationFields['customized_text'] ?? false))
+                                    <label class="grid gap-2">
+                                        <span class="sf-body-md font-bold">Customized Text</span>
+                                        <textarea class="store-input min-h-24" maxlength="500" placeholder="Enter the text you want customized on this item" data-personalization-text></textarea>
+                                    </label>
+                                @endif
+                                @if ((bool) ($personalizationFields['additional_info'] ?? false))
+                                    <label class="grid gap-2">
+                                        <span class="sf-body-md font-bold">Additional Info/Note</span>
+                                        <textarea class="store-input min-h-24" maxlength="2000" placeholder="Suggest text colour, font size, engraving position, or any special instruction" data-personalization-note></textarea>
+                                    </label>
+                                @endif
+                                @if ((bool) ($personalizationFields['photograph'] ?? false))
+                                    <label class="grid gap-2">
+                                        <span class="sf-body-md font-bold">Upload photograph</span>
+                                        <input class="store-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp" data-personalization-photo>
+                                        <span class="sf-caption text-[var(--store-muted)]">JPG, PNG, GIF, BMP, or WebP. Maximum 8 MB.</span>
+                                        <span class="sf-body-sm text-[var(--store-muted)]">JPEG, PNG, WebP, or GIF up to 5 MB.</span>
+                                        <span class="sf-body-sm font-semibold" data-personalization-photo-status aria-live="polite"></span>
+                                    </label>
+                                @endif
+                            </div>
+                        </div>
+                    @endif
                 </div>
                 <p class="sf-body-md mt-3 font-semibold text-red-600" data-variant-unavailable hidden>This option combination is currently unavailable.</p>
 
@@ -195,8 +284,8 @@
     <section class="store-shell border-t border-[var(--store-line)] py-12">
         <h2 class="sf-headline-lg text-[var(--store-primary)]">YOU MIGHT ALSO LIKE</h2>
         <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5">
-            @forelse ($relatedProducts as $product)
-                @include('storefront::partials.related-product-card', ['product' => $product, 'detailRouteName' => $detailRouteName])
+            @forelse ($relatedProducts as $relatedProduct)
+                @include('storefront::partials.related-product-card', ['product' => $relatedProduct, 'detailRouteName' => $detailRouteName])
             @empty
                 <div class="sf-body-md store-card col-span-full p-8 text-center text-[var(--store-muted)]">No related products yet.</div>
             @endforelse
@@ -215,6 +304,17 @@
 
             const optionFields = Array.from(root.querySelectorAll('[data-variant-option]'));
             const directField = root.querySelector('[data-direct-variant]');
+            const customFields = Array.from(root.querySelectorAll('[data-custom-selection]'));
+            const personalizationRoot = root.querySelector('[data-product-personalization]');
+            const personalizationChoices = Array.from(root.querySelectorAll('[data-personalization-choice]'));
+            const personalizationForm = root.querySelector('[data-personalization-form]');
+            const personalizationText = root.querySelector('[data-personalization-text]');
+            const personalizationNote = root.querySelector('[data-personalization-note]');
+            const personalizationPhoto = root.querySelector('[data-personalization-photo]');
+            const personalizationPhotoStatus = root.querySelector('[data-personalization-photo-status]');
+            const personalizationPhotoUrl = @json($storefrontRoute($store, 'personalization.photo'));
+            let personalizationUpload = null;
+            let personalizationUploading = false;
             const price = root.querySelector('[data-variant-price]');
             const compare = root.querySelector('[data-variant-compare]');
             const meta = root.querySelector('[data-selected-variant-meta]');
@@ -241,11 +341,46 @@
                 );
             };
 
+            const selectedCustomSelections = () => Object.fromEntries(
+                customFields.map((field) => [field.dataset.customKey, field.value])
+            );
+
+            const wantsPersonalization = () => personalizationChoices.find((field) => field.checked)?.value === 'yes';
+            const selectedPersonalization = () => {
+                if (!personalizationRoot || !wantsPersonalization()) return null;
+
+                return {
+                    requested: true,
+                    ...(personalizationText ? { customized_text: personalizationText.value.trim() } : {}),
+                    ...(personalizationNote ? { additional_info: personalizationNote.value.trim() } : {}),
+                    ...(personalizationUpload ? {
+                        photograph_token: personalizationUpload.token,
+                        photograph_name: personalizationUpload.name,
+                    } : {}),
+                };
+            };
+
+            const cartWithCustomSelections = (cart) => {
+                const customSelections = selectedCustomSelections();
+                const personalization = selectedPersonalization();
+                const signature = [
+                    Object.entries(customSelections).map(([key, value]) => `${key}:${value}`).join('|'),
+                    personalization ? JSON.stringify(personalization) : '',
+                ].filter(Boolean).join('|');
+
+                return {
+                    ...cart,
+                    id: signature ? `${cart.id}-custom-${encodeURIComponent(signature)}` : cart.id,
+                    customSelections,
+                    personalization,
+                };
+            };
+
             const renderVariant = () => {
                 const variant = selectedVariant();
                 unavailable.hidden = Boolean(variant);
                 cartButtons.forEach((button) => {
-                    button.disabled = !variant;
+                    button.disabled = !variant || personalizationUploading;
                 });
 
                 if (!variant) return;
@@ -256,12 +391,107 @@
                 if (meta) meta.textContent = `${variant.name} · SKU ${variant.sku}`;
                 if (image && variant.image) image.src = variant.image;
                 cartButtons.forEach((button) => {
-                    button.dataset.product = JSON.stringify(variant.cart);
+                    button.dataset.product = JSON.stringify(cartWithCustomSelections(variant.cart));
                 });
             };
 
             optionFields.forEach((field) => field.addEventListener('change', renderVariant));
             directField?.addEventListener('change', renderVariant);
+            customFields.forEach((field) => field.addEventListener('change', renderVariant));
+            const syncPersonalization = () => {
+                if (personalizationForm) personalizationForm.hidden = !wantsPersonalization();
+                if (personalizationText) personalizationText.required = wantsPersonalization();
+                if (personalizationPhoto) personalizationPhoto.required = wantsPersonalization();
+                renderVariant();
+            };
+            personalizationChoices.forEach((field) => field.addEventListener('change', syncPersonalization));
+            personalizationText?.addEventListener('input', renderVariant);
+            personalizationNote?.addEventListener('input', renderVariant);
+            personalizationPhoto?.addEventListener('change', async () => {
+                personalizationUpload = null;
+                const photograph = personalizationPhoto.files?.[0];
+                if (!photograph) {
+                    if (personalizationPhotoStatus) personalizationPhotoStatus.textContent = '';
+                    renderVariant();
+                    return;
+                }
+
+                if (photograph.size > 8 * 1024 * 1024) {
+                    personalizationPhoto.value = '';
+                    if (personalizationPhotoStatus) {
+                        personalizationPhotoStatus.textContent = 'The photograph must not be larger than 8 MB.';
+                        personalizationPhotoStatus.classList.remove('text-green-700');
+                        personalizationPhotoStatus.classList.add('text-red-600');
+                    }
+                    renderVariant();
+                    return;
+                }
+
+                personalizationUploading = true;
+                if (personalizationPhotoStatus) personalizationPhotoStatus.textContent = 'Uploading photograph…';
+                renderVariant();
+
+                try {
+                    const body = new FormData();
+                    body.append('product_id', @json($personalizationProductId));
+                    body.append('photograph', photograph);
+
+                    const response = await fetch(personalizationPhotoUrl, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        },
+                        body,
+                    });
+                    const responseBody = await response.text();
+                    let result = {};
+                    try {
+                        result = responseBody ? JSON.parse(responseBody) : {};
+                    } catch (parseError) {
+                        if (response.status === 413) {
+                            throw new Error('The photograph is too large for the server. Please choose a smaller image.');
+                        }
+                        throw new Error('The server could not process the photograph. Please try again or choose a different image.');
+                    }
+                    if (!response.ok) throw new Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Upload failed.');
+
+                    personalizationUpload = { token: result.token, name: result.name };
+                    if (personalizationPhotoStatus) {
+                        personalizationPhotoStatus.textContent = `${result.name} uploaded successfully.`;
+                        personalizationPhotoStatus.classList.remove('text-red-600');
+                        personalizationPhotoStatus.classList.add('text-green-700');
+                    }
+                } catch (error) {
+                    personalizationPhoto.value = '';
+                    if (personalizationPhotoStatus) {
+                        personalizationPhotoStatus.textContent = error.message || 'Could not upload the photograph. Please try again.';
+                        personalizationPhotoStatus.classList.remove('text-green-700');
+                        personalizationPhotoStatus.classList.add('text-red-600');
+                    }
+                } finally {
+                    personalizationUploading = false;
+                    renderVariant();
+                }
+            });
+
+            window.storefrontPrepareCartProduct = (cart, button) => {
+                if (!root.contains(button) || !personalizationRoot || !wantsPersonalization()) return cart;
+
+                if (personalizationText && !personalizationText.reportValidity()) return null;
+                if (personalizationUploading) {
+                    if (personalizationPhotoStatus) personalizationPhotoStatus.textContent = 'Please wait for the photograph to finish uploading.';
+                    return null;
+                }
+                if (personalizationPhoto && !personalizationUpload) {
+                    personalizationPhoto.reportValidity();
+                    return null;
+                }
+
+                return cartWithCustomSelections(cart);
+            };
+            syncPersonalization();
             renderVariant();
         })();
     </script>

@@ -21,6 +21,7 @@
     $compareMinor = (int) ($variant?->compare_at_price_minor ?? $product->compare_at_price_minor ?? 0);
     $showFromPrice = $product->has_variants && $variantPrices->count() > 1;
     $requiresVariantSelection = $product->has_variants && $activeVariants->count() > 1;
+    $requiresPersonalizationChoice = (bool) data_get($product->personalization_settings, 'enabled', false);
     $imagePath = $variant?->image_path ?: $product->image_path;
     $image = $imagePath ? '/storage/'.ltrim($imagePath, '/') : null;
     $payload = [
@@ -53,9 +54,9 @@
                 <span class="sf-body-md text-[var(--store-muted)] line-through">{{ $currencySymbol }}{{ $money($compareMinor) }}</span>
             @endif
         </div>
-        @if ($requiresVariantSelection)
+        @if ($requiresVariantSelection || $requiresPersonalizationChoice)
             <a href="{{ $detailsUrl }}" class="sf-label-md store-product-card-action flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--store-secondary)] py-3 uppercase text-white transition-colors hover:brightness-90">
-                Choose options
+                {{ $requiresPersonalizationChoice ? 'Personalise item' : 'Choose options' }}
                 @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
             </a>
         @elseif ($variant)

@@ -70,6 +70,8 @@ return [
         'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com'),
         // gpt-4o-mini is cheap and strong for product drafting; set OPENAI_MODEL to override.
         'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+        // Text-to-image model for auto-generating product photos (OpenAI only).
+        'image_model' => env('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
     ],
 
 ];

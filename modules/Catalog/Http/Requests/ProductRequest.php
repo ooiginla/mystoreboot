@@ -53,6 +53,22 @@ final class ProductRequest extends FormRequest
                     return $option;
                 })
                 ->all(),
+            'custom_fields' => collect((array) $this->input('custom_fields', []))
+                ->map(fn (array $field): array => [
+                    'key' => trim((string) ($field['key'] ?? '')),
+                    'values' => $this->cleanCommaList($field['values'] ?? ''),
+                    'is_assigned' => filter_var($field['is_assigned'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                    'is_customer_selectable' => filter_var($field['is_customer_selectable'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                ])
+                ->all(),
+            'personalization' => [
+                'enabled' => $this->boolean('personalization.enabled'),
+                'fields' => [
+                    'customized_text' => $this->boolean('personalization.fields.customized_text'),
+                    'additional_info' => $this->boolean('personalization.fields.additional_info'),
+                    'photograph' => $this->boolean('personalization.fields.photograph'),
+                ],
+            ],
             'tag_ids' => array_values((array) $this->input('tag_ids', [])),
             'badge_ids' => array_values((array) $this->input('badge_ids', [])),
             'collection_ids' => array_values((array) $this->input('collection_ids', [])),
@@ -155,6 +171,17 @@ final class ProductRequest extends FormRequest
             'options' => ['nullable', 'array', 'max:3'],
             'options.*.name' => ['nullable', 'string', 'max:80'],
             'options.*.values' => ['nullable', 'string', 'max:1000'],
+            'custom_fields' => ['nullable', 'array', 'max:10'],
+            'custom_fields.*.key' => ['nullable', 'string', 'max:80'],
+            'custom_fields.*.values' => ['nullable', 'string', 'max:1000'],
+            'custom_fields.*.is_assigned' => ['boolean'],
+            'custom_fields.*.is_customer_selectable' => ['boolean'],
+            'personalization' => ['nullable', 'array'],
+            'personalization.enabled' => ['boolean'],
+            'personalization.fields' => ['array'],
+            'personalization.fields.customized_text' => ['boolean'],
+            'personalization.fields.additional_info' => ['boolean'],
+            'personalization.fields.photograph' => ['boolean'],
             'variants' => ['nullable', 'array', 'max:100'],
             'variants.*.id' => ['nullable', 'integer', 'exists:product_variants,id'],
             'variants.*.option_signature' => ['nullable', 'string', 'max:1000'],
@@ -175,6 +202,7 @@ final class ProductRequest extends FormRequest
             $this->validateVariantIdentifiers($validator, 'sku');
             $this->validateVariantIdentifiers($validator, 'barcode');
             $this->validateOptions($validator);
+            $this->validateCustomFields($validator);
             $this->validateTaxes($validator);
             $this->validateAttributeValues($validator);
             $this->validateInlineAttributeValues($validator);
@@ -275,6 +303,39 @@ final class ProductRequest extends FormRequest
             }
 
             $seen[$key] = true;
+        }
+    }
+
+    private function validateCustomFields(Validator $validator): void
+    {
+        $seen = [];
+
+        foreach ((array) $this->input('custom_fields', []) as $index => $field) {
+            if (! (bool) ($field['is_assigned'] ?? true)) {
+                continue;
+            }
+
+            $key = trim((string) ($field['key'] ?? ''));
+            $values = collect(explode(',', (string) ($field['values'] ?? '')))->map(fn (string $value): string => trim($value))->filter();
+
+            if ($key === '' && $values->isEmpty()) {
+                continue;
+            }
+
+            if ($key === '') {
+                $validator->errors()->add("custom_fields.{$index}.key", 'Each custom field needs a key.');
+            }
+
+            if ($values->isEmpty()) {
+                $validator->errors()->add("custom_fields.{$index}.values", 'Each custom field needs at least one value.');
+            }
+
+            $normalizedKey = strtolower($key);
+            if ($normalizedKey !== '' && isset($seen[$normalizedKey])) {
+                $validator->errors()->add("custom_fields.{$index}.key", 'Duplicate custom field keys are not allowed.');
+            }
+
+            $seen[$normalizedKey] = true;
         }
     }
 

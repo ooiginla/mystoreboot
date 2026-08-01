@@ -17,6 +17,7 @@
 
                 <div class="hidden items-center gap-1 lg:flex">
                     <a href="#features" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Features</a>
+                    <a href="#ai" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">AI</a>
                     <a href="#solutions" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Solutions</a>
                     <a href="#showcase" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Product</a>
                     <a href="#pricing" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Pricing</a>
@@ -52,6 +53,7 @@
             <div class="sb-container">
                 <div class="mt-2 space-y-1 rounded-2xl border border-zinc-200/70 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-ink-900">
                     <a href="#features" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Features</a>
+                    <a href="#ai" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">AI</a>
                     <a href="#solutions" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Solutions</a>
                     <a href="#showcase" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Product</a>
                     <a href="#pricing" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Pricing</a>

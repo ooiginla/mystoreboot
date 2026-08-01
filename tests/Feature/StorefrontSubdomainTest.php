@@ -82,6 +82,53 @@ final class StorefrontSubdomainTest extends TestCase
             ->assertSessionHasErrors('username');
     }
 
+    public function test_store_address_availability_is_checked_across_stores_while_ignoring_the_current_store(): void
+    {
+        [$currentTenant] = $this->storeFixture('current-store', 'Current Store');
+        $this->storeFixture('already-taken', 'Taken Store');
+        $user = User::factory()->create(['is_platform_admin' => true]);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.business.online-store.address-availability', [
+                'tenant_id' => $currentTenant->id,
+                'username' => 'already-taken',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('available', false)
+            ->assertJsonPath('message', 'Sorry, already-taken.storeboot.com has already been taken. Please pick a new store address.');
+
+        $this->actingAs($user)
+            ->getJson(route('admin.business.online-store.address-availability', [
+                'tenant_id' => $currentTenant->id,
+                'username' => 'current-store',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('available', true)
+            ->assertJsonPath('message', 'current-store.storeboot.com is available.');
+
+        $this->actingAs($user)
+            ->getJson(route('admin.business.online-store.address-availability', [
+                'tenant_id' => $currentTenant->id,
+                'username' => 'www',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('available', false)
+            ->assertJsonPath('message', 'Sorry, www.storeboot.com is reserved by Storeboot. Please pick a new store address.');
+
+        $this->actingAs($user)
+            ->post(route('admin.business.online-store.save'), [
+                'tenant_id' => $currentTenant->id,
+                'username' => 'already-taken',
+                'store_name' => 'Current Store',
+                'theme_primary_color' => '#005f73',
+                'theme_secondary_color' => '#ee9b00',
+                'paystack_method' => 'none',
+            ])
+            ->assertSessionHasErrors([
+                'username' => 'Sorry, that store address has already been taken. Please pick a new one.',
+            ]);
+    }
+
     /**
      * @return array{Tenant, OnlineStore}
      */

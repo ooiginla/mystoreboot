@@ -26,6 +26,7 @@ final class AccessServiceProvider extends ModuleServiceProvider
 
         $approvals = $this->app->make(ApprovalService::class);
         $approvals->registerExecutor('inventory_adjustment', \Modules\Access\Approvals\InventoryAdjustmentExecutor::class);
+        $approvals->registerExecutor('purchase_order', \Modules\Access\Approvals\PurchaseOrderExecutor::class);
         $approvals->registerExecutor('refund', \Modules\Access\Approvals\RefundExecutor::class);
         $approvals->registerExecutor('expense', \Modules\Access\Approvals\ExpenseExecutor::class);
         $approvals->registerExecutor('journal', \Modules\Access\Approvals\JournalExecutor::class);

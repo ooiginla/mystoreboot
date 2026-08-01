@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Access\Approvals;
 
+use App\Models\User;
 use Modules\Access\Contracts\ApprovalExecutor;
 use Modules\Access\Models\ApprovalRequest;
 use Modules\Sales\Actions\ProcessSalesReturnAction;
@@ -23,7 +24,7 @@ final class RefundExecutor implements ApprovalExecutor
         private readonly ProcessSalesReturnAction $processReturn,
     ) {}
 
-    public function execute(ApprovalRequest $request): void
+    public function execute(ApprovalRequest $request, User $approver): void
     {
         $payload = (array) $request->payload;
         $orderId = (int) ($payload['order_id'] ?? 0);

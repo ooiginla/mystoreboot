@@ -308,7 +308,10 @@ final class SalesController extends Controller
             'discount_percent' => $data['discount_type'] === DiscountType::Percentage->value ? $data['discount_value'] : null,
         ]);
 
-        return redirect()->to(route('admin.catalog.index', ['tenant' => $coupon->tenant_id]).'#coupons')->with('status', "Coupon {$coupon->code} created.");
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $coupon->tenant_id]).'#taxes-coupons')
+            ->with('catalog_accordion', 'coupons')
+            ->with('status', "Coupon {$coupon->code} created.");
     }
 
     public function storePayment(SalesPaymentRequest $request, SalesOrder $order, RecordSalesPaymentAction $action): RedirectResponse

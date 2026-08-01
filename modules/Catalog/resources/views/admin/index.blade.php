@@ -54,6 +54,30 @@
         .dialog-local-tabs a:hover { border-color: #a6f4c5; background: var(--brand-100); color: #05603a; }
         .dialog-local-tabs a.active { border-color: var(--brand); background: var(--brand); color: #fff; box-shadow: 0 4px 12px -3px rgba(6,193,104,.5); }
         [data-local-tab-panel] { margin-top: 14px; }
+        .catalog-management-accordions { display: grid; gap: 12px; }
+        .catalog-management-accordion { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+        .catalog-management-accordion > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; cursor: pointer; list-style: none; background: #f2f4f7; transition: background .15s ease, box-shadow .15s ease; }
+        .catalog-management-accordion > summary::-webkit-details-marker { display: none; }
+        .catalog-management-accordion > summary:hover { background: #e9eef3; box-shadow: inset 4px 0 0 var(--brand); }
+        .catalog-management-accordion > summary:focus-visible { outline: 3px solid var(--brand-ring); outline-offset: -3px; }
+        .catalog-management-accordion[open] > summary { border-bottom: 1px solid var(--line); background: var(--brand-050); box-shadow: inset 4px 0 0 var(--brand); }
+        .catalog-management-accordion-heading { min-width: 0; display: flex; align-items: center; gap: 14px; }
+        .catalog-management-accordion-icon { width: 40px; height: 40px; flex: 0 0 40px; display: grid; place-items: center; border-radius: 8px; background: #fff; color: var(--brand-strong); box-shadow: 0 1px 3px rgba(16,24,40,.12); }
+        .catalog-management-accordion-icon svg { width: 21px; height: 21px; }
+        .catalog-management-accordion-summary { min-width: 0; }
+        .catalog-management-accordion-summary .panel-title { display: block; }
+        .catalog-management-accordion-summary .subtle { display: block; margin-top: 4px; }
+        .catalog-management-accordion-meta { display: inline-flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+        .catalog-management-accordion-cue { color: var(--brand-strong); font-size: 12px; font-weight: 800; }
+        .catalog-management-accordion-cue-open { display: none; }
+        .catalog-management-accordion[open] .catalog-management-accordion-cue-closed { display: none; }
+        .catalog-management-accordion[open] .catalog-management-accordion-cue-open { display: inline; }
+        .catalog-management-accordion-toggle { position: relative; width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; border-radius: 999px; background: var(--brand); color: #fff; }
+        .catalog-management-accordion-toggle::before, .catalog-management-accordion-toggle::after { content: ''; position: absolute; width: 12px; height: 2px; border-radius: 999px; background: currentColor; transition: transform .15s ease, opacity .15s ease; }
+        .catalog-management-accordion-toggle::after { transform: rotate(90deg); }
+        .catalog-management-accordion[open] .catalog-management-accordion-toggle::after { opacity: 0; transform: rotate(0); }
+        .catalog-management-accordion-body { padding: 16px 20px 20px; }
+        .catalog-management-accordion-actions { display: flex; justify-content: flex-end; margin-bottom: 14px; }
         .catalog-category-dialog-feedback { min-height: 18px; margin: 0; color: #b42318; font-size: 13px; }
         .catalog-profit-summary { grid-column: 1 / -1; display: flex; gap: 18px; flex-wrap: wrap; border: 1px solid #a6f4c5; border-radius: 8px; background: var(--brand-050); color: #344054; padding: 10px 12px; font-size: 14px; font-weight: 750; }
         .catalog-profit-summary strong { color: var(--brand-strong); }
@@ -206,12 +230,9 @@
             <a href="#products" role="tab" data-tab-target="products">Products <span class="badge neutral">{{ $stats['products'] }}</span></a>
             <a href="#services" role="tab" data-tab-target="services">Services <span class="badge neutral">{{ $stats['services'] }}</span></a>
             <a href="#categories" role="tab" data-tab-target="categories">Categories <span class="badge neutral">{{ $categories->count() }}</span></a>
-            <a href="#tags" role="tab" data-tab-target="tags">Tags <span class="badge neutral">{{ $tags->count() }}</span></a>
-            <a href="#badges" role="tab" data-tab-target="badges">Badges <span class="badge neutral">{{ $productBadges->count() }}</span></a>
-            <a href="#collections" role="tab" data-tab-target="collections">Collections <span class="badge neutral">{{ $productCollections->count() }}</span></a>
-            <a href="#attributes" role="tab" data-tab-target="attributes">Attributes <span class="badge neutral">{{ $attributes->count() }}</span></a>
-            <a href="#taxes" role="tab" data-tab-target="taxes">Taxes <span class="badge neutral">{{ $taxes->count() }}</span></a>
-            <a href="#coupons" role="tab" data-tab-target="coupons">Coupons <span class="badge neutral">{{ $coupons->count() }}</span></a>
+            <a href="#tags-attributes" role="tab" data-tab-target="tags-attributes">Tags &amp; Attributes <span class="badge neutral">{{ $tags->count() + $attributes->count() + $stats['custom_fields'] }}</span></a>
+            <a href="#badges-collections" role="tab" data-tab-target="badges-collections">Badges &amp; Collections <span class="badge neutral">{{ $productBadges->count() + $productCollections->count() }}</span></a>
+            <a href="#taxes-coupons" role="tab" data-tab-target="taxes-coupons">Taxes &amp; Coupons <span class="badge neutral">{{ $taxes->count() + $coupons->count() }}</span></a>
         </nav>
 
         <div class="content-stack">
@@ -340,178 +361,331 @@
                 </div>
             </section>
 
-            <section class="panel tab-panel" id="tags" role="tabpanel" data-tab-panel hidden>
+            <section class="panel tab-panel" id="tags-attributes" role="tabpanel" data-tab-panel hidden>
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Tags</h2>
-                        <p class="subtle">Internal labels for organizing products. Use Badges for labels customers should see.</p>
+                        <h2 class="panel-title">Tags &amp; Attributes</h2>
+                        <p class="subtle">Expand a section to manage its catalog options.</p>
                     </div>
-                    <button class="btn accent" type="button" data-dialog-open="tag-dialog">Add tag</button>
                 </div>
-                <div class="panel-body">
-                    <div class="list">
-                        @forelse ($tags as $tag)
-                            <div class="item">
-                                <div>
-                                    <div class="item-title">{{ $tag->name }}</div>
-                                    <div class="subtle">{{ $tag->slug }}</div>
-                                </div>
-                                <div class="catalog-row-actions">
-                                    <button class="btn secondary" type="button" data-dialog-open="tag-edit-{{ $tag->id }}">Edit</button>
-                                </div>
+                <div class="panel-body catalog-management-accordions">
+                    <details class="catalog-management-accordion" data-catalog-management-accordion="tags" @if (session('catalog_accordion') === 'tags') open @endif>
+                        <summary>
+                            <span class="catalog-management-accordion-heading">
+                                <span class="catalog-management-accordion-icon" data-accordion-icon="tags" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13 13 20 4 11V4h7l9 9Z"/><circle cx="8.5" cy="8.5" r="1"/></svg>
+                                </span>
+                                <span class="catalog-management-accordion-summary">
+                                    <span class="panel-title">Tags</span>
+                                    <span class="subtle">Internal labels for organizing products. Use Badges for labels customers should see.</span>
+                                </span>
+                            </span>
+                            <span class="catalog-management-accordion-meta">
+                                <span class="badge neutral">{{ $tags->count() }}</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-closed">Click to expand</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-open">Click to collapse</span>
+                                <span class="catalog-management-accordion-toggle" aria-hidden="true"></span>
+                            </span>
+                        </summary>
+                        <div class="catalog-management-accordion-body">
+                            <div class="catalog-management-accordion-actions">
+                                <button class="btn accent" type="button" data-dialog-open="tag-dialog">Add tag</button>
                             </div>
-                        @empty
-                            <div class="empty">No tags yet. Add tags to organize and find related products.</div>
-                        @endforelse
-                    </div>
-                </div>
-            </section>
-
-            <section class="panel tab-panel" id="badges" role="tabpanel" data-tab-panel hidden>
-                <div class="panel-header">
-                    <div>
-                        <h2 class="panel-title">Product Badges</h2>
-                        <p class="subtle">Short customer-facing labels such as New, Sale, or Limited.</p>
-                    </div>
-                    <button class="btn accent" type="button" data-dialog-open="badge-dialog">Add badge</button>
-                </div>
-                <div class="panel-body">
-                    <div class="list">
-                        @forelse ($productBadges as $badge)
-                            <div class="item">
-                                <div>
-                                    <div class="item-title">
-                                        <span class="badge" style="background: {{ $badge->background_color }}; color: {{ $badge->text_color }};">{{ $badge->name }}</span>
+                            <div class="list">
+                                @forelse ($tags as $tag)
+                                    <div class="item">
+                                        <div>
+                                            <div class="item-title">{{ $tag->name }}</div>
+                                            <div class="subtle">{{ $tag->slug }}</div>
+                                        </div>
+                                        <div class="catalog-row-actions">
+                                            <button class="btn secondary" type="button" data-dialog-open="tag-edit-{{ $tag->id }}">Edit</button>
+                                        </div>
                                     </div>
-                                    <div class="subtle">{{ $badge->products_count }} {{ Str::plural('product', $badge->products_count) }}</div>
-                                </div>
-                                <div class="catalog-row-actions">
-                                    <span class="badge {{ $badge->is_visible ? 'success' : 'neutral' }}">{{ $badge->is_visible ? 'Visible' : 'Hidden' }}</span>
-                                    <button class="btn secondary" type="button" data-dialog-open="badge-edit-{{ $badge->id }}">Edit</button>
-                                </div>
+                                @empty
+                                    <div class="empty">No tags yet. Add tags to organize and find related products.</div>
+                                @endforelse
                             </div>
-                        @empty
-                            <div class="empty">No badges yet. Add one, then assign it from the product editor.</div>
-                        @endforelse
-                    </div>
+                        </div>
+                    </details>
+
+                    <details class="catalog-management-accordion" data-catalog-management-accordion="attributes" @if (session('catalog_accordion') === 'attributes') open @endif>
+                        <summary>
+                            <span class="catalog-management-accordion-heading">
+                                <span class="catalog-management-accordion-icon" data-accordion-icon="attributes" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+                                </span>
+                                <span class="catalog-management-accordion-summary">
+                                    <span class="panel-title">Attributes</span>
+                                    <span class="subtle">Reusable product details like Color, Size, Material, or Fit.</span>
+                                </span>
+                            </span>
+                            <span class="catalog-management-accordion-meta">
+                                <span class="badge neutral">{{ $attributes->count() }}</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-closed">Click to expand</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-open">Click to collapse</span>
+                                <span class="catalog-management-accordion-toggle" aria-hidden="true"></span>
+                            </span>
+                        </summary>
+                        <div class="catalog-management-accordion-body">
+                            <div class="catalog-management-accordion-actions">
+                                <button class="btn accent" type="button" data-dialog-open="attribute-dialog">Add attribute</button>
+                            </div>
+                            <div class="list">
+                                @forelse ($attributes as $attribute)
+                                    <div class="item">
+                                        <div>
+                                            <div class="item-title">{{ $attribute->name }}</div>
+                                            <div class="subtle">{{ $attribute->values->pluck('value')->join(', ') ?: 'No values yet' }}</div>
+                                        </div>
+                                        <div class="catalog-row-actions">
+                                            <button class="btn secondary" type="button" data-dialog-open="attribute-edit-{{ $attribute->id }}">Edit</button>
+                                        </div>
+                                    </div>
+                                @empty
+                                    <div class="empty">No attributes yet. Add attributes before assigning product details.</div>
+                                @endforelse
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="catalog-management-accordion" data-catalog-management-accordion="custom" @if (session('catalog_accordion') === 'custom') open @endif>
+                        <summary>
+                            <span class="catalog-management-accordion-heading">
+                                <span class="catalog-management-accordion-icon" data-accordion-icon="custom" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="3"/><path d="m10.5 13.5 8-8a2.1 2.1 0 0 1 3 3l-8 8"/><path d="m16 8 3 3"/><path d="M5.5 17.5 3 20"/></svg>
+                                </span>
+                                <span class="catalog-management-accordion-summary">
+                                    <span class="panel-title">Custom keys and values</span>
+                                    <span class="subtle">Create reusable custom keys and define the values available under each key.</span>
+                                </span>
+                            </span>
+                            <span class="catalog-management-accordion-meta">
+                                <span class="badge neutral">{{ $stats['custom_fields'] }}</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-closed">Click to expand</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-open">Click to collapse</span>
+                                <span class="catalog-management-accordion-toggle" aria-hidden="true"></span>
+                            </span>
+                        </summary>
+                        <div class="catalog-management-accordion-body">
+                            <div class="catalog-management-accordion-actions">
+                                <button class="btn accent" type="button" data-dialog-open="custom-definition-dialog">New</button>
+                            </div>
+                            <div class="list">
+                                @forelse ($customDefinitions as $definition)
+                                    <div class="item" style="align-items:flex-start;">
+                                        <div>
+                                            <div class="item-title">{{ $definition->name }}</div>
+                                            <div style="display:flex; gap:7px; flex-wrap:wrap; margin-top:10px;">
+                                                @foreach ($definition->values as $value)
+                                                    <span class="catalog-value-tag"><span>{{ $value }}</span></span>
+                                                @endforeach
+                                            </div>
+                                        </div>
+                                        <div style="display:flex; gap:7px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                                            <span class="badge neutral">{{ count($definition->values) }} {{ Str::plural('value', count($definition->values)) }}</span>
+                                            <span class="badge {{ $definition->is_customer_selectable ? 'success' : 'neutral' }}">{{ $definition->is_customer_selectable ? 'Shown on storefront' : 'Hidden on storefront' }}</span>
+                                        </div>
+                                    </div>
+                                @empty
+                                    <div class="empty">No custom keys yet. Click New to create the first key and its values.</div>
+                                @endforelse
+                            </div>
+                        </div>
+                    </details>
                 </div>
             </section>
 
-            <section class="panel tab-panel" id="collections" role="tabpanel" data-tab-panel hidden>
+            <section class="panel tab-panel" id="badges-collections" role="tabpanel" data-tab-panel hidden>
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Product Collections</h2>
-                        <p class="subtle">Create simple manual groups for products you want to feature together.</p>
+                        <h2 class="panel-title">Badges &amp; Collections</h2>
+                        <p class="subtle">Expand a section to manage how products are labelled and grouped.</p>
                     </div>
-                    <button class="btn accent" type="button" data-dialog-open="product-collection-dialog">Add collection</button>
                 </div>
-                <div class="panel-body">
-                    <div class="list">
-                        @forelse ($productCollections as $collection)
-                            <div class="item">
-                                <div>
-                                    <div class="item-title">{{ $collection->name }}</div>
-                                    <div class="subtle">{{ $collection->products_count }} {{ Str::plural('product', $collection->products_count) }} · Manual collection</div>
-                                </div>
-                                <div class="catalog-row-actions">
-                                    <span class="badge {{ $collection->is_visible ? 'success' : 'neutral' }}">{{ $collection->is_visible ? 'Visible' : 'Hidden' }}</span>
-                                    <button class="btn secondary" type="button" data-dialog-open="product-collection-edit-{{ $collection->id }}">Edit</button>
-                                </div>
+                <div class="panel-body catalog-management-accordions">
+                    <details class="catalog-management-accordion" data-catalog-management-accordion="badges" @if (session('catalog_accordion') === 'badges') open @endif>
+                        <summary>
+                            <span class="catalog-management-accordion-heading">
+                                <span class="catalog-management-accordion-icon" data-accordion-icon="badges" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="m8.5 12-1 9 4.5-3 4.5 3-1-9"/><path d="m12 5 1 2 2 .3-1.5 1.5.4 2.2-1.9-1-1.9 1 .4-2.2L9 7.3 11 7l1-2Z"/></svg>
+                                </span>
+                                <span class="catalog-management-accordion-summary">
+                                    <span class="panel-title">Product Badges</span>
+                                    <span class="subtle">Short customer-facing labels such as New, Sale, or Limited.</span>
+                                </span>
+                            </span>
+                            <span class="catalog-management-accordion-meta">
+                                <span class="badge neutral">{{ $productBadges->count() }}</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-closed">Click to expand</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-open">Click to collapse</span>
+                                <span class="catalog-management-accordion-toggle" aria-hidden="true"></span>
+                            </span>
+                        </summary>
+                        <div class="catalog-management-accordion-body">
+                            <div class="catalog-management-accordion-actions">
+                                <button class="btn accent" type="button" data-dialog-open="badge-dialog">Add badge</button>
                             </div>
-                        @empty
-                            <div class="empty">No product collections yet. Add one, then assign products from the product editor.</div>
-                        @endforelse
-                    </div>
+                            <div class="list">
+                                @forelse ($productBadges as $badge)
+                                    <div class="item">
+                                        <div>
+                                            <div class="item-title">
+                                                <span class="badge" style="background: {{ $badge->background_color }}; color: {{ $badge->text_color }};">{{ $badge->name }}</span>
+                                            </div>
+                                            <div class="subtle">{{ $badge->products_count }} {{ Str::plural('product', $badge->products_count) }}</div>
+                                        </div>
+                                        <div class="catalog-row-actions">
+                                            <span class="badge {{ $badge->is_visible ? 'success' : 'neutral' }}">{{ $badge->is_visible ? 'Visible' : 'Hidden' }}</span>
+                                            <button class="btn secondary" type="button" data-dialog-open="badge-edit-{{ $badge->id }}">Edit</button>
+                                        </div>
+                                    </div>
+                                @empty
+                                    <div class="empty">No badges yet. Add one, then assign it from the product editor.</div>
+                                @endforelse
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="catalog-management-accordion" data-catalog-management-accordion="collections" @if (session('catalog_accordion') === 'collections') open @endif>
+                        <summary>
+                            <span class="catalog-management-accordion-heading">
+                                <span class="catalog-management-accordion-icon" data-accordion-icon="collections" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                                </span>
+                                <span class="catalog-management-accordion-summary">
+                                    <span class="panel-title">Product Collections</span>
+                                    <span class="subtle">Create simple manual groups for products you want to feature together.</span>
+                                </span>
+                            </span>
+                            <span class="catalog-management-accordion-meta">
+                                <span class="badge neutral">{{ $productCollections->count() }}</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-closed">Click to expand</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-open">Click to collapse</span>
+                                <span class="catalog-management-accordion-toggle" aria-hidden="true"></span>
+                            </span>
+                        </summary>
+                        <div class="catalog-management-accordion-body">
+                            <div class="catalog-management-accordion-actions">
+                                <button class="btn accent" type="button" data-dialog-open="product-collection-dialog">Add collection</button>
+                            </div>
+                            <div class="list">
+                                @forelse ($productCollections as $collection)
+                                    <div class="item">
+                                        <div>
+                                            <div class="item-title">{{ $collection->name }}</div>
+                                            <div class="subtle">{{ $collection->products_count }} {{ Str::plural('product', $collection->products_count) }} · Manual collection</div>
+                                        </div>
+                                        <div class="catalog-row-actions">
+                                            <span class="badge {{ $collection->is_visible ? 'success' : 'neutral' }}">{{ $collection->is_visible ? 'Visible' : 'Hidden' }}</span>
+                                            <button class="btn secondary" type="button" data-dialog-open="product-collection-edit-{{ $collection->id }}">Edit</button>
+                                        </div>
+                                    </div>
+                                @empty
+                                    <div class="empty">No product collections yet. Add one, then assign products from the product editor.</div>
+                                @endforelse
+                            </div>
+                        </div>
+                    </details>
                 </div>
             </section>
 
-            <section class="panel tab-panel" id="attributes" role="tabpanel" data-tab-panel hidden>
+            <section class="panel tab-panel" id="taxes-coupons" role="tabpanel" data-tab-panel hidden>
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Attributes</h2>
-                        <p class="subtle">Reusable product details like Color, Size, Material, or Fit.</p>
+                        <h2 class="panel-title">Taxes &amp; Coupons</h2>
+                        <p class="subtle">Expand a section to manage its sales settings.</p>
                     </div>
-                    <button class="btn accent" type="button" data-dialog-open="attribute-dialog">Add attribute</button>
                 </div>
-                <div class="panel-body">
-                    <div class="list">
-                        @forelse ($attributes as $attribute)
-                            <div class="item">
-                                <div>
-                                    <div class="item-title">{{ $attribute->name }}</div>
-                                    <div class="subtle">{{ $attribute->values->pluck('value')->join(', ') ?: 'No values yet' }}</div>
-                                </div>
-                                <div class="catalog-row-actions">
-                                    <button class="btn secondary" type="button" data-dialog-open="attribute-edit-{{ $attribute->id }}">Edit</button>
-                                </div>
+                <div class="panel-body catalog-management-accordions">
+                    <details class="catalog-management-accordion" data-catalog-management-accordion="taxes" @if (session('catalog_accordion') === 'taxes') open @endif>
+                        <summary>
+                            <span class="catalog-management-accordion-heading">
+                                <span class="catalog-management-accordion-icon" data-accordion-icon="taxes" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="2"/><circle cx="17" cy="17" r="2"/><path d="m19 5-14 14"/></svg>
+                                </span>
+                                <span class="catalog-management-accordion-summary">
+                                    <span class="panel-title">Taxes</span>
+                                    <span class="subtle">Reusable tax rates that can be applied to products and services.</span>
+                                </span>
+                            </span>
+                            <span class="catalog-management-accordion-meta">
+                                <span class="badge neutral">{{ $taxes->count() }}</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-closed">Click to expand</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-open">Click to collapse</span>
+                                <span class="catalog-management-accordion-toggle" aria-hidden="true"></span>
+                            </span>
+                        </summary>
+                        <div class="catalog-management-accordion-body">
+                            <div class="catalog-management-accordion-actions">
+                                <button class="btn accent" type="button" data-dialog-open="tax-dialog">Add tax</button>
                             </div>
-                        @empty
-                            <div class="empty">No attributes yet. Add attributes before assigning product details.</div>
-                        @endforelse
-                    </div>
-                </div>
-            </section>
-
-            <section class="panel tab-panel" id="taxes" role="tabpanel" data-tab-panel hidden>
-                <div class="panel-header">
-                    <div>
-                        <h2 class="panel-title">Taxes</h2>
-                        <p class="subtle">Reusable tax rates that can be applied to products and services.</p>
-                    </div>
-                    <button class="btn accent" type="button" data-dialog-open="tax-dialog">Add tax</button>
-                </div>
-                <div class="panel-body">
-                    <div class="list">
-                        @forelse ($taxes as $tax)
-                            <div class="item">
-                                <div>
-                                    <div class="item-title">{{ $tax->name }} - {{ $tax->rate }}%</div>
-                                    <div class="subtle">{{ $tax->description ?: $tax->slug }}</div>
-                                </div>
-                                <div class="catalog-row-actions">
-                                    <span class="badge {{ $tax->is_active ? 'success' : 'neutral' }}">{{ $tax->is_active ? 'Active' : 'Inactive' }}</span>
-                                    <button class="btn secondary" type="button" data-dialog-open="tax-edit-{{ $tax->id }}">Edit</button>
-                                    <form method="POST" action="{{ route('admin.catalog.taxes.destroy', $tax) }}" onsubmit="return confirm('Delete this tax? Products using it will no longer have this tax applied.');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button class="btn danger" type="submit">Delete</button>
-                                    </form>
-                                </div>
+                            <div class="list">
+                                @forelse ($taxes as $tax)
+                                    <div class="item">
+                                        <div>
+                                            <div class="item-title">{{ $tax->name }} - {{ $tax->rate }}%</div>
+                                            <div class="subtle">{{ $tax->description ?: $tax->slug }}</div>
+                                        </div>
+                                        <div class="catalog-row-actions">
+                                            <span class="badge {{ $tax->is_active ? 'success' : 'neutral' }}">{{ $tax->is_active ? 'Active' : 'Inactive' }}</span>
+                                            <button class="btn secondary" type="button" data-dialog-open="tax-edit-{{ $tax->id }}">Edit</button>
+                                            <form method="POST" action="{{ route('admin.catalog.taxes.destroy', $tax) }}" onsubmit="return confirm('Delete this tax? Products using it will no longer have this tax applied.');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button class="btn danger" type="submit">Delete</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                @empty
+                                    <div class="empty">No taxes yet. Add taxes before applying them to products.</div>
+                                @endforelse
                             </div>
-                        @empty
-                            <div class="empty">No taxes yet. Add taxes before applying them to products.</div>
-                        @endforelse
-                    </div>
-                </div>
-            </section>
+                        </div>
+                    </details>
 
-            <section class="panel tab-panel" id="coupons" role="tabpanel" data-tab-panel hidden>
-                <div class="panel-header">
-                    <div>
-                        <h2 class="panel-title">Coupons</h2>
-                        <p class="subtle">Create reusable amount or percentage discounts for sales.</p>
-                    </div>
-                    <button class="btn accent" type="button" data-dialog-open="coupon-dialog">Add coupon</button>
-                </div>
-                <div class="panel-body">
-                    <table class="table">
-                        <thead>
-                            <tr><th>Code</th><th>Type</th><th>Value</th><th>Validity</th><th>Status</th></tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($coupons as $coupon)
-                                <tr>
-                                    <td><strong>{{ $coupon->code }}</strong></td>
-                                    <td>{{ $coupon->discount_type->label() }}</td>
-                                    <td>{{ $coupon->discount_type->value === 'percentage' ? $coupon->discount_percent.'%' : $tenant->currency_code.' '.$money($coupon->discount_value_minor) }}</td>
-                                    <td>{{ $coupon->starts_at?->format('M j, Y') ?? 'Now' }} – {{ $coupon->expires_at?->format('M j, Y') ?? 'No expiry' }}</td>
-                                    <td><span class="badge {{ $coupon->is_active ? 'success' : 'neutral' }}">{{ $coupon->is_active ? 'Active' : 'Inactive' }}</span></td>
-                                </tr>
-                            @empty
-                                <tr><td colspan="5"><div class="empty">No coupons yet.</div></td></tr>
-                            @endforelse
-                        </tbody>
-                    </table>
+                    <details class="catalog-management-accordion" data-catalog-management-accordion="coupons" @if (session('catalog_accordion') === 'coupons') open @endif>
+                        <summary>
+                            <span class="catalog-management-accordion-heading">
+                                <span class="catalog-management-accordion-icon" data-accordion-icon="coupons" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a2 2 0 0 0 0-4V5H4v3a2 2 0 0 0 0 4v3a2 2 0 0 0 0 4v2h16v-2a2 2 0 0 0 0-4v-3Z"/><path d="M12 5v16"/></svg>
+                                </span>
+                                <span class="catalog-management-accordion-summary">
+                                    <span class="panel-title">Coupons</span>
+                                    <span class="subtle">Create reusable amount or percentage discounts for sales.</span>
+                                </span>
+                            </span>
+                            <span class="catalog-management-accordion-meta">
+                                <span class="badge neutral">{{ $coupons->count() }}</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-closed">Click to expand</span>
+                                <span class="catalog-management-accordion-cue catalog-management-accordion-cue-open">Click to collapse</span>
+                                <span class="catalog-management-accordion-toggle" aria-hidden="true"></span>
+                            </span>
+                        </summary>
+                        <div class="catalog-management-accordion-body">
+                            <div class="catalog-management-accordion-actions">
+                                <button class="btn accent" type="button" data-dialog-open="coupon-dialog">Add coupon</button>
+                            </div>
+                            <table class="table">
+                                <thead>
+                                    <tr><th>Code</th><th>Type</th><th>Value</th><th>Validity</th><th>Status</th></tr>
+                                </thead>
+                                <tbody>
+                                    @forelse ($coupons as $coupon)
+                                        <tr>
+                                            <td><strong>{{ $coupon->code }}</strong></td>
+                                            <td>{{ $coupon->discount_type->label() }}</td>
+                                            <td>{{ $coupon->discount_type->value === 'percentage' ? $coupon->discount_percent.'%' : $tenant->currency_code.' '.$money($coupon->discount_value_minor) }}</td>
+                                            <td>{{ $coupon->starts_at?->format('M j, Y') ?? 'Now' }} – {{ $coupon->expires_at?->format('M j, Y') ?? 'No expiry' }}</td>
+                                            <td><span class="badge {{ $coupon->is_active ? 'success' : 'neutral' }}">{{ $coupon->is_active ? 'Active' : 'Inactive' }}</span></td>
+                                        </tr>
+                                    @empty
+                                        <tr><td colspan="5"><div class="empty">No coupons yet.</div></td></tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </details>
                 </div>
             </section>
         </div>
@@ -534,6 +708,34 @@
     ])
 
     @include('sales::admin.partials.coupon-dialog')
+
+    <dialog class="dialog" id="custom-definition-dialog">
+        <div class="dialog-header">
+            <div><h2 class="panel-title">New custom key</h2><p class="subtle">Create a reusable key and its available values.</p></div>
+            <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
+        </div>
+        <div class="dialog-body">
+            <form class="mini-form" method="POST" action="{{ route('admin.catalog.custom-definitions.store') }}">
+                @csrf
+                <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                <div class="field"><label>Custom key</label><input name="name" required maxlength="80" placeholder="Unit"></div>
+                <div class="field">
+                    <label>Values</label>
+                    <div class="catalog-value-tag-input" data-custom-definition-tag-input>
+                        @foreach (collect(explode(',', (string) old('values')))->map(fn ($value) => trim($value))->filter() as $value)
+                            <span class="catalog-value-tag" data-custom-definition-value-tag="{{ $value }}"><span>{{ $value }}</span><button type="button" data-remove-custom-definition-value aria-label="Remove {{ $value }}">×</button></span>
+                        @endforeach
+                        <input type="text" data-custom-definition-value-input placeholder="Type a value" autocomplete="off">
+                    </div>
+                    <input type="hidden" name="values" value="{{ old('values') }}" data-custom-definition-values>
+                    <span class="subtle">Press Enter or type a comma after each value.</span>
+                </div>
+                <input type="hidden" name="is_customer_selectable" value="0">
+                <label class="inline-check"><input type="checkbox" name="is_customer_selectable" value="1" @checked(old('is_customer_selectable'))> Display on Storefront</label>
+                <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Cancel</button><button class="btn primary" type="submit">Create</button></div>
+            </form>
+        </div>
+    </dialog>
 
     @foreach ($products as $product)
         @include('catalog::admin.partials.product-dialog', [
@@ -1323,6 +1525,32 @@
                 });
             });
 
+            document.querySelectorAll('[data-product-custom-assignment]').forEach((assignment) => {
+                const assigned = assignment.querySelector('[data-custom-assigned]');
+                const selectable = assignment.querySelector('[data-custom-customer-selectable]');
+                if (!assigned || !selectable) return;
+
+                const sync = () => {
+                    selectable.disabled = !assigned.checked;
+                };
+
+                assigned.addEventListener('change', sync);
+                sync();
+            });
+
+            document.querySelectorAll('[data-product-personalization]').forEach((wrapper) => {
+                const enabled = wrapper.querySelector('[data-personalization-enabled]');
+                const fields = wrapper.querySelector('[data-personalization-fields]');
+                if (!enabled || !fields) return;
+
+                const sync = () => {
+                    fields.hidden = !enabled.checked;
+                };
+
+                enabled.addEventListener('change', sync);
+                sync();
+            });
+
             const showLocalPanelForField = (field) => {
                 const panel = field.closest('[data-local-tab-panel]');
                 const dialog = field.closest('dialog');
@@ -1353,6 +1581,72 @@
                     .filter(Boolean)
                     .filter((item, index, items) => items.findIndex((value) => value.toLowerCase() === item.toLowerCase()) === index);
             };
+
+            document.querySelectorAll('[data-custom-definition-tag-input]').forEach((wrapper) => {
+                const input = wrapper.querySelector('[data-custom-definition-value-input]');
+                const hidden = wrapper.parentElement?.querySelector('[data-custom-definition-values]');
+                const form = wrapper.closest('form');
+                if (!input || !hidden || !form) return;
+
+                const tags = () => Array.from(wrapper.querySelectorAll('[data-custom-definition-value-tag]'));
+                const values = () => tags().map((tag) => tag.dataset.customDefinitionValueTag).filter(Boolean);
+                const sync = () => { hidden.value = values().join(', '); };
+                const add = (rawValue) => {
+                    const value = rawValue.trim();
+                    if (!value || values().some((item) => item.toLowerCase() === value.toLowerCase())) return;
+
+                    const tag = document.createElement('span');
+                    tag.className = 'catalog-value-tag';
+                    tag.dataset.customDefinitionValueTag = value;
+                    const label = document.createElement('span');
+                    label.textContent = value;
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.dataset.removeCustomDefinitionValue = '';
+                    remove.setAttribute('aria-label', `Remove ${value}`);
+                    remove.textContent = '×';
+                    tag.append(label, remove);
+                    wrapper.insertBefore(tag, input);
+                    sync();
+                };
+                const commit = () => {
+                    splitInlineValues(input.value).forEach(add);
+                    input.value = '';
+                    sync();
+                };
+
+                wrapper.addEventListener('click', (event) => {
+                    const remove = event.target.closest('[data-remove-custom-definition-value]');
+                    if (remove) {
+                        remove.closest('[data-custom-definition-value-tag]')?.remove();
+                        sync();
+                        return;
+                    }
+                    input.focus();
+                });
+                input.addEventListener('keydown', (event) => {
+                    if (event.key !== 'Enter' && event.key !== ',') return;
+                    event.preventDefault();
+                    commit();
+                });
+                input.addEventListener('input', () => {
+                    if (!input.value.includes(',')) return;
+                    const parts = input.value.split(',');
+                    input.value = parts.pop() || '';
+                    parts.forEach(add);
+                });
+                input.addEventListener('blur', commit);
+                form.addEventListener('submit', (event) => {
+                    commit();
+                    input.setCustomValidity(values().length ? '' : 'Add at least one value.');
+                    if (!values().length) {
+                        event.preventDefault();
+                        input.reportValidity();
+                        input.focus();
+                    }
+                });
+                sync();
+            });
 
             const hiddenInputForPendingList = (list) => {
                 const form = list?.closest('form');

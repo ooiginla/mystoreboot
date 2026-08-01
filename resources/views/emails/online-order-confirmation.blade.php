@@ -61,6 +61,22 @@
                                 <tr>
                                     <td style="padding:11px 0; border-bottom:1px solid #edf1ef; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.45; color:#0f1b16;">
                                         <strong>{{ $item->item_name }}</strong>
+                                        @if ($item->custom_selections)<br><span style="font-size:12px; color:#64748b;">{{ collect($item->custom_selections)->map(fn ($value, $key) => $key.': '.$value)->join(' · ') }}</span>@endif
+                                        @if (data_get($item->personalization, 'requested'))
+                                            <br>
+                                            <span style="font-size:12px; color:#64748b;">
+                                                <strong>Personalization</strong>
+                                                @if (data_get($item->personalization, 'customized_text'))
+                                                    · Text: {{ data_get($item->personalization, 'customized_text') }}
+                                                @endif
+                                                @if (data_get($item->personalization, 'additional_info'))
+                                                    · Note: {{ data_get($item->personalization, 'additional_info') }}
+                                                @endif
+                                                @if (data_get($item->personalization, 'photograph_path'))
+                                                    · Photograph attached
+                                                @endif
+                                            </span>
+                                        @endif
                                         @if ($item->sku)<br><span style="font-size:12px; color:#64748b;">SKU {{ $item->sku }}</span>@endif
                                         <br><span style="font-size:13px; color:#64748b;">{{ $item->quantity }} × {{ $money((int) $item->unit_price_minor) }}</span>
                                     </td>
@@ -87,9 +103,14 @@
                         <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.65; color:#475569;">
                             {{ $order->customer?->name }}<br>
                             {{ $order->customer?->phone }}<br>
-                            {{ $order->delivery_address }}<br>
+                            {{ collect([$order->delivery_address, $order->delivery_city])->filter()->join(', ') }}<br>
                             <strong>Method:</strong> {{ $order->delivery_method ?: 'Standard shipping' }}
                         </p>
+                        @if ($order->notes)
+                            <p style="margin:14px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.65; color:#475569;">
+                                <strong>Additional instructions:</strong><br>{!! nl2br(e($order->notes)) !!}
+                            </p>
+                        @endif
                     </td>
                 </tr>
                 <tr>

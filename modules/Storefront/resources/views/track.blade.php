@@ -93,6 +93,23 @@
                     <tr>
                         <td>
                             <strong>{{ $item->item_name }}</strong>
+                            @if ($item->custom_selections)
+                                <div style="font-size: 13px; color: var(--store-muted);">{{ collect($item->custom_selections)->map(fn ($value, $key) => $key.': '.$value)->join(' · ') }}</div>
+                            @endif
+                            @if (data_get($item->personalization, 'requested'))
+                                <div style="font-size: 13px; color: var(--store-muted);">
+                                    <strong>Personalization</strong>
+                                    @if (data_get($item->personalization, 'customized_text'))
+                                        · Text: {{ data_get($item->personalization, 'customized_text') }}
+                                    @endif
+                                    @if (data_get($item->personalization, 'additional_info'))
+                                        · Note: {{ data_get($item->personalization, 'additional_info') }}
+                                    @endif
+                                    @if (data_get($item->personalization, 'photograph_path'))
+                                        · Photograph attached
+                                    @endif
+                                </div>
+                            @endif
                             <div style="font-size: 13px; color: var(--store-muted);">{{ $item->quantity }} × {{ $money((int) $item->unit_price_minor) }}</div>
                         </td>
                         <td align="right" style="font-weight: 700;">{{ $money((int) $item->line_total_minor) }}</td>
@@ -109,7 +126,13 @@
                 <div style="margin-top: 16px; font-size: 13px; color: var(--store-muted);">
                     <strong style="color: #0f1b16;">Delivering to</strong><br>
                     {{ $order->customer?->name }}<br>
-                    {{ $order->delivery_address }}
+                    {{ collect([$order->delivery_address, $order->delivery_city])->filter()->join(', ') }}
+                </div>
+            @endif
+            @if ($order->notes)
+                <div style="margin-top: 16px; font-size: 13px; color: var(--store-muted);">
+                    <strong style="color: #0f1b16;">Additional instructions</strong><br>
+                    <span style="white-space: pre-wrap;">{{ $order->notes }}</span>
                 </div>
             @endif
         </div>

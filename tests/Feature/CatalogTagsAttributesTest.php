@@ -58,7 +58,8 @@ class CatalogTagsAttributesTest extends TestCase
                 'tenant_id' => $tenant->id,
                 'name' => '50% Off',
             ])
-            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#tags');
+            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#tags-attributes')
+            ->assertSessionHas('catalog_accordion', 'tags');
 
         $this->actingAs($user)
             ->post(route('admin.catalog.attributes.store'), [
@@ -66,7 +67,8 @@ class CatalogTagsAttributesTest extends TestCase
                 'name' => 'Color',
                 'values' => 'Red, Blue, Green, Black',
             ])
-            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#attributes');
+            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#tags-attributes')
+            ->assertSessionHas('catalog_accordion', 'attributes');
 
         $this->actingAs($user)
             ->post(route('admin.catalog.taxes.store'), [
@@ -76,7 +78,8 @@ class CatalogTagsAttributesTest extends TestCase
                 'description' => 'Value added tax',
                 'is_active' => '1',
             ])
-            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#taxes');
+            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#taxes-coupons')
+            ->assertSessionHas('catalog_accordion', 'taxes');
 
         $this->actingAs($user)
             ->post(route('admin.sales.coupons.store'), [
@@ -86,7 +89,8 @@ class CatalogTagsAttributesTest extends TestCase
                 'discount_value' => '10',
                 'is_active' => '1',
             ])
-            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#coupons');
+            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#taxes-coupons')
+            ->assertSessionHas('catalog_accordion', 'coupons');
 
         $tag = ProductTag::query()->where('tenant_id', $tenant->id)->firstOrFail();
         $tax = ProductTax::query()->where('tenant_id', $tenant->id)->firstOrFail();
@@ -140,8 +144,21 @@ class CatalogTagsAttributesTest extends TestCase
             ->assertSee('Drop files here or click to upload.')
             ->assertSee('Tags')
             ->assertSee('Attributes')
+            ->assertSee('data-tab-target="tags-attributes"', false)
+            ->assertDontSee('data-tab-target="attributes"', false)
+            ->assertSee('data-catalog-management-accordion="tags"', false)
+            ->assertSee('data-catalog-management-accordion="attributes"', false)
+            ->assertSee('data-accordion-icon="tags"', false)
+            ->assertSee('data-accordion-icon="attributes"', false)
+            ->assertSee('Click to expand')
             ->assertSee('Taxes')
-            ->assertSee('data-tab-target="coupons"', false)
+            ->assertSee('Coupons')
+            ->assertSee('data-tab-target="taxes-coupons"', false)
+            ->assertDontSee('data-tab-target="coupons"', false)
+            ->assertSee('data-catalog-management-accordion="taxes"', false)
+            ->assertSee('data-catalog-management-accordion="coupons"', false)
+            ->assertSee('data-accordion-icon="taxes"', false)
+            ->assertSee('data-accordion-icon="coupons"', false)
             ->assertSee('VAT')
             ->assertSee('SAVE10')
             ->assertDontSee('SKU: <strong', false)

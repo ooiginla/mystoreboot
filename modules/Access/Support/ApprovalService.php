@@ -94,7 +94,7 @@ final class ApprovalService
             $executor = $this->executors[$request->type] ?? null;
 
             if ($executor !== null) {
-                app($executor)->execute($request);
+                app($executor)->execute($request, $approver);
             }
 
             $request->update([

@@ -39,7 +39,20 @@
                 <tbody>
                     @foreach ($order->items as $item)
                         <tr>
-                            <td>{{ $item->item_name }}</td>
+                            <td>
+                                {{ $item->item_name }}
+                                @if ($item->custom_selections)
+                                    <div class="cell-sub">{{ collect($item->custom_selections)->map(fn ($value, $key) => $key.': '.$value)->join(' · ') }}</div>
+                                @endif
+                                @if (data_get($item->personalization, 'requested'))
+                                    <div class="cell-sub">
+                                        Personalization
+                                        @if (data_get($item->personalization, 'customized_text')) · Text: {{ data_get($item->personalization, 'customized_text') }} @endif
+                                        @if (data_get($item->personalization, 'additional_info')) · Note: {{ data_get($item->personalization, 'additional_info') }} @endif
+                                        @if (data_get($item->personalization, 'photograph_path')) · Photograph attached @endif
+                                    </div>
+                                @endif
+                            </td>
                             <td>{{ $item->quantity }}</td>
                             <td>{{ $currencySymbol }} {{ $money($item->unit_price_minor) }}</td>
                             <td>{{ $currencySymbol }} {{ $money($item->line_total_minor) }}</td>
@@ -66,7 +79,7 @@
                     <strong>Delivery information</strong>
                     <p class="subtle">{{ $order->delivery_method ?: 'No delivery method' }} · {{ $deliveryStatusLabel($order->delivery_status ?? 'pending') }}</p>
                     @if ($order->delivery_address)
-                        <p class="subtle">{{ $order->delivery_address }}</p>
+                        <p class="subtle">{{ collect([$order->delivery_address, $order->delivery_city])->filter()->join(', ') }}</p>
                     @endif
                 </div>
             @endif

@@ -13,6 +13,12 @@ final class ApprovePurchaseOrderAction
 {
     public function execute(PurchaseOrder $purchaseOrder, User $user): PurchaseOrder
     {
+        abort_unless(
+            $purchaseOrder->status === PurchaseOrderStatus::PendingApproval,
+            422,
+            'Only purchase orders awaiting approval can be approved.',
+        );
+
         DB::transaction(function () use ($purchaseOrder, $user): void {
             $purchaseOrder->update([
                 'status' => PurchaseOrderStatus::Approved->value,

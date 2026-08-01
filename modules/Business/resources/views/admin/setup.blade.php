@@ -86,6 +86,8 @@
     $onlineSettlementBank = old('settlement_bank_account', $onlineStore?->payment_settings['settlement_bank_account'] ?? []);
     $onlinePaystackMethod = old('paystack_method', in_array('self_hosted_paystack', $onlinePaymentMethods, true) ? 'self_hosted_paystack' : (in_array('storeboot_paystack', $onlinePaymentMethods, true) ? 'storeboot_paystack' : 'none'));
     $onlineMaintenanceMode = (bool) old('maintenance_mode', $onlineStore?->maintenance_mode ?? false);
+    $onlineStoreName = (string) old('store_name', $onlineStore?->store_name ?? $tenant?->name);
+    $onlineStoreUsername = (string) old('username', $onlineStore?->username ?? \Illuminate\Support\Str::slug($onlineStoreName));
     $selectedOnlineCategories = collect(old('category_ids', $onlineStore?->categories?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id);
     $onlinePaymentOptions = [
         'pay_on_delivery' => 'Pay On Delivery',
@@ -247,6 +249,17 @@
         .online-store-section-nav button.secondary { white-space: nowrap; border: 1px solid transparent; background: transparent; color: var(--ink-soft); box-shadow: none; border-radius: 8px; transition: background .15s, border-color .15s, color .15s; }
         .online-store-section-nav button.secondary:not(.active):hover { background: #fff; border-color: var(--line); color: var(--ink); }
         .online-store-section-nav button.secondary.active { background: var(--brand); color: #fff; border-color: var(--brand); box-shadow: 0 6px 14px -6px rgba(6,193,104,.55); }
+        .store-address-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .store-address-label-hint { color: var(--brand-strong); font-size: 11px; font-weight: 800; }
+        .main .store-address-control { min-height: 44px; display: flex; align-items: stretch; overflow: hidden; border: 1px solid #d4ddd8; border-radius: var(--radius-sm); background: #fff; transition: border-color .15s, box-shadow .15s; }
+        .store-address-control:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3.5px var(--brand-ring); }
+        .main .store-address-control > input { flex: 1 1 auto; min-width: 0; width: 0; margin: 0; border: 0; border-radius: 0; box-shadow: none; box-sizing: border-box; }
+        .main .store-address-control > input:focus { border: 0; box-shadow: none; outline: 0; }
+        .store-address-suffix { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; border-left: 1px solid #a6f4c5; background: var(--brand-100); color: var(--brand-strong); padding: 10px 14px; font-weight: 800; white-space: nowrap; }
+        .store-address-status { min-height: 18px; display: block; margin-top: 6px; }
+        .store-address-status[data-state="checking"] { color: #475467; }
+        .store-address-status[data-state="available"] { color: #067647; font-weight: 750; }
+        .store-address-status[data-state="taken"], .store-address-status[data-state="invalid"] { color: #b42318; font-weight: 750; }
 
         /* Public storefront URL */
         .store-url-card { margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 22px; border: 1px solid var(--line); border-radius: 18px; background: #fff; box-shadow: 0 2px 6px rgba(16, 24, 40, .08); }
@@ -290,6 +303,20 @@
         @media (max-width: 560px) { .profile-grid { grid-template-columns: 1fr; } }
         .online-store-section-panel[hidden] { display: none; }
         .online-store-section-panel { display: grid; gap: 14px; }
+        .rich-text-editor { overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #fff; transition: border-color .15s, box-shadow .15s; }
+        .rich-text-editor:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-050); }
+        .rich-text-toolbar { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; padding: 7px; border-bottom: 1px solid var(--line); background: var(--panel-soft); }
+        .rich-text-toolbar button { min-width: 34px; height: 32px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--ink-soft); font: inherit; font-size: 13px; font-weight: 750; cursor: pointer; }
+        .rich-text-toolbar button:hover, .rich-text-toolbar button:focus-visible { border-color: var(--line); background: #fff; color: var(--ink); outline: none; }
+        .rich-text-toolbar-separator { width: 1px; height: 22px; margin: 0 2px; background: var(--line); }
+        .rich-text-content { min-height: 180px; padding: 14px 16px; color: var(--ink); font-size: 14px; line-height: 1.65; outline: none; overflow-wrap: anywhere; }
+        .rich-text-content:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
+        .rich-text-content h2 { margin: 14px 0 6px; font-size: 22px; line-height: 1.3; }
+        .rich-text-content h3 { margin: 12px 0 5px; font-size: 18px; line-height: 1.35; }
+        .rich-text-content p { margin: 0 0 10px; }
+        .rich-text-content ul, .rich-text-content ol { margin: 8px 0 10px 24px; }
+        .rich-text-content blockquote { margin: 10px 0; padding-left: 14px; border-left: 3px solid var(--brand); color: var(--ink-soft); }
+        .rich-text-content a { color: var(--brand-strong); text-decoration: underline; }
         .upload-preview { margin-top: 8px; display: grid; gap: 6px; }
         .upload-preview img { width: 100%; max-width: 220px; height: 96px; border: 1px solid var(--line); border-radius: 8px; object-fit: contain; background: #f8fafc; padding: 6px; }
         .upload-preview.hero img { max-width: 360px; height: 120px; object-fit: cover; }
@@ -726,12 +753,22 @@
                                     <h3 class="setup-section-title">Online Store Basics</h3>
                                     <div class="form-grid">
                                         <div class="field">
-                                            <label>Store address</label>
-                                            <input name="username" value="{{ old('username', $onlineStore?->username) }}" placeholder="abc-fashion" maxlength="63" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required>
-                                            <small>Use lowercase letters, numbers, and hyphens. This becomes your store subdomain.</small>
+                                            <label for="online-store-name">Name of Store</label>
+                                            <input id="online-store-name" name="store_name" value="{{ $onlineStoreName }}" required data-store-name-input>
                                         </div>
-                                        <div class="field"><label>Name of Store</label><input name="store_name" value="{{ old('store_name', $onlineStore?->store_name ?? $tenant->name) }}" required></div>
-                                        <div class="field full"><label>Description of Store</label><textarea name="description" rows="3" placeholder="A short description customers will see on your online store.">{{ old('description', $onlineStore?->description) }}</textarea></div>
+                                        <div class="field">
+                                            <label class="store-address-label" for="online-store-address">
+                                                <span>Store address</span>
+                                                <span class="store-address-label-hint">Your domain name</span>
+                                            </label>
+                                            <div class="store-address-control">
+                                                <input id="online-store-address" name="username" value="{{ $onlineStoreUsername }}" placeholder="abc-fashion" maxlength="63" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" autocomplete="off" aria-describedby="online-store-address-help online-store-address-status" required data-store-address-input data-existing-store="{{ $onlineStore ? '1' : '0' }}">
+                                                <span class="store-address-suffix">.storeboot.com</span>
+                                            </div>
+                                            <small id="online-store-address-help">Use lowercase letters, numbers, and hyphens. We suggest an address from your store name, but you can edit it.</small>
+                                            <small id="online-store-address-status" class="store-address-status" data-store-address-status aria-live="polite"></small>
+                                        </div>
+                                        <div class="field full"><label>Description of Store <button type="button" class="ai-generate-btn" data-ai-generate data-ai-field="description" data-ai-target="#online-store-description">✨ Generate with AI</button></label><textarea id="online-store-description" name="description" rows="3" placeholder="A short description customers will see on your online store.">{{ old('description', $onlineStore?->description) }}</textarea></div>
                                         <div class="field">
                                             <label>Image Logo of the Store</label>
                                             <input name="logo" type="file" accept="image/*">
@@ -997,11 +1034,29 @@
                                 <div class="setup-section online-store-section-panel" id="online-store-pages" role="tabpanel" data-online-store-section-panel hidden>
                                     <h3 class="setup-section-title">Additional Pages</h3>
                                     <div class="form-grid">
-                                        <div class="field full"><label>About Us Page</label><textarea name="pages[about_us]" rows="4">{{ $onlinePages['about_us'] ?? '' }}</textarea></div>
-                                        <div class="field full"><label>Terms of Use</label><textarea name="pages[terms_of_use]" rows="4">{{ $onlinePages['terms_of_use'] ?? '' }}</textarea></div>
-                                        <div class="field full"><label>Return Policy</label><textarea name="pages[return_policy]" rows="4">{{ $onlinePages['return_policy'] ?? '' }}</textarea></div>
-                                        <div class="field full"><label>Privacy Policy</label><textarea name="pages[privacy_policy]" rows="4">{{ $onlinePages['privacy_policy'] ?? '' }}</textarea></div>
-                                        <div class="field full"><label>Shipping Information</label><textarea name="pages[shipping_information]" rows="4">{{ $onlinePages['shipping_information'] ?? '' }}</textarea></div>
+                                        @foreach (['about_us' => 'About Us Page', 'terms_of_use' => 'Terms of Use', 'return_policy' => 'Return Policy', 'privacy_policy' => 'Privacy Policy', 'shipping_information' => 'Shipping Information'] as $pageKey => $pageLabel)
+                                            <div class="field full" data-rich-text-editor>
+                                                <label>{{ $pageLabel }} <button type="button" class="ai-generate-btn" data-ai-generate data-ai-field="{{ $pageKey }}" data-ai-rich>✨ Generate with AI</button></label>
+                                                <div class="rich-text-editor">
+                                                    <div class="rich-text-toolbar" role="toolbar" aria-label="Formatting options for {{ $pageLabel }}">
+                                                        <button type="button" data-rich-text-command="formatBlock" data-rich-text-value="p" title="Paragraph">P</button>
+                                                        <button type="button" data-rich-text-command="formatBlock" data-rich-text-value="h2" title="Heading">H2</button>
+                                                        <button type="button" data-rich-text-command="formatBlock" data-rich-text-value="h3" title="Subheading">H3</button>
+                                                        <span class="rich-text-toolbar-separator" aria-hidden="true"></span>
+                                                        <button type="button" data-rich-text-command="bold" title="Bold"><strong>B</strong></button>
+                                                        <button type="button" data-rich-text-command="italic" title="Italic"><em>I</em></button>
+                                                        <button type="button" data-rich-text-command="underline" title="Underline"><u>U</u></button>
+                                                        <span class="rich-text-toolbar-separator" aria-hidden="true"></span>
+                                                        <button type="button" data-rich-text-command="insertUnorderedList" title="Bulleted list">• List</button>
+                                                        <button type="button" data-rich-text-command="insertOrderedList" title="Numbered list">1. List</button>
+                                                        <button type="button" data-rich-text-command="createLink" title="Add link">Link</button>
+                                                        <button type="button" data-rich-text-command="removeFormat" title="Clear formatting">Clear</button>
+                                                    </div>
+                                                    <div class="rich-text-content" contenteditable="true" role="textbox" aria-multiline="true" aria-label="{{ $pageLabel }} content" data-rich-text-content data-placeholder="Write {{ strtolower($pageLabel) }} content…">{!! app(\Modules\Business\Support\SafeRichText::class)->editorHtml($onlinePages[$pageKey] ?? '') !!}</div>
+                                                </div>
+                                                <textarea name="pages[{{ $pageKey }}]" data-rich-text-input hidden>{{ $onlinePages[$pageKey] ?? '' }}</textarea>
+                                            </div>
+                                        @endforeach
                                     </div>
                                     <div class="button-row"><button class="btn primary" type="submit">Save pages</button></div>
                                 </div>
@@ -1151,7 +1206,7 @@
                             @else
                                 <div class="table-scroll">
                                     <table class="table">
-                                        <thead><tr><th>Department</th><th>Branch</th><th>Status</th></tr></thead>
+                                        <thead><tr><th>Department</th><th>Branch</th><th>Status</th><th></th></tr></thead>
                                         <tbody>
                                             @foreach ($departments as $department)
                                                 <tr>
@@ -1161,6 +1216,7 @@
                                                     </td>
                                                     <td>{{ $department->branch?->name ?? 'All branches' }}</td>
                                                     <td>{!! $statusPill(ucfirst($department->status)) !!}</td>
+                                                    <td><div class="table-actions"><button class="btn secondary" type="button" data-dialog-open="department-edit-{{ $department->id }}">Edit</button></div></td>
                                                 </tr>
                                             @endforeach
                                         </tbody>
@@ -1710,6 +1766,20 @@
                 </div>
             </dialog>
 
+            @foreach ($departments as $department)
+                <dialog class="dialog" id="department-edit-{{ $department->id }}">
+                    <div class="dialog-header"><div><h2 class="panel-title">Edit department</h2><p class="subtle">Update the name of this department.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
+                    <div class="dialog-body">
+                        <form class="mini-form" method="POST" action="{{ route('admin.business.departments.update', $department) }}">
+                            @csrf
+                            @method('PUT')
+                            <div class="field"><label>Name</label><input name="name" value="{{ $department->name }}" required></div>
+                            <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Cancel</button><button class="btn primary" type="submit">Save department</button></div>
+                        </form>
+                    </div>
+                </dialog>
+            @endforeach
+
             <dialog class="dialog" id="membership-dialog">
                 <div class="dialog-header"><div><h2 class="panel-title">Edit user access</h2><p class="subtle" data-membership-target>Change the role and branch scope for this user.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
                 <div class="dialog-body">
@@ -1780,6 +1850,33 @@
         document.addEventListener('DOMContentLoaded', () => {
             if (window.storebootBusinessSetupBound) return;
             window.storebootBusinessSetupBound = true;
+
+            document.querySelectorAll('[data-rich-text-editor]').forEach((editor) => {
+                const content = editor.querySelector('[data-rich-text-content]');
+                const input = editor.querySelector('[data-rich-text-input]');
+                if (!content || !input) return;
+
+                const sync = () => { input.value = content.innerHTML.trim(); };
+                content.addEventListener('input', sync);
+                editor.closest('form')?.addEventListener('submit', sync);
+
+                editor.querySelectorAll('[data-rich-text-command]').forEach((button) => {
+                    button.addEventListener('mousedown', (event) => event.preventDefault());
+                    button.addEventListener('click', () => {
+                        const command = button.dataset.richTextCommand;
+                        let value = button.dataset.richTextValue || null;
+
+                        if (command === 'createLink') {
+                            value = window.prompt('Enter a link beginning with https://, mailto:, tel:, /, or #');
+                            if (!value) return;
+                        }
+
+                        content.focus();
+                        document.execCommand(command, false, value);
+                        sync();
+                    });
+                });
+            });
 
             const shareStoreButton = document.querySelector('[data-share-store-url]');
             const shareStoreStatus = document.querySelector('[data-share-store-status]');
@@ -1884,6 +1981,88 @@
             });
 
             activateOnlineStoreSection(onlineStoreActiveSection?.value ?? new URLSearchParams(window.location.search).get('online_store_section') ?? 'online-store-basics');
+
+            const storeNameInput = document.querySelector('[data-store-name-input]');
+            const storeAddressInput = document.querySelector('[data-store-address-input]');
+            const storeAddressStatus = document.querySelector('[data-store-address-status]');
+            const storeAddressAvailabilityUrl = @json(route('admin.business.online-store.address-availability'));
+            const storeTenantId = document.querySelector('[data-online-store-form] input[name="tenant_id"]')?.value || '';
+            let storeAddressWasEdited = storeAddressInput?.dataset.existingStore === '1';
+            let storeAddressCheckTimer = null;
+            let storeAddressCheckController = null;
+
+            const slugifyStoreName = (value) => String(value || '')
+                .normalize('NFKD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '')
+                .slice(0, 63)
+                .replace(/-+$/g, '');
+
+            const setStoreAddressStatus = (message = '', state = '') => {
+                if (!storeAddressStatus) return;
+                storeAddressStatus.textContent = message;
+                storeAddressStatus.dataset.state = state;
+            };
+
+            const checkStoreAddressAvailability = async () => {
+                if (!storeAddressInput || !storeTenantId) return;
+
+                const username = storeAddressInput.value.trim().toLowerCase();
+                storeAddressInput.setCustomValidity('');
+
+                if (!username) {
+                    setStoreAddressStatus('Enter a store address.', 'invalid');
+                    return;
+                }
+
+                if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(username)) {
+                    setStoreAddressStatus('Use lowercase letters, numbers, and single hyphens only.', 'invalid');
+                    return;
+                }
+
+                storeAddressCheckController?.abort();
+                storeAddressCheckController = new AbortController();
+                setStoreAddressStatus('Checking address availability…', 'checking');
+
+                try {
+                    const query = new URLSearchParams({ tenant_id: storeTenantId, username });
+                    const response = await fetch(`${storeAddressAvailabilityUrl}?${query}`, {
+                        headers: { 'Accept': 'application/json' },
+                        signal: storeAddressCheckController.signal,
+                    });
+                    const result = await response.json();
+
+                    if (!response.ok) throw new Error(result.message || 'Availability check failed.');
+
+                    setStoreAddressStatus(result.message, result.available ? 'available' : 'taken');
+                    storeAddressInput.setCustomValidity(result.available ? '' : result.message);
+                } catch (error) {
+                    if (error.name === 'AbortError') return;
+                    setStoreAddressStatus('We could not check this address right now. It will still be checked when you save.', 'checking');
+                }
+            };
+
+            const scheduleStoreAddressCheck = () => {
+                window.clearTimeout(storeAddressCheckTimer);
+                storeAddressInput?.setCustomValidity('');
+                storeAddressCheckTimer = window.setTimeout(checkStoreAddressAvailability, 350);
+            };
+
+            storeNameInput?.addEventListener('input', () => {
+                if (!storeAddressInput || (storeAddressWasEdited && storeAddressInput.value.trim() !== '')) return;
+                storeAddressInput.value = slugifyStoreName(storeNameInput.value);
+                scheduleStoreAddressCheck();
+            });
+
+            storeAddressInput?.addEventListener('input', (event) => {
+                storeAddressInput.value = storeAddressInput.value.toLowerCase();
+                if (event.isTrusted) storeAddressWasEdited = storeAddressInput.value.trim() !== '';
+                scheduleStoreAddressCheck();
+            });
+
+            if (storeAddressInput?.value) scheduleStoreAddressCheck();
 
             const syncPaystackOptions = () => {
                 const toggle = document.querySelector('[data-paystack-toggle]');
@@ -2421,4 +2600,72 @@
         });
         </script>
     @endif
+
+    <style>
+        .ai-generate-btn {
+            display: inline-flex; align-items: center; gap: 4px;
+            margin-left: 8px; padding: 2px 9px; font-size: 11px; font-weight: 600;
+            border: 1px solid var(--line, #d7ddd6); border-radius: 999px;
+            background: var(--panel-soft, #f1f5f3); color: var(--brand, #027a45);
+            cursor: pointer; vertical-align: middle;
+        }
+        .ai-generate-btn:hover { background: var(--brand, #027a45); color: #fff; border-color: var(--brand, #027a45); }
+        .ai-generate-btn:disabled { opacity: .6; cursor: progress; }
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const endpoint = @json(route('admin.business.online-store.ai-content'));
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+            document.querySelectorAll('[data-ai-generate]').forEach((btn) => {
+                btn.addEventListener('click', async () => {
+                    const tenantId = document.querySelector('[data-online-store-form] input[name="tenant_id"]')?.value || '';
+                    const field = btn.dataset.aiField;
+                    const isRich = btn.hasAttribute('data-ai-rich');
+                    const label = (btn.closest('label')?.childNodes[0]?.textContent || 'this section').trim();
+
+                    const hint = window.prompt(
+                        `Generate the ${label} with AI.\n\nAdd a short note (what you sell, tone, key points). Leave blank for a sensible default.`,
+                        ''
+                    );
+                    if (hint === null) return;
+
+                    const original = btn.textContent;
+                    btn.disabled = true;
+                    btn.textContent = 'Generating…';
+
+                    try {
+                        const res = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+                            body: JSON.stringify({ tenant_id: tenantId, field, prompt: hint }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+
+                        if (!res.ok) {
+                            alert(data.message || 'Could not generate content. Please try again.');
+                            return;
+                        }
+
+                        const content = data.content || '';
+                        if (isRich) {
+                            const wrap = btn.closest('[data-rich-text-editor]');
+                            const editor = wrap?.querySelector('[data-rich-text-content]');
+                            const input = wrap?.querySelector('[data-rich-text-input]');
+                            if (editor) { editor.innerHTML = content; editor.dispatchEvent(new Event('input', { bubbles: true })); }
+                            if (input) { input.value = content; input.dispatchEvent(new Event('input', { bubbles: true })); }
+                        } else {
+                            const target = document.querySelector(btn.dataset.aiTarget);
+                            if (target) { target.value = content; target.dispatchEvent(new Event('input', { bubbles: true })); }
+                        }
+                    } catch (e) {
+                        alert('Could not reach the AI service. Please try again.');
+                    } finally {
+                        btn.disabled = false;
+                        btn.textContent = original;
+                    }
+                });
+            });
+        });
+    </script>
 </x-layouts.admin>

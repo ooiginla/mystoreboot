@@ -114,11 +114,17 @@ class BusinessOnlineStoreTest extends TestCase
         $user = User::factory()->create(['is_platform_admin' => true]);
         $bankAccountKey = sha1('Test Bank|Web Shop|1234567890');
 
-        $this->actingAs($user)
+        $setupResponse = $this->actingAs($user)
             ->get(route('admin.business.online-store.index', ['tenant' => $tenant->id]).'#online-store')
             ->assertOk()
             ->assertSee('Online Store')
             ->assertSee('Online Store Basics')
+            ->assertSee('Name of Store')
+            ->assertSee('Your domain name')
+            ->assertSee('value="web-shop"', false)
+            ->assertSee('.storeboot.com')
+            ->assertSee('data-store-address-input', false)
+            ->assertSee('data-store-address-status', false)
             ->assertSee('Contact')
             ->assertSee('<select name="country">', false)
             ->assertSee('<option value="Nigeria" selected>Nigeria</option>', false)
@@ -128,6 +134,8 @@ class BusinessOnlineStoreTest extends TestCase
             ->assertSee('Banner Image Text')
             ->assertSee('Privacy Policy')
             ->assertSee('Save pages')
+            ->assertSee('contenteditable="true"', false)
+            ->assertSee('data-rich-text-command="bold"', false)
             ->assertSee('By accessing or using Web Shop')
             ->assertSee('We want you to be satisfied with your purchase')
             ->assertSee('respects your privacy')
@@ -155,6 +163,11 @@ class BusinessOnlineStoreTest extends TestCase
             ->assertSee('Pay via Transfer')
             ->assertDontSee('Do not use Paystack')
             ->assertSee('data-self-hosted-paystack-fields', false);
+
+        $this->assertLessThan(
+            strpos($setupResponse->getContent(), 'name="username"'),
+            strpos($setupResponse->getContent(), 'name="store_name"'),
+        );
 
         $this->actingAs($user)
             ->post(route('admin.business.online-store.save'), [
@@ -210,7 +223,7 @@ class BusinessOnlineStoreTest extends TestCase
                     'whatsapp' => '08012345678',
                 ],
                 'pages' => [
-                    'about_us' => 'About the store',
+                    'about_us' => '<h2>About <strong>the store</strong></h2><script>alert("unsafe")</script><p onclick="alert(1)">Our story.</p>',
                     'terms_of_use' => 'Terms',
                     'return_policy' => 'Returns accepted within 7 days',
                     'privacy_policy' => 'We protect customer data.',
@@ -262,7 +275,10 @@ class BusinessOnlineStoreTest extends TestCase
         $this->assertSame('@webshop', $store->social_accounts['instagram']);
         $this->assertSame('@webshopx', $store->social_accounts['twitter']);
         $this->assertSame('@webshop', $store->social_accounts['youtube']);
-        $this->assertSame('About the store', $store->pages['about_us']);
+        $this->assertStringContainsString('<h2>About <strong>the store</strong></h2>', $store->pages['about_us']);
+        $this->assertStringContainsString('<p>Our story.</p>', $store->pages['about_us']);
+        $this->assertStringNotContainsString('<script', $store->pages['about_us']);
+        $this->assertStringNotContainsString('onclick', $store->pages['about_us']);
         $this->assertSame('We protect customer data.', $store->pages['privacy_policy']);
         $this->assertSame('Ships within 48 hours.', $store->pages['shipping_information']);
         $this->assertSame('Do you deliver?', $store->faqs[0]['question']);

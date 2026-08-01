@@ -42,6 +42,8 @@ final class SaveProductAction
                 'brand' => $data['brand'] ?? null,
                 'product_type' => $data['product_type'],
                 'description' => $data['description'] ?? null,
+                'custom_fields' => $this->customFields($data),
+                'personalization_settings' => $this->personalizationSettings($data),
                 'has_variants' => (bool) ($data['has_variants'] ?? false),
                 'base_price_minor' => $this->moneyToMinor($data['base_price'] ?? 0),
                 'base_cost_price_minor' => $this->moneyToMinor($data['base_cost_price'] ?? 0),
@@ -98,6 +100,49 @@ final class SaveProductAction
 
             return $product->refresh()->load(['badges', 'category', 'collections', 'images', 'options.values', 'variants.optionValues.option', 'tags', 'taxes', 'attributeValues.definition']);
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<array{key: string, values: list<string>, is_customer_selectable: bool}>
+     */
+    private function customFields(array $data): array
+    {
+        return collect((array) ($data['custom_fields'] ?? []))
+            ->map(fn (array $field): array => [
+                'key' => trim((string) ($field['key'] ?? '')),
+                'values' => collect(explode(',', (string) ($field['values'] ?? '')))
+                    ->map(fn (string $value): string => trim($value))
+                    ->filter()
+                    ->unique(fn (string $value): string => strtolower($value))
+                    ->values()
+                    ->all(),
+                'is_customer_selectable' => (bool) ($field['is_customer_selectable'] ?? false),
+                'is_assigned' => (bool) ($field['is_assigned'] ?? true),
+            ])
+            ->filter(fn (array $field): bool => $field['is_assigned'] && $field['key'] !== '' && $field['values'] !== [])
+            ->map(fn (array $field): array => collect($field)->except('is_assigned')->all())
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{enabled: bool, fields: array{customized_text: bool, additional_info: bool, photograph: bool}}
+     */
+    private function personalizationSettings(array $data): array
+    {
+        $settings = (array) ($data['personalization'] ?? []);
+        $fields = (array) ($settings['fields'] ?? []);
+
+        return [
+            'enabled' => (bool) ($settings['enabled'] ?? false),
+            'fields' => [
+                'customized_text' => (bool) ($fields['customized_text'] ?? true),
+                'additional_info' => (bool) ($fields['additional_info'] ?? true),
+                'photograph' => (bool) ($fields['photograph'] ?? false),
+            ],
+        ];
     }
 
     /**

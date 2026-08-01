@@ -24,6 +24,9 @@ $routes = function (): void {
     Route::post('/checkout/customer-lookup', [StorefrontController::class, 'lookupCustomer'])
         ->middleware('throttle:30,1')
         ->name('checkout.customer-lookup');
+    Route::post('/personalization/photo', [StorefrontController::class, 'uploadPersonalizationPhoto'])
+        ->middleware('throttle:20,1')
+        ->name('personalization.photo');
     Route::post('/checkout', [StorefrontController::class, 'checkout'])->name('checkout');
     Route::post('/checkout/{order}/paystack/initialize', [StorefrontController::class, 'initializePaystackPayment'])->name('checkout.paystack.initialize');
     Route::get('/checkout/{order}/paystack/verify', [StorefrontController::class, 'verifyPaystackPayment'])->name('checkout.paystack.verify');

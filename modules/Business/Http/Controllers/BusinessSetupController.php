@@ -9,7 +9,10 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Modules\Business\Actions\GenerateStoreContentAction;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\Role;
@@ -24,11 +27,13 @@ use Modules\Business\Http\Requests\BranchRequest;
 use Modules\Business\Http\Requests\BusinessProfileRequest;
 use Modules\Business\Http\Requests\DepartmentRequest;
 use Modules\Business\Http\Requests\OnlineStoreRequest;
+use Modules\Business\Http\Requests\UpdateDepartmentRequest;
 use Modules\Business\Models\Branch;
 use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Business\Models\Department;
 use Modules\Business\Models\OnlineStore;
 use Modules\Business\Support\OnlineStoreContentDefaults;
+use Modules\Business\Support\SafeRichText;
 use Modules\Catalog\Actions\EnsureDefaultProductCategoryAction;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Finance\Models\FinanceAccount;
@@ -50,6 +55,50 @@ final class BusinessSetupController extends Controller
     public function onlineStore(Request $request): View
     {
         return view('business::admin.setup', $this->setupViewData($request, true));
+    }
+
+    public function onlineStoreAddressAvailability(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            'username' => ['required', 'string', 'max:63'],
+        ]);
+        $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+
+        $username = strtolower(trim($data['username']));
+        $address = $username.'.storeboot.com';
+
+        if (! preg_match('/\A(?!-)[a-z0-9]+(?:-[a-z0-9]+)*\z/', $username)) {
+            return response()->json([
+                'available' => false,
+                'username' => $username,
+                'message' => 'Use lowercase letters, numbers, and single hyphens only.',
+            ]);
+        }
+
+        if (in_array($username, config('storefront.reserved_subdomains', []), true)) {
+            return response()->json([
+                'available' => false,
+                'username' => $username,
+                'message' => "Sorry, {$address} is reserved by Storeboot. Please pick a new store address.",
+            ]);
+        }
+
+        $currentStoreId = OnlineStore::query()
+            ->where('tenant_id', $data['tenant_id'])
+            ->value('id');
+        $taken = OnlineStore::query()
+            ->when($currentStoreId, fn ($query) => $query->where('id', '!=', $currentStoreId))
+            ->where(fn ($query) => $query->where('username', $username)->orWhere('subdomain', $username))
+            ->exists();
+
+        return response()->json([
+            'available' => ! $taken,
+            'username' => $username,
+            'message' => $taken
+                ? "Sorry, {$address} has already been taken. Please pick a new store address."
+                : "{$address} is available.",
+        ]);
     }
 
     /**
@@ -287,9 +336,50 @@ final class BusinessSetupController extends Controller
             ->with('status', "Department {$department->name} created.");
     }
 
+    public function updateDepartment(UpdateDepartmentRequest $request, Department $department): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $department->tenant_id);
+
+        $department->update($request->validated());
+
+        return redirect()
+            ->to(route('admin.business.index', ['tenant' => $department->tenant_id]).'#departments')
+            ->with('status', "Department {$department->name} updated.");
+    }
+
+    public function generateOnlineStoreContent(Request $request, GenerateStoreContentAction $action): JsonResponse
+    {
+        // Validate manually and return JSON — this endpoint is called via fetch(),
+        // and admin-route validation exceptions otherwise redirect (not api/*).
+        $validator = Validator::make($request->all(), [
+            'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            'field' => ['required', Rule::in(['description', 'about_us', 'terms_of_use', 'return_policy', 'privacy_policy', 'shipping_information'])],
+            'prompt' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['message' => 'Check the request and try again.', 'errors' => $validator->errors()->toArray()], 422);
+        }
+
+        $data = $validator->validated();
+        $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+
+        $tenant = Tenant::query()->findOrFail($data['tenant_id']);
+        $store = OnlineStore::query()->where('tenant_id', $data['tenant_id'])->first();
+
+        try {
+            $result = $action->execute($data['field'], (string) ($data['prompt'] ?? ''), $store, $tenant);
+        } catch (\RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json($result);
+    }
+
     public function saveOnlineStore(
         OnlineStoreRequest $request,
         EnsureDefaultProductCategoryAction $ensureDefaultCategory,
+        SafeRichText $richText,
     ): RedirectResponse {
         $data = $request->validated();
         $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
@@ -340,6 +430,10 @@ final class BusinessSetupController extends Controller
             if (! $hasFaqContent) {
                 $faqs = OnlineStoreContentDefaults::faqs((string) $data['store_name']);
             }
+        }
+
+        foreach ($pages as $key => $content) {
+            $pages[$key] = $richText->sanitize((string) $content);
         }
 
         $store->fill([

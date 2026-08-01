@@ -15,6 +15,14 @@ final class SalesOrderItem extends Model
 
     protected $guarded = [];
 
+    protected function casts(): array
+    {
+        return [
+            'custom_selections' => 'array',
+            'personalization' => 'array',
+        ];
+    }
+
     public function order(): BelongsTo
     {
         return $this->belongsTo(SalesOrder::class, 'sales_order_id');

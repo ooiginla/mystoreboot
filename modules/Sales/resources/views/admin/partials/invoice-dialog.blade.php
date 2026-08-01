@@ -21,7 +21,7 @@
             </div>
             <table class="table">
                 <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
-                <tbody>@foreach ($order->items as $item)<tr><td>{{ $item->item_name }}</td><td>{{ $item->quantity }}</td><td>{{ $currencySymbol }} {{ $money($item->unit_price_minor) }}</td><td>{{ $currencySymbol }} {{ $money($item->line_total_minor) }}</td></tr>@endforeach</tbody>
+                <tbody>@foreach ($order->items as $item)<tr><td>{{ $item->item_name }}@if ($item->custom_selections)<div class="cell-sub">{{ collect($item->custom_selections)->map(fn ($value, $key) => $key.': '.$value)->join(' · ') }}</div>@endif @if (data_get($item->personalization, 'requested'))<div class="cell-sub">Personalization@if (data_get($item->personalization, 'customized_text')) · Text: {{ data_get($item->personalization, 'customized_text') }}@endif @if (data_get($item->personalization, 'additional_info')) · Note: {{ data_get($item->personalization, 'additional_info') }}@endif @if (data_get($item->personalization, 'photograph_path')) · Photograph attached@endif</div>@endif</td><td>{{ $item->quantity }}</td><td>{{ $currencySymbol }} {{ $money($item->unit_price_minor) }}</td><td>{{ $currencySymbol }} {{ $money($item->line_total_minor) }}</td></tr>@endforeach</tbody>
             </table>
             <div class="summary-grid">
                 <div class="summary-item"><span>Subtotal</span><strong>{{ $currencySymbol }} {{ $money($order->subtotal_minor) }}</strong></div>

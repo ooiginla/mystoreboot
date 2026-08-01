@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Access\Approvals;
 
+use App\Models\User;
 use Modules\Access\Contracts\ApprovalExecutor;
 use Modules\Access\Models\ApprovalRequest;
 use Modules\Finance\Actions\PostJournalEntryAction;
@@ -15,7 +16,7 @@ final class JournalExecutor implements ApprovalExecutor
 {
     public function __construct(private readonly PostJournalEntryAction $postJournalEntry) {}
 
-    public function execute(ApprovalRequest $request): void
+    public function execute(ApprovalRequest $request, User $approver): void
     {
         $data = (array) ($request->payload['data'] ?? []);
 

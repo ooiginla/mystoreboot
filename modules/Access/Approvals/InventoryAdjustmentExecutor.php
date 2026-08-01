@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Access\Approvals;
 
+use App\Models\User;
 use Modules\Access\Contracts\ApprovalExecutor;
 use Modules\Access\Models\ApprovalRequest;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
@@ -16,7 +17,7 @@ final class InventoryAdjustmentExecutor implements ApprovalExecutor
 {
     public function __construct(private readonly PostInventoryMovementAction $action) {}
 
-    public function execute(ApprovalRequest $request): void
+    public function execute(ApprovalRequest $request, User $approver): void
     {
         $payload = (array) $request->payload;
 

@@ -49,7 +49,7 @@ class OnlineOrderReservationTest extends TestCase
 
         // 1. Shopper checks out two units — stock is reserved, not yet deducted.
         $this->postJson(route('storefront.storefront.store.checkout', $store), [
-            'customer' => ['name' => 'Ada Buyer', 'phone' => '08030000000', 'email' => 'ada@example.com', 'address' => '12 Marina Road'],
+            'customer' => ['name' => 'Ada Buyer', 'phone' => '08030000000', 'email' => 'ada@example.com', 'address' => '12 Marina Road', 'city' => 'Lagos'],
             'shipping_option' => 'Lagos',
             'items' => [['product_variant_id' => $variant->id, 'quantity' => 2]],
         ])->assertOk();
@@ -114,7 +114,7 @@ class OnlineOrderReservationTest extends TestCase
         [, $store, $variant, $stock] = $this->fixture(onHand: 1, averageCostMinor: 100000);
 
         $payload = fn (): array => [
-            'customer' => ['name' => 'Buyer One', 'phone' => '08031111111', 'email' => 'one@example.com', 'address' => '1 Road'],
+            'customer' => ['name' => 'Buyer One', 'phone' => '08031111111', 'email' => 'one@example.com', 'address' => '1 Road', 'city' => 'Lagos'],
             'shipping_option' => 'Lagos',
             'items' => [['product_variant_id' => $variant->id, 'quantity' => 1]],
         ];
@@ -126,7 +126,8 @@ class OnlineOrderReservationTest extends TestCase
         // The last unit is already reserved — a second shopper cannot buy it.
         $this->postJson(route('storefront.storefront.store.checkout', $store), $payload())
             ->assertStatus(422)
-            ->assertJsonValidationErrors('items');
+            ->assertJsonValidationErrors('items')
+            ->assertJsonPath('errors.items.0', 'Sorry, “Reserve Product / Default” has just sold out. Please remove it from your cart to continue.');
 
         $this->assertSame(1, SalesOrder::query()->where('source', 'online')->count());
         $this->assertSame(1, $stock->refresh()->quantity_reserved);
@@ -183,7 +184,7 @@ class OnlineOrderReservationTest extends TestCase
 
         // A new shopper checks out the same unit — the stale hold is swept first (no scheduler needed).
         $this->postJson(route('storefront.storefront.store.checkout', $store), [
-            'customer' => ['name' => 'Fresh Buyer', 'phone' => '08039999999', 'email' => 'fresh@example.com', 'address' => '9 Road'],
+            'customer' => ['name' => 'Fresh Buyer', 'phone' => '08039999999', 'email' => 'fresh@example.com', 'address' => '9 Road', 'city' => 'Lagos'],
             'shipping_option' => 'Lagos',
             'items' => [['product_variant_id' => $variant->id, 'quantity' => 1]],
         ])->assertOk();

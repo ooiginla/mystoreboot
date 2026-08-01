@@ -9,6 +9,7 @@ Route::get('/organizations', [BusinessSetupController::class, 'organizations'])-
 Route::get('/organizations/{tenant}', [BusinessSetupController::class, 'organizationDetails'])->name('organizations.show');
 Route::get('/', [BusinessSetupController::class, 'index'])->name('index');
 Route::get('/online-store', [BusinessSetupController::class, 'onlineStore'])->name('online-store.index');
+Route::get('/online-store/address-availability', [BusinessSetupController::class, 'onlineStoreAddressAvailability'])->name('online-store.address-availability');
 Route::post('/profile', [BusinessSetupController::class, 'saveProfile'])->name('profile.save');
 Route::post('/payment-methods', [BusinessSetupController::class, 'savePaymentMethods'])->name('payment-methods.save');
 Route::post('/approvals', [BusinessSetupController::class, 'saveApprovals'])->name('approvals.save');
@@ -16,9 +17,11 @@ Route::post('/payment-accounts', [BusinessSetupController::class, 'storePaymentA
 Route::put('/payment-accounts/{paymentAccount}', [BusinessSetupController::class, 'updatePaymentAccount'])->name('payment-accounts.update');
 Route::delete('/payment-accounts/{paymentAccount}', [BusinessSetupController::class, 'destroyPaymentAccount'])->name('payment-accounts.destroy');
 Route::post('/online-store', [BusinessSetupController::class, 'saveOnlineStore'])->name('online-store.save');
+Route::post('/online-store/ai-content', [BusinessSetupController::class, 'generateOnlineStoreContent'])->name('online-store.ai-content');
 Route::post('/subscriptions', [BusinessSetupController::class, 'storeSubscription'])->name('subscriptions.store');
 Route::put('/subscriptions/{subscription}', [BusinessSetupController::class, 'updateSubscription'])->name('subscriptions.update');
 Route::put('/subscriptions/{subscription}/modules/{module}', [BusinessSetupController::class, 'updateSubscriptionModule'])->name('subscriptions.modules.update');
 Route::post('/branches', [BusinessSetupController::class, 'storeBranch'])->name('branches.store');
 Route::put('/branches/{branch}', [BusinessSetupController::class, 'updateBranch'])->name('branches.update');
 Route::post('/departments', [BusinessSetupController::class, 'storeDepartment'])->name('departments.store');
+Route::put('/departments/{department}', [BusinessSetupController::class, 'updateDepartment'])->name('departments.update');

@@ -78,6 +78,20 @@
         .vendor-row-actions .vendor-view-action:hover { border-color: var(--brand); background: var(--brand-100); color: #05603a; }
         .vendor-row-actions .vendor-edit-action { border-color: var(--brand); background: var(--brand); color: #fff; box-shadow: 0 3px 9px -3px rgba(6,193,104,.5); }
         .vendor-row-actions .vendor-edit-action:hover { border-color: var(--brand-strong); background: var(--brand-strong); }
+        .po-row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .po-row-actions .btn { box-shadow: none; }
+        .po-row-actions .po-action-approve { border-color: #067647; background: #067647; color: #fff; }
+        .po-row-actions .po-action-approve:hover { border-color: #05603a; background: #05603a; }
+        .po-row-actions .po-action-view { border-color: #b2ddff; background: #eff8ff; color: #175cd3; }
+        .po-row-actions .po-action-view:hover { border-color: #84caff; background: #d1e9ff; color: #1849a9; }
+        .po-row-actions .po-action-edit { border-color: #fedf89; background: #fffaeb; color: #b54708; }
+        .po-row-actions .po-action-edit:hover { border-color: #fec84b; background: #fef0c7; color: #93370d; }
+        .po-row-actions .po-action-cancel { border-color: #fecdca; background: #fef3f2; color: #b42318; }
+        .po-row-actions .po-action-cancel:hover { border-color: #f97066; background: #d92d20; color: #fff; }
+        .po-row-actions .po-action-receive { border-color: #d9d6fe; background: #f4f3ff; color: #5925dc; }
+        .po-row-actions .po-action-receive:hover { border-color: #bdb4fe; background: #ebe9fe; color: #4a1fb8; }
+        .po-row-actions .po-action-payment { border-color: #7cd4fd; background: #f0f9ff; color: #026aa2; }
+        .po-row-actions .po-action-payment:hover { border-color: #36bffa; background: #e0f2fe; color: #065986; }
         .vendor-lead-badge {
             display: inline-flex;
             align-items: center;
@@ -248,7 +262,9 @@
                         <tbody>
                             @forelse ($purchaseOrders as $po)
                                 @php
-                                    $canApprove = $po->status->value === 'pending_approval';
+                                    $canApprove = $po->status->value === 'pending_approval'
+                                        && $purchaseOrderApprovalsEnabled
+                                        && $canApprovePurchaseOrders;
                                     $canEdit = $po->status->value === 'pending_approval';
                                     $canReceive = in_array($po->status->value, ['approved', 'partially_received'], true) && $po->items->sum('quantity_pending') > 0;
                                     $canPay = in_array($po->status->value, ['approved', 'partially_received', 'received'], true) && $po->balance_minor > 0;
@@ -262,20 +278,20 @@
                                     <td>{{ $po->expected_delivery_date?->format('M j, Y') ?? 'Not set' }}</td>
                                     <td>{{ $tenant->currency_code }} {{ $money($po->total_minor) }}</td>
                                     <td>{{ $tenant->currency_code }} {{ $money($po->paid_minor) }}</td>
-                                    <td style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <td class="po-row-actions">
                                         @if ($canApprove)
-                                            <form method="POST" action="{{ route('admin.procurement.purchase-orders.approve', $po) }}">@csrf<button class="btn secondary" type="submit">Approve</button></form>
+                                            <form method="POST" action="{{ route('admin.procurement.purchase-orders.approve', $po) }}">@csrf<button class="btn po-action-approve" type="submit">Approve</button></form>
                                         @endif
-                                        <button class="btn secondary" type="button" data-dialog-open="view-po-{{ $po->id }}">View</button>
+                                        <button class="btn po-action-view" type="button" data-dialog-open="view-po-{{ $po->id }}">View</button>
                                         @if ($canEdit)
-                                            <button class="btn secondary" type="button" data-dialog-open="edit-po-{{ $po->id }}">Edit</button>
-                                            <form method="POST" action="{{ route('admin.procurement.purchase-orders.cancel', $po) }}">@csrf<button class="btn secondary" type="submit">Cancel</button></form>
+                                            <button class="btn po-action-edit" type="button" data-dialog-open="edit-po-{{ $po->id }}">Edit</button>
+                                            <form method="POST" action="{{ route('admin.procurement.purchase-orders.cancel', $po) }}">@csrf<button class="btn po-action-cancel" type="submit">Cancel</button></form>
                                         @endif
                                         @if ($canReceive)
-                                            <button class="btn secondary" type="button" data-dialog-open="receive-po-{{ $po->id }}">Receive</button>
+                                            <button class="btn po-action-receive" type="button" data-dialog-open="receive-po-{{ $po->id }}">Receive</button>
                                         @endif
                                         @if ($canPay)
-                                            <button class="btn secondary" type="button" data-dialog-open="payment-po-{{ $po->id }}">Record payment</button>
+                                            <button class="btn po-action-payment" type="button" data-dialog-open="payment-po-{{ $po->id }}">Record payment</button>
                                         @endif
                                     </td>
                                 </tr>
