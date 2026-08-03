@@ -54,6 +54,35 @@
         @media (max-width: 1100px) { .dash-kpis { grid-template-columns: repeat(2, minmax(0,1fr)); } .dash-charts { grid-template-columns: 1fr; } .dash-charts.cols-4 { grid-template-columns: repeat(2, minmax(0,1fr)); } .chart-card.span2 { grid-column: auto; } .dash-orders { grid-template-columns: 1fr; } }
         @media (max-width: 720px) { .dash-charts.cols-4 { grid-template-columns: 1fr; } }
         @media (max-width: 620px) { .dash-kpis { grid-template-columns: 1fr; } }
+
+        /* ===== Onboarding nudges ===== */
+        .onboard-wrap { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+        .onboard-wrap.single { grid-template-columns: 1fr; }
+        .onboard-card { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; box-shadow: var(--shadow-sm); padding: 18px; display: flex; flex-direction: column; gap: 14px; position: relative; overflow: hidden; }
+        .onboard-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: linear-gradient(180deg, #009a53, #027a45); }
+        .onboard-head { display: flex; align-items: flex-start; gap: 12px; }
+        .onboard-ico { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; flex: 0 0 auto; background: var(--brand-050); color: var(--brand-strong); }
+        .onboard-ico svg { width: 22px; height: 22px; }
+        .onboard-title { font-size: 15px; font-weight: 750; letter-spacing: -.01em; }
+        .onboard-desc { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+        .onboard-count { margin-left: auto; flex: 0 0 auto; text-align: right; }
+        .onboard-count b { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+        .onboard-count span { font-size: 12px; color: var(--muted); }
+        .onboard-bar { height: 7px; border-radius: 999px; background: var(--panel-soft, #eef2f0); overflow: hidden; }
+        .onboard-bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #009a53, #027a45); transition: width .3s ease; }
+        .onboard-steps { display: flex; flex-flow: row wrap; gap: 9px 16px; margin: 0; padding: 0; list-style: none; }
+        .onboard-step { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: inherit; text-decoration: none; }
+        .onboard-step:hover .onboard-step-label { text-decoration: underline; }
+        .onboard-step.is-done { color: var(--muted); }
+        .onboard-tick { width: 22px; height: 22px; border-radius: 999px; flex: 0 0 auto; display: grid; place-items: center; border: 1.5px solid var(--line); background: #fff; font-size: 12px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+        .onboard-tick svg { width: 12px; height: 12px; }
+        .onboard-step.is-done .onboard-tick { background: #06c168; border-color: #06c168; color: #fff; }
+        .onboard-step.is-next .onboard-tick { border-color: var(--brand-strong); border-style: dashed; color: var(--brand-strong); }
+        .onboard-step.is-next .onboard-step-label { font-weight: 650; color: var(--brand-strong); }
+        .onboard-next { display: inline-flex; align-items: center; gap: 7px; align-self: flex-start; margin-top: auto; padding: 9px 15px; border-radius: 10px; background: var(--brand-strong, #027a45); color: #fff; font-size: 13px; font-weight: 650; text-decoration: none; }
+        .onboard-next:hover { filter: brightness(1.05); }
+        .onboard-next svg { width: 15px; height: 15px; }
+        @media (max-width: 900px) { .onboard-wrap { grid-template-columns: 1fr; } }
     </style>
 
     <div class="topbar">
@@ -107,6 +136,55 @@
             <button class="btn primary" type="submit" data-custom-range @if($period !== 'custom') hidden @endif>Apply</button>
         </form>
     </div>
+
+    {{-- ===== Onboarding nudges (shown until each checklist is finished) ===== --}}
+    @if (! empty($onboarding))
+        <div class="onboard-wrap {{ count($onboarding) === 1 ? 'single' : '' }}">
+            @foreach ($onboarding as $task)
+                @php ($next = $task->nextStep())
+                <div class="onboard-card">
+                    <div class="onboard-head">
+                        <span class="onboard-ico">
+                            @if ($task->icon === 'store')
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9M3 9h18M9 20v-6h6v6"/></svg>
+                            @else
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16M15 21V9h3a2 2 0 0 1 2 2v10M4 21h17M8 7h3M8 11h3M8 15h3"/></svg>
+                            @endif
+                        </span>
+                        <div>
+                            <div class="onboard-title">{{ $task->title }}</div>
+                            <div class="onboard-desc">{{ $task->description }}</div>
+                        </div>
+                        <div class="onboard-count"><b>{{ $task->completed() }}/{{ $task->total() }}</b><br><span>done</span></div>
+                    </div>
+
+                    <div class="onboard-bar"><i style="width: {{ $task->percent() }}%;"></i></div>
+
+                    <div class="onboard-steps">
+                        @foreach ($task->steps as $step)
+                            <a class="onboard-step {{ $step['done'] ? 'is-done' : '' }} {{ (! $step['done'] && $next && $step['key'] === $next['key']) ? 'is-next' : '' }}" href="{{ $step['href'] }}">
+                                <span class="onboard-tick">
+                                    @if ($step['done'])
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 7"/></svg>
+                                    @else
+                                        {{ $loop->iteration }}
+                                    @endif
+                                </span>
+                                <span class="onboard-step-label">{{ $step['label'] }}</span>
+                            </a>
+                        @endforeach
+                    </div>
+
+                    @if ($next)
+                        <a class="onboard-next" href="{{ $next['href'] }}">
+                            Continue: {{ $next['label'] }}
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                        </a>
+                    @endif
+                </div>
+            @endforeach
+        </div>
+    @endif
 
     {{-- ===== Hero money KPIs ===== --}}
     <div class="dash-kpis">

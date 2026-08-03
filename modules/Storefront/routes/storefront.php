@@ -35,8 +35,17 @@ $routes = function (): void {
 };
 
 $baseDomain = trim((string) config('storefront.base_domain')) ?: 'storeboot.test';
+$reservedSubdomains = collect((array) config('storefront.reserved_subdomains', []))
+    ->filter(fn (mixed $value): bool => is_string($value) && $value !== '')
+    ->map(fn (string $value): string => preg_quote($value, '/'))
+    ->implode('|');
+$storeSubdomainPattern = ($reservedSubdomains !== '' ? '(?!(?:'.$reservedSubdomains.')\.)' : '')
+    .'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?';
 
 Route::domain('{store:subdomain}.'.$baseDomain)
+    // Reserved platform hosts such as www belong to the main application and
+    // must not be resolved as tenant stores by the wildcard domain route.
+    ->where(['store' => $storeSubdomainPattern])
     ->name('subdomain.')
     ->group($routes);
 

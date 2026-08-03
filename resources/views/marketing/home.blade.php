@@ -35,7 +35,7 @@
 
                 <div class="sb-reveal mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
                     <a href="{{ route('register') }}" class="sb-btn sb-btn-primary w-full px-7 py-3.5 text-base sm:w-auto">
-                        Start free — 14 days
+                        Start free
                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0-6-6m6 6-6 6"/></svg>
                     </a>
                     <a href="#showcase" class="sb-btn sb-btn-ghost w-full px-7 py-3.5 text-base sm:w-auto">

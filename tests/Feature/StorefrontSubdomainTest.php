@@ -40,6 +40,13 @@ final class StorefrontSubdomainTest extends TestCase
             ->assertSee('href="'.$url.'"', false);
     }
 
+    public function test_www_host_is_served_by_the_main_marketing_site_not_the_storefront_router(): void
+    {
+        $this->get('https://www.storeboot.test/')
+            ->assertOk()
+            ->assertSee('Storeboot');
+    }
+
     public function test_a_subdomain_cannot_access_another_tenants_product(): void
     {
         [, $alphaStore] = $this->storeFixture('alpha-store', 'Alpha Store');

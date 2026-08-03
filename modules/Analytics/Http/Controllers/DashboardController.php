@@ -12,6 +12,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
+use Modules\Access\Support\PermissionService;
+use Modules\Business\Support\OnboardingProgress;
 use Modules\Catalog\Models\Product;
 use Modules\Customers\Models\Customer;
 use Modules\Finance\Models\FinanceExpense;
@@ -211,7 +213,26 @@ final class DashboardController extends Controller
             ->take(10)
             ->values();
 
+        // ---- Onboarding nudges (only what this user can act on, and only while unfinished) ----
+        $permissions = app(PermissionService::class);
+        $onboarding = [];
+
+        if ($isPlatformAdmin || $permissions->has($user, $tenant, 'business.settings.manage')) {
+            $profileProgress = OnboardingProgress::businessProfile($tenant);
+            if (! $profileProgress->isComplete()) {
+                $onboarding[] = $profileProgress;
+            }
+        }
+
+        if ($isPlatformAdmin || $permissions->has($user, $tenant, 'storefront.manage')) {
+            $storeProgress = OnboardingProgress::storeSetup($tenant);
+            if (! $storeProgress->isComplete()) {
+                $onboarding[] = $storeProgress;
+            }
+        }
+
         return view('analytics::admin.index', [
+            'onboarding' => $onboarding,
             'tenant' => $tenant,
             'currency' => $currency,
             'isPlatformAdmin' => $isPlatformAdmin,
