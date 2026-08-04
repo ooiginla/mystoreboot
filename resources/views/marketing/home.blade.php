@@ -4,6 +4,13 @@
 
 @section('content')
 
+    @php
+        $demoVideoRelativePath = 'media/storeboot-demo.mp4';
+        $demoVideoAbsolutePath = public_path($demoVideoRelativePath);
+        $demoVideoVersion = is_file($demoVideoAbsolutePath) ? filemtime($demoVideoAbsolutePath) : null;
+        $demoVideoUrl = asset($demoVideoRelativePath).($demoVideoVersion ? '?v='.$demoVideoVersion : '');
+    @endphp
+
     {{-- ============================================================= HERO --}}
     <section class="relative overflow-hidden pt-32 sm:pt-40">
         {{-- decorative background --}}
@@ -468,7 +475,7 @@
                 {{-- Swap the <source> for your own product walkthrough (public/media/storeboot-demo.mp4). --}}
                 <video id="sb-video-el" class="aspect-video w-full" controls playsinline preload="none"
                        poster="{{ asset('media/storeboot-poster.svg') }}">
-                    <source src="{{ asset('media/storeboot-demo.mp4') }}" type="video/mp4">
+                    <source src="{{ $demoVideoUrl }}" type="video/mp4">
                 </video>
             </div>
         </div>
