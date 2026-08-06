@@ -8,6 +8,8 @@ use Modules\Catalog\Http\Controllers\CatalogController;
 Route::get('/', [CatalogController::class, 'index'])->name('index');
 Route::post('/products', [CatalogController::class, 'storeProduct'])->name('products.store');
 Route::post('/products/import', [CatalogController::class, 'importProductsFromImages'])->name('products.import');
+Route::post('/products/import-sheet', [CatalogController::class, 'importProductsFromSheet'])->name('products.import-sheet');
+Route::post('/products/ai-content', [CatalogController::class, 'generateProductContent'])->name('products.ai-content');
 Route::post('/products/{product}/generate-image', [CatalogController::class, 'generateProductImage'])->name('products.generate-image');
 Route::put('/products/{product}', [CatalogController::class, 'updateProduct'])->name('products.update');
 Route::patch('/products/{product}/status', [CatalogController::class, 'updateProductStatus'])->name('products.status.update');

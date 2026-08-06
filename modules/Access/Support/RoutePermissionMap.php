@@ -72,6 +72,8 @@ final class RoutePermissionMap
             'admin.catalog.index' => 'catalog.view',
             'admin.catalog.products.store' => 'catalog.create',
             'admin.catalog.products.import' => 'catalog.create',
+            'admin.catalog.products.import-sheet' => 'catalog.create',
+            'admin.catalog.products.ai-content' => 'catalog.update',
             'admin.catalog.products.generate-image' => 'catalog.update',
             'admin.catalog.products.update' => 'catalog.update',
             'admin.catalog.products.status.update' => 'catalog.update',

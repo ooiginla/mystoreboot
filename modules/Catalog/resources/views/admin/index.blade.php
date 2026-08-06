@@ -100,6 +100,9 @@
         .catalog-main-image-control input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; pointer-events: none; }
         .catalog-main-image-button { display: grid; place-items: center; border-right: 1px solid #d4ddd8; background: var(--panel-soft); color: var(--ink-soft); font-weight: 700; }
         .catalog-main-image-name { min-width: 0; display: flex; align-items: center; padding: 10px 12px; overflow: hidden; color: var(--muted); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+        .catalog-ai-generate-btn { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-soft); color: var(--brand); font-size: 11px; font-weight: 700; cursor: pointer; vertical-align: middle; }
+        .catalog-ai-generate-btn:hover { border-color: var(--brand); background: var(--brand); color: #fff; }
+        .catalog-ai-generate-btn:disabled { cursor: progress; opacity: .6; }
         .drawer { width: min(720px, calc(100vw - 24px)); max-width: none; height: 100vh; max-height: 100vh; margin: 0 0 0 auto; border: 0; padding: 0; border-radius: 8px 0 0 8px; box-shadow: -24px 0 60px rgba(16,24,40,.22); }
         .drawer::backdrop { background: rgba(16,24,40,.42); backdrop-filter: blur(2px); }
         .drawer-header { padding: 22px 24px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; align-items: start; }
@@ -152,6 +155,14 @@
         .catalog-row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
         .btn.catalog-import-button { border-color: #c7d2fe; background: #eef2ff; color: #4338ca; box-shadow: 0 1px 2px rgba(67,56,202,.10); }
         .btn.catalog-import-button:hover { border-color: #a5b4fc; background: #e0e7ff; color: #3730a3; }
+        .import-overlay { position: fixed; inset: 0; z-index: 3000; display: none; align-items: center; justify-content: center; background: rgba(15, 23, 42, .55); backdrop-filter: blur(2px); }
+        .import-overlay.is-active { display: flex; }
+        .import-overlay-card { background: #fff; border-radius: 16px; padding: 26px 30px; max-width: 360px; width: calc(100% - 40px); text-align: center; box-shadow: 0 24px 60px rgba(15, 23, 42, .28); }
+        .import-spinner { width: 44px; height: 44px; margin: 0 auto 16px; border-radius: 999px; border: 4px solid #e0e7ff; border-top-color: #4338ca; animation: import-spin .8s linear infinite; }
+        @keyframes import-spin { to { transform: rotate(360deg); } }
+        .import-overlay-title { font-size: 16px; font-weight: 750; color: #0f1b16; }
+        .import-overlay-note { font-size: 13px; color: var(--muted, #64748b); margin-top: 6px; line-height: 1.5; }
+        @media (prefers-reduced-motion: reduce) { .import-spinner { animation: none; } }
         .btn.catalog-edit-button { border-color: #fdba74; background: #fff7ed; color: #c2410c; box-shadow: 0 1px 2px rgba(194,65,12,.08); }
         .btn.catalog-edit-button:hover { border-color: #f97316; background: #ffedd5; color: #9a3412; }
         .btn.catalog-delete-button { border-color: #fecaca; background: #fef2f2; color: #b42318; box-shadow: 0 1px 2px rgba(180,35,24,.08); }
@@ -244,9 +255,32 @@
                     </div>
                     <div style="display:flex; gap:8px; flex-wrap:wrap;">
                         <button class="btn catalog-import-button" type="button" data-dialog-open="product-import-dialog">Import from photos</button>
+                        <button class="btn catalog-import-button" type="button" data-dialog-open="product-sheet-import-dialog">Import from CSV/Excel</button>
                         <button class="btn accent" type="button" data-dialog-open="product-dialog">Add product</button>
                     </div>
                 </div>
+                <dialog class="dialog" id="product-sheet-import-dialog">
+                    <div class="dialog-header">
+                        <div>
+                            <h2 class="panel-title">Import products from CSV or Excel</h2>
+                            <p class="subtle">Upload a spreadsheet in any layout. Our AI reads it, cleans it up, fills in missing descriptions and specifications, sorts products into categories, and applies any prices it finds — saving everything as drafts for you to review and publish.</p>
+                        </div>
+                        <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
+                    </div>
+                    <form class="dialog-body" method="POST" action="{{ route('admin.catalog.products.import-sheet') }}" enctype="multipart/form-data" data-import-form data-import-message="Reading your file, cleaning it up with AI, and creating draft products. This can take a moment for larger files.">
+                        @csrf
+                        <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                        <div class="field">
+                            <label for="product-import-sheet">Spreadsheet file</label>
+                            <input id="product-import-sheet" name="sheet" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv" required>
+                            <p class="subtle">CSV or Excel (.xlsx), up to 20&nbsp;MB. One product per row, or products grouped under category headers &mdash; we'll figure it out.</p>
+                        </div>
+                        <div class="dialog-actions" style="display:flex; gap:8px; justify-content:flex-end;">
+                            <button class="btn" type="button" data-dialog-close>Cancel</button>
+                            <button class="btn accent" type="submit">Import as drafts</button>
+                        </div>
+                    </form>
+                </dialog>
                 <dialog class="dialog" id="product-import-dialog">
                     <div class="dialog-header">
                         <div>
@@ -255,7 +289,7 @@
                         </div>
                         <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
                     </div>
-                    <form class="dialog-body" method="POST" action="{{ route('admin.catalog.products.import') }}" enctype="multipart/form-data">
+                    <form class="dialog-body" method="POST" action="{{ route('admin.catalog.products.import') }}" enctype="multipart/form-data" data-import-form data-import-message="Uploading your photos and drafting a product for each with AI. This can take a moment.">
                         @csrf
                         <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
                         <div class="field">
@@ -269,6 +303,13 @@
                         </div>
                     </form>
                 </dialog>
+                <div class="import-overlay" data-import-overlay role="alertdialog" aria-live="assertive" aria-busy="true">
+                    <div class="import-overlay-card">
+                        <div class="import-spinner" aria-hidden="true"></div>
+                        <div class="import-overlay-title">Import in progress…</div>
+                        <p class="import-overlay-note" data-import-overlay-note>Working on it. Please keep this tab open.</p>
+                    </div>
+                </div>
                 <div class="panel-body">
                     @include('catalog::admin.partials.catalog-filter', [
                         'scope' => 'products',
@@ -1113,6 +1154,90 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            const productAiEndpoint = @json(route('admin.catalog.products.ai-content'));
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+            // Show a blocking overlay while an import uploads/processes, so the
+            // merchant can't submit twice and can see the work is under way.
+            const importOverlay = document.querySelector('[data-import-overlay]');
+            const importOverlayNote = importOverlay?.querySelector('[data-import-overlay-note]');
+            document.querySelectorAll('form[data-import-form]').forEach((form) => {
+                form.addEventListener('submit', (event) => {
+                    const submitBtn = form.querySelector('[type="submit"]');
+                    // If the browser blocks submit (e.g. no file chosen), don't lock the UI.
+                    if (submitBtn?.disabled || (typeof form.checkValidity === 'function' && !form.checkValidity())) {
+                        return;
+                    }
+                    if (importOverlayNote && form.dataset.importMessage) {
+                        importOverlayNote.textContent = form.dataset.importMessage;
+                    }
+                    importOverlay?.classList.add('is-active');
+                    if (submitBtn) {
+                        submitBtn.disabled = true;
+                        submitBtn.textContent = 'Importing…';
+                    }
+                });
+            });
+
+            document.querySelectorAll('[data-product-ai-generate]').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    const form = button.closest('form');
+                    const field = button.dataset.productAiField;
+                    const target = form?.querySelector(`[name="${field}"]`);
+
+                    if (!form || !target) return;
+
+                    const productName = form.querySelector('[name="name"]')?.value.trim() || '';
+                    const hint = window.prompt(
+                        `Generate ${field} with AI for ${productName || 'this product'}.\n\nAdd any facts, features, tone, or details the AI should use. Leave blank to use the product form as context.`,
+                        ''
+                    );
+
+                    if (hint === null) return;
+
+                    const categorySelect = form.querySelector('[name="category_id"]');
+                    const selectedCategory = categorySelect?.selectedOptions?.[0];
+                    const originalLabel = button.textContent;
+                    button.disabled = true;
+                    button.textContent = 'Generating…';
+
+                    try {
+                        const response = await fetch(productAiEndpoint, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                            },
+                            body: JSON.stringify({
+                                tenant_id: form.querySelector('[name="tenant_id"]')?.value || '',
+                                field,
+                                prompt: hint,
+                                name: productName,
+                                brand: form.querySelector('[name="brand"]')?.value || '',
+                                category: selectedCategory?.value && selectedCategory.value !== '__add_new__' ? selectedCategory.textContent.trim() : '',
+                                description: form.querySelector('[name="description"]')?.value || '',
+                                specifications: form.querySelector('[name="specifications"]')?.value || '',
+                            }),
+                        });
+                        const data = await response.json().catch(() => ({}));
+
+                        if (!response.ok) {
+                            alert(data.message || 'Could not generate product content. Please try again.');
+                            return;
+                        }
+
+                        target.value = data.content || '';
+                        target.dispatchEvent(new Event('input', { bubbles: true }));
+                    } catch (error) {
+                        alert('Could not reach the AI service. Please try again.');
+                    } finally {
+                        button.disabled = false;
+                        button.textContent = originalLabel;
+                    }
+                });
+            });
+
             const syncCheckboxAccordion = (accordion) => {
                 const count = accordion?.querySelector('[data-checkbox-accordion-count]');
                 const selectedCount = accordion?.querySelectorAll('input[type="checkbox"]:checked').length || 0;

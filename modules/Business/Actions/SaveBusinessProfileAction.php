@@ -41,9 +41,8 @@ final class SaveBusinessProfileAction
 
             $settings = array_merge($tenant->settings ?? [], [
                 'brand_color' => $data['brand_color'] ?? null,
-                'maintenance_mode' => (bool) ($data['maintenance_mode'] ?? false),
             ]);
-            unset($settings['seo']);
+            unset($settings['seo'], $settings['maintenance_mode']);
 
             if (array_key_exists('use_estimated_cost_for_cogs', $data)) {
                 $settings['use_estimated_cost_for_cogs'] = (bool) $data['use_estimated_cost_for_cogs'];

@@ -42,6 +42,7 @@ final class SaveProductAction
                 'brand' => $data['brand'] ?? null,
                 'product_type' => $data['product_type'],
                 'description' => $data['description'] ?? null,
+                'specifications' => $data['specifications'] ?? null,
                 'custom_fields' => $this->customFields($data),
                 'personalization_settings' => $this->personalizationSettings($data),
                 'has_variants' => (bool) ($data['has_variants'] ?? false),

@@ -194,9 +194,15 @@
                         <input name="barcode" value="{{ old('barcode', $variant?->barcode) }}">
                     </div>
                     <div class="field full">
-                        <label>Description</label>
+                        <label>Description <button type="button" class="catalog-ai-generate-btn" data-product-ai-generate data-product-ai-field="description">✨ Generate with AI</button></label>
                         <textarea name="description">{{ old('description', $product?->description) }}</textarea>
                     </div>
+                    @if (! $isService)
+                        <div class="field full">
+                            <label>Specifications <span class="subtle">(optional)</span> <button type="button" class="catalog-ai-generate-btn" data-product-ai-generate data-product-ai-field="specifications">✨ Generate with AI</button></label>
+                            <textarea name="specifications" rows="6" placeholder="e.g. Material: 100% cotton&#10;Fit: Regular&#10;Care: Machine wash cold">{{ old('specifications', $product?->specifications) }}</textarea>
+                        </div>
+                    @endif
                     <div class="field full">
                         <div class="catalog-image-uploader" data-product-image-uploader>
                             <div class="catalog-image-uploader-header">

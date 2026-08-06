@@ -251,9 +251,41 @@
                 <div class="mt-7 border-t border-[var(--store-line)] pt-5">
                     <div class="flex gap-2 border-b border-[var(--store-line)]" role="tablist">
                         <button type="button" class="sf-label-md border-b-2 border-[var(--store-primary)] px-4 py-3 text-[var(--store-primary)]" data-tab-button="description">Product Description</button>
+                        @if ($product->product_type === \Modules\Catalog\Enums\ProductType::Product)
+                            <button type="button" class="sf-label-md border-b-2 border-transparent px-4 py-3 text-[var(--store-muted)]" data-tab-button="specifications">Specifications</button>
+                        @endif
                         <button type="button" class="sf-label-md border-b-2 border-transparent px-4 py-3 text-[var(--store-muted)]" data-tab-button="reviews">Reviews</button>
                     </div>
-                    <div class="sf-body-md py-5 text-[var(--store-muted)]" data-tab-panel="description">{{ $product->description ?: 'No product description has been added yet.' }}</div>
+                    <div class="sf-body-md py-5 text-[var(--store-muted)]" style="white-space: pre-line;" data-tab-panel="description">{{ $product->description ?: 'No product description has been added yet.' }}</div>
+                    @if ($product->product_type === \Modules\Catalog\Enums\ProductType::Product)
+                        @php
+                            $specificationRows = collect(preg_split('/\R/', trim((string) $product->specifications)) ?: [])
+                                ->map(fn (string $row): string => trim($row))
+                                ->filter()
+                                ->values();
+                        @endphp
+                        <div class="sf-body-md hidden divide-y divide-[var(--store-line)] py-5 text-[var(--store-muted)]" data-tab-panel="specifications">
+                            @forelse ($specificationRows as $specification)
+                                @php
+                                    $hasSpecificationSeparator = preg_match('/^(.+?)\s*([:|])\s*(.+)$/u', $specification, $specificationParts) === 1
+                                        || preg_match('/^(.+?)\s+(-)\s+(.+)$/u', $specification, $specificationParts) === 1;
+                                    $specificationKey = $hasSpecificationSeparator ? trim($specificationParts[1]) : '';
+                                    $specificationSeparator = $hasSpecificationSeparator ? $specificationParts[2] : '';
+                                    $specificationValue = $hasSpecificationSeparator ? trim($specificationParts[3]) : trim($specification);
+                                @endphp
+                                @if ($specificationKey !== '' || $specificationValue !== '')
+                                    <div class="py-2">
+                                        @if ($specificationKey !== '')
+                                            <strong class="text-[var(--store-ink)]">{{ $specificationKey }}{{ $specificationSeparator === ':' ? ':' : ' '.$specificationSeparator }}</strong>
+                                        @endif
+                                        {{ $specificationValue }}
+                                    </div>
+                                @endif
+                            @empty
+                                <div>No product specifications have been added yet.</div>
+                            @endforelse
+                        </div>
+                    @endif
                     <div class="sf-body-md hidden py-5 text-[var(--store-muted)]" data-tab-panel="reviews">No customer reviews yet.</div>
                 </div>
 

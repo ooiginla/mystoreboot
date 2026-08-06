@@ -124,6 +124,7 @@ final class ProductRequest extends FormRequest
             'brand' => ['nullable', 'string', 'max:120'],
             'product_type' => ['required', Rule::in(array_column(ProductType::cases(), 'value'))],
             'description' => ['nullable', 'string', 'max:4000'],
+            'specifications' => ['nullable', 'string', 'max:8000'],
             'has_variants' => ['boolean'],
             'base_price' => ['required', 'numeric', 'min:0', 'max:999999999'],
             'base_cost_price' => ['nullable', 'numeric', 'min:0', 'max:999999999'],

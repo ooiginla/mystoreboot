@@ -50,6 +50,19 @@
                     Not set
                 @endforelse
             </dd>
+            <dt>Specifications</dt>
+            <dd data-product-specifications>
+                @php
+                    $specifications = collect(preg_split('/\R/', trim((string) $item->specifications)) ?: [])
+                        ->map(fn ($specification) => trim($specification))
+                        ->filter();
+                @endphp
+                @forelse ($specifications as $specification)
+                    <div>{{ $specification }}</div>
+                @empty
+                    Not set
+                @endforelse
+            </dd>
             <dt>Tax</dt>
             <dd>
                 @if ($item->tax_behavior->value === 'taxable' && $item->taxes->isNotEmpty())

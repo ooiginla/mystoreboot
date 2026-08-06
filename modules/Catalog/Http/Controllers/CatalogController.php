@@ -10,12 +10,15 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
 use Modules\Catalog\Actions\CreateCategoryAction;
+use Modules\Catalog\Actions\GenerateProductContentAction;
 use Modules\Catalog\Actions\GenerateProductImageAction;
 use Modules\Catalog\Actions\ImportProductsFromImagesAction;
+use Modules\Catalog\Actions\ImportProductsFromSheetAction;
 use Modules\Catalog\Actions\SaveProductAction;
 use Modules\Catalog\Actions\SaveProductAttributeAction;
 use Modules\Catalog\Actions\SaveProductCollectionAction;
@@ -185,6 +188,36 @@ final class CatalogController extends Controller
             ->with('status', $result['count'].' draft product(s) imported from photos. Set prices and publish them when ready.');
     }
 
+    public function importProductsFromSheet(Request $request, ImportProductsFromSheetAction $action): RedirectResponse
+    {
+        $tenantId = $request->string('tenant_id')->toString();
+        $this->authorizeTenantIdAccess($request->user(), $tenantId);
+
+        $data = $request->validate([
+            'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            // Validate by extension: .xlsx is a ZIP, so PHP's MIME guesser mislabels it.
+            'sheet' => ['required', 'file', 'max:20480'],
+        ]);
+
+        $extension = strtolower((string) $data['sheet']->getClientOriginalExtension());
+        if (! in_array($extension, ['csv', 'tsv', 'txt', 'xlsx'], true)) {
+            return back()->withErrors(['sheet' => 'Upload a CSV or Excel (.xlsx) file.']);
+        }
+
+        $tenant = Tenant::query()->findOrFail($tenantId);
+        $result = $action->execute($data['sheet'], $tenantId, $tenant->currency_code ?? 'NGN');
+
+        if ($result['count'] === 0) {
+            return redirect()
+                ->to(route('admin.catalog.index', ['tenant' => $tenantId]).'#products')
+                ->with('status', "We couldn't read any products from that file. Check that it has product rows and try again.");
+        }
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $tenantId]).'#products')
+            ->with('status', $result['count'].' draft product(s) imported and cleaned up from your file. Review, set prices, and publish them when ready.');
+    }
+
     public function generateProductImage(Request $request, Product $product, GenerateProductImageAction $action): RedirectResponse
     {
         $this->authorizeTenantIdAccess($request->user(), $product->tenant_id);
@@ -198,6 +231,34 @@ final class CatalogController extends Controller
         return redirect()
             ->to(route('admin.catalog.index', ['tenant' => $product->tenant_id]).'#products')
             ->with('status', "AI image generated for {$product->name}.");
+    }
+
+    public function generateProductContent(Request $request, GenerateProductContentAction $action): JsonResponse
+    {
+        $data = $request->validate([
+            'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            'field' => ['required', Rule::in(['description', 'specifications'])],
+            'prompt' => ['nullable', 'string', 'max:2000'],
+            'name' => ['nullable', 'string', 'max:180'],
+            'brand' => ['nullable', 'string', 'max:120'],
+            'category' => ['nullable', 'string', 'max:180'],
+            'description' => ['nullable', 'string', 'max:4000'],
+            'specifications' => ['nullable', 'string', 'max:8000'],
+        ]);
+        $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+
+        $tenant = Tenant::query()->findOrFail($data['tenant_id']);
+
+        try {
+            return response()->json($action->execute(
+                $data['field'],
+                (string) ($data['prompt'] ?? ''),
+                $data,
+                $tenant,
+            ));
+        } catch (\RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
     }
 
     public function updateProduct(ProductRequest $request, Product $product, SaveProductAction $action): RedirectResponse

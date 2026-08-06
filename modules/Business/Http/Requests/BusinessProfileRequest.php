@@ -20,7 +20,6 @@ final class BusinessProfileRequest extends FormRequest
         $this->merge([
             'country_code' => strtoupper((string) $this->input('country_code', 'NG')),
             'currency_code' => strtoupper((string) $this->input('currency_code', 'NGN')),
-            'maintenance_mode' => $this->boolean('maintenance_mode'),
         ]);
 
         if ($this->has('use_estimated_cost_for_cogs')) {
@@ -63,7 +62,6 @@ final class BusinessProfileRequest extends FormRequest
             'bank_details.*.account_number' => ['nullable', 'string', 'max:80'],
             'bank_details.*.status' => ['nullable', Rule::in(['active', 'inactive'])],
             'bank_details.*.asset_account_code' => ['nullable', 'string', 'max:40'],
-            'maintenance_mode' => ['boolean'],
             'use_estimated_cost_for_cogs' => ['sometimes', 'boolean'],
         ];
     }

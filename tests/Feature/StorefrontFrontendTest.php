@@ -182,6 +182,7 @@ class StorefrontFrontendTest extends TestCase
                 'name' => 'Product '.$index,
                 'slug' => 'product-'.$index,
                 'description' => 'Helpful product details '.$index,
+                'specifications' => $index === 1 ? "Material: Cotton\nFit - Regular\nCare | Machine wash\nWi-Fi compatible" : null,
                 'status' => ProductStatus::Active->value,
                 'base_price_minor' => 100000 + $index,
                 'created_at' => now()->subMinutes($index),
@@ -200,6 +201,15 @@ class StorefrontFrontendTest extends TestCase
         $this->get(route('storefront.storefront.store.products.show', [$store, 'product-1']))
             ->assertOk()
             ->assertSee('Product Description')
+            ->assertSee('Specifications')
+            ->assertSee('Cotton')
+            ->assertSee('Regular')
+            ->assertSee('Machine wash')
+            ->assertSee('Wi-Fi compatible')
+            ->assertSee('<strong class="text-[var(--store-ink)]">Material:</strong>', false)
+            ->assertSee('<strong class="text-[var(--store-ink)]">Fit -</strong>', false)
+            ->assertSee('<strong class="text-[var(--store-ink)]">Care |</strong>', false)
+            ->assertSee('divide-y divide-[var(--store-line)]', false)
             ->assertSee('Reviews')
             ->assertSee('Share this product')
             ->assertSee('YOU MIGHT ALSO LIKE');
@@ -368,10 +378,17 @@ class StorefrontFrontendTest extends TestCase
     {
         [, $store] = $this->storeFixture(['maintenance_mode' => true]);
 
-        $this->get(route('storefront.storefront.store.home', $store))
+        foreach (['home', 'about', 'faq', 'contact', 'track'] as $routeName) {
+            $this->get(route('storefront.storefront.store.'.$routeName, $store))
+                ->assertOk()
+                ->assertSee('We will be back soon')
+                ->assertSee($store->store_name)
+                ->assertDontSee('Our Products');
+        }
+
+        $this->get(route('storefront.storefront.store.products.show', [$store, 'direct-product-link']))
             ->assertOk()
-            ->assertSee('We will be back soon')
-            ->assertDontSee('Our Products');
+            ->assertSee('We will be back soon');
     }
 
     public function test_storefront_content_pages_use_configured_copy(): void

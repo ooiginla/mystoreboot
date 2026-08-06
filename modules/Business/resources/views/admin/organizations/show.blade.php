@@ -71,7 +71,6 @@
                         <div><span class="subtle">Tax identifier</span><br><strong>{{ $tenant->tax_identifier ?: 'Not set' }}</strong></div>
                         <div><span class="subtle">Default tax rate</span><br><strong>{{ $tenant->default_tax_rate }}%</strong></div>
                         <div><span class="subtle">Subscription plan</span><br><strong>{{ $selectedPlan ?? 'None' }}</strong></div>
-                        <div><span class="subtle">Maintenance mode</span><br><strong>{{ ($settings['maintenance_mode'] ?? false) ? 'Enabled' : 'Disabled' }}</strong></div>
                     </div>
                 </div>
 

@@ -19,7 +19,6 @@
         })
         ->unique()
         ->values();
-    $maintenanceMode = (bool) old('maintenance_mode', $tenant?->settings['maintenance_mode'] ?? false);
     $useEstimatedCostForCogs = (bool) old('use_estimated_cost_for_cogs', $tenant?->settings['use_estimated_cost_for_cogs'] ?? false);
     $onlineStoreCountries = collect(\App\Support\Geo::countries());
     $storedOnlineStoreCountry = old('country', $onlineStore?->country ?? $tenant?->country_code);
@@ -509,7 +508,6 @@
                                 <div class="summary-item"><span>Opening days</span><strong>{{ $openBusinessDays->count() }} of 7 days</strong></div>
                                 <div class="summary-item"><span>Payment methods</span><strong>{{ $businessPaymentMethods->isNotEmpty() ? $businessPaymentMethods->join(', ') : 'Not set' }}</strong></div>
                                 <div class="summary-item" style="grid-column: 1 / -1;"><span>Address</span><strong>{{ $tenant->address ?: 'Not set' }}</strong></div>
-                                <div class="summary-item"><span>Maintenance mode</span><strong>{{ ($tenant->settings['maintenance_mode'] ?? false) ? 'Enabled' : 'Disabled' }}</strong></div>
                                 <div class="summary-item"><span>Payment accounts</span><strong>{{ $paymentAccounts->count() }}</strong></div>
                                 <div class="summary-item"><span>Estimated cost COGS</span><strong>{{ ($tenant->settings['use_estimated_cost_for_cogs'] ?? false) ? 'Enabled' : 'Disabled' }}</strong></div>
                                 <div class="summary-item"><span>Online store</span><strong><a class="btn secondary" href="{{ route('admin.business.online-store.index', ['tenant' => $tenant->id]) }}#online-store">Manage setup</a></strong></div>
@@ -1469,7 +1467,6 @@
                         </div>
                         <div class="field"><label for="tax_identifier">Tax identifier</label><input id="tax_identifier" name="tax_identifier" value="{{ old('tax_identifier', $tenant?->tax_identifier) }}"></div>
                         <div class="field"><label for="default_tax_rate">Default tax rate (%)</label><input id="default_tax_rate" name="default_tax_rate" type="number" step="0.01" min="0" max="100" value="{{ old('default_tax_rate', $tenant?->default_tax_rate ?? 0) }}" required></div>
-                        <div class="field full"><label><input type="checkbox" name="maintenance_mode" value="1" @checked($maintenanceMode)> Enable maintenance mode</label></div>
                         <div class="field">
                             <label for="plan_id">Subscription plan</label>
                             <select id="plan_id" name="plan_id">

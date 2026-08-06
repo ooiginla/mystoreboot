@@ -18,6 +18,14 @@ class RoutePermissionMapCoverageTest extends TestCase
         );
     }
 
+    public function test_the_product_ai_content_route_uses_catalog_update_permission(): void
+    {
+        $this->assertSame(
+            'catalog.update',
+            RoutePermissionMap::map()['admin.catalog.products.ai-content'] ?? null,
+        );
+    }
+
     public function test_sales_workspaces_use_their_matching_permissions(): void
     {
         $map = RoutePermissionMap::map();
