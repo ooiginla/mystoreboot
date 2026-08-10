@@ -78,7 +78,7 @@
                 Your account
             </legend>
             <div class="grid gap-4 sm:grid-cols-2">
-                <div>
+                <div class="sm:col-span-2">
                     <label for="name" class="{{ $labelCls }}">Full name</label>
                     <input id="name" name="name" value="{{ old('name') }}" autocomplete="name" required class="{{ $field }}" placeholder="Amaka Obi">
                 </div>
