@@ -87,6 +87,11 @@
                     <input id="email" name="email" type="email" value="{{ old('email') }}" autocomplete="email" required class="{{ $field }}" placeholder="you@business.com">
                 </div>
                 <div>
+                    <label for="phone" class="{{ $labelCls }}">WhatsApp phone number</label>
+                    <input id="phone" name="phone" type="tel" value="{{ old('phone') }}" autocomplete="tel" class="{{ $field }}" placeholder="+2348012345678">
+                    <p class="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">We’ll use this to contact you about orders and updates.</p>
+                </div>
+                <div>
                     <label for="password" class="{{ $labelCls }}">Password</label>
                     <input id="password" name="password" type="password" autocomplete="new-password" required class="{{ $field }}" placeholder="At least 8 characters">
                 </div>

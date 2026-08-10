@@ -84,6 +84,7 @@ class TenantSignupTest extends TestCase
             'country' => 'NG',
             'name' => 'Olu Owner',
             'email' => 'owner@bootup.test',
+            'phone' => '+2348012345678',
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'g-recaptcha-response' => 'valid-token',
@@ -98,6 +99,7 @@ class TenantSignupTest extends TestCase
         $this->assertSame(TenantStatus::Trialing, $tenant->status);
         $this->assertSame('retail', $tenant->business_type);
         $this->assertSame('Lagos', $tenant->settings['city']);
+        $this->assertSame('+2348012345678', $tenant->phone);
         $this->assertNull($user->email_verified_at);
         $this->assertTrue(TenantMembership::query()->where('tenant_id', $tenant->id)->where('user_id', $user->id)->exists());
         $this->assertDatabaseHas(Branch::class, [
