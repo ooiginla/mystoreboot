@@ -3,17 +3,17 @@
 @section('title', 'Create your account · Storeboot')
 @section('formWidth', 'max-w-xl')
 
+@section('showcaseBackground')
+    <img
+        src="{{ asset('media/auth/signup-store-owner.jpg') }}"
+        alt=""
+        class="h-full w-full object-cover opacity-35"
+    >
+@endsection
+
 @section('content')
     <div class="mb-8">
         <h1 class="font-display text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">Create your workspace</h1>
-        <p class="mt-2 text-zinc-600 dark:text-zinc-400">
-            Start your free 14-day trial. No card required
-            @if ($localSignupBypassEnabled)
-                — local accounts are activated automatically.
-            @else
-                — verify your email and you're in.
-            @endif
-        </p>
     </div>
 
     @if ($errors->any())
@@ -88,8 +88,7 @@
                 </div>
                 <div>
                     <label for="phone" class="{{ $labelCls }}">WhatsApp phone number</label>
-                    <input id="phone" name="phone" type="tel" value="{{ old('phone') }}" autocomplete="tel" class="{{ $field }}" placeholder="+2348012345678">
-                    <p class="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">We’ll use this to contact you about orders and updates.</p>
+                    <input id="phone" name="phone" type="tel" value="{{ old('phone') }}" autocomplete="tel" required class="{{ $field }}" placeholder="+2348012345678">
                 </div>
                 <div>
                     <label for="password" class="{{ $labelCls }}">Password</label>

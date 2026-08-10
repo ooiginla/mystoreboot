@@ -39,6 +39,7 @@ class TenantSignupTest extends TestCase
             'country' => 'NG',
             'name' => 'Local Owner',
             'email' => 'local@bootup.test',
+            'phone' => '+2348011111111',
             'password' => 'password123',
             'password_confirmation' => 'password123',
         ]);
@@ -155,6 +156,30 @@ class TenantSignupTest extends TestCase
         $this->assertAuthenticatedAs($user);
     }
 
+    public function test_signup_requires_a_whatsapp_phone_number(): void
+    {
+        Mail::fake();
+        $this->app->detectEnvironment(fn (): string => 'local');
+        $this->withSession(['_token' => 'required-phone-test-token']);
+
+        $response = $this->post(route('register.store'), [
+            '_token' => 'required-phone-test-token',
+            'business_name' => 'No Phone Retail',
+            'business_category' => 'retail',
+            'city' => 'Lagos',
+            'country' => 'NG',
+            'name' => 'No Phone Owner',
+            'email' => 'no-phone@bootup.test',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $response->assertSessionHasErrors('phone');
+
+        $this->assertFalse(User::query()->where('email', 'no-phone@bootup.test')->exists());
+        Mail::assertNothingSent();
+    }
+
     public function test_signup_requires_successful_google_recaptcha_verification(): void
     {
         Mail::fake();
@@ -174,6 +199,7 @@ class TenantSignupTest extends TestCase
             'country' => 'NG',
             'name' => 'Bot Owner',
             'email' => 'bot@bootup.test',
+            'phone' => '+2348022222222',
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'g-recaptcha-response' => 'invalid-token',

@@ -10,6 +10,14 @@
         {{-- ============ SHOWCASE PANEL (desktop) ============ --}}
         <aside class="relative hidden overflow-hidden bg-ink-950 p-12 text-white lg:flex lg:flex-col">
             <div class="pointer-events-none absolute inset-0 bg-gradient-to-br from-brand-700 via-ink-900 to-ink-950"></div>
+            @hasSection('showcaseBackground')
+                <div class="pointer-events-none absolute inset-0">
+                    @yield('showcaseBackground')
+                    <div class="absolute inset-0 bg-ink-950/25"></div>
+                    <div class="absolute inset-0 bg-gradient-to-r from-ink-950/95 via-ink-950/80 to-ink-950/45"></div>
+                    <div class="absolute inset-0 bg-gradient-to-b from-ink-950/20 via-transparent to-ink-950/90"></div>
+                </div>
+            @endif
             <div class="pointer-events-none absolute -left-20 top-10 h-72 w-72 rounded-full bg-brand-500/25 blur-3xl"></div>
             <div class="pointer-events-none absolute bottom-0 right-0 h-72 w-72 rounded-full bg-accent-400/15 blur-3xl"></div>
             <div class="sb-grid-bg pointer-events-none absolute inset-0 text-white/40"></div>
@@ -20,17 +28,17 @@
                 </a>
 
                 <div class="my-auto max-w-md">
-                    <h2 class="font-display text-4xl font-bold leading-[1.1] tracking-tight">
+                    <h2 class="font-display text-4xl font-bold leading-[1.1] tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.65)]">
                         Run your whole business from <span class="font-serif italic font-normal text-accent-300">one</span> place.
                     </h2>
-                    <p class="mt-4 text-lg text-white/70">
+                    <p class="mt-4 text-lg text-white/85 drop-shadow-[0_1px_6px_rgba(0,0,0,0.8)]">
                         Sales, inventory, customers and clear reports — the simple platform African businesses grow on.
                     </p>
 
                     <ul class="mt-8 space-y-3">
                         @foreach (['Point of sale that works offline', 'One dashboard for every branch', 'Know your real profit, in real time'] as $point)
-                            <li class="flex items-center gap-3 text-white/85">
-                                <span class="grid h-6 w-6 place-items-center rounded-full bg-white/15">
+                            <li class="flex items-center gap-3 text-white/95 drop-shadow-[0_1px_5px_rgba(0,0,0,0.8)]">
+                                <span class="grid h-6 w-6 place-items-center rounded-full bg-ink-950/55 ring-1 ring-white/20">
                                     <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/></svg>
                                 </span>
                                 {{ $point }}
@@ -38,7 +46,7 @@
                         @endforeach
                     </ul>
 
-                    <figure class="mt-10 rounded-2xl border border-white/10 bg-white/[0.04] p-5 backdrop-blur">
+                    <figure class="mt-10 rounded-2xl border border-white/15 bg-ink-950/65 p-5 shadow-xl shadow-black/20 backdrop-blur-md">
                         <blockquote class="text-sm leading-relaxed text-white/90">“Storeboot changed how I run my shop. Everything is finally in one place.”</blockquote>
                         <figcaption class="mt-3 flex items-center gap-3">
                             <span class="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-xs font-bold">AO</span>

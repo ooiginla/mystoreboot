@@ -56,7 +56,7 @@ final class RegisteredTenantController extends Controller
             'country' => ['required', Rule::in(array_keys($this->countries()))],
             'name' => ['required', 'string', 'max:160'],
             'email' => ['required', 'email:rfc', 'max:255', 'unique:users,email'],
-            'phone' => ['nullable', 'string', 'max:40'],
+            'phone' => ['required', 'string', 'max:40'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'g-recaptcha-response' => [
                 Rule::requiredIf($this->recaptchaEnabled()),
@@ -76,7 +76,7 @@ final class RegisteredTenantController extends Controller
                 'slug' => $this->uniqueTenantSlug($data['business_name']),
                 'status' => TenantStatus::Trialing,
                 'business_type' => $data['business_category'],
-                'phone' => $data['phone'] ?? null,
+                'phone' => $data['phone'],
                 'country_code' => $data['country'],
                 'timezone' => $this->timezoneFor($data['country']),
                 'currency_code' => $this->currencyFor($data['country']),
