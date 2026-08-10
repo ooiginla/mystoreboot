@@ -162,6 +162,7 @@
         @keyframes import-spin { to { transform: rotate(360deg); } }
         .import-overlay-title { font-size: 16px; font-weight: 750; color: #0f1b16; }
         .import-overlay-note { font-size: 13px; color: var(--muted, #64748b); margin-top: 6px; line-height: 1.5; }
+        .import-feedback { margin: 0 0 14px; border: 1px solid #fda29b; border-radius: 10px; background: #fef3f2; color: #b42318; padding: 10px 12px; font-size: 13px; line-height: 1.5; }
         @media (prefers-reduced-motion: reduce) { .import-spinner { animation: none; } }
         .btn.catalog-edit-button { border-color: #fdba74; background: #fff7ed; color: #c2410c; box-shadow: 0 1px 2px rgba(194,65,12,.08); }
         .btn.catalog-edit-button:hover { border-color: #f97316; background: #ffedd5; color: #9a3412; }
@@ -289,12 +290,13 @@
                         </div>
                         <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
                     </div>
-                    <form class="dialog-body" method="POST" action="{{ route('admin.catalog.products.import') }}" enctype="multipart/form-data" data-import-form data-import-message="Uploading your photos and drafting a product for each with AI. This can take a moment.">
+                    <form class="dialog-body" method="POST" action="{{ route('admin.catalog.products.import') }}" enctype="multipart/form-data" data-import-form data-photo-import-form data-import-message="Uploading your photos and drafting a product for each with AI. This can take a moment.">
                         @csrf
                         <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                        <div class="import-feedback" data-photo-import-error role="alert" hidden></div>
                         <div class="field">
                             <label for="product-import-images">Product photos</label>
-                            <input id="product-import-images" name="images[]" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple required>
+                            <input id="product-import-images" name="images[]" type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" multiple required>
                             <p class="subtle">Up to 40 photos, each under 10&nbsp;MB. One product is created per photo.</p>
                         </div>
                         <div class="dialog-actions" style="display:flex; gap:8px; justify-content:flex-end;">
@@ -306,7 +308,7 @@
                 <div class="import-overlay" data-import-overlay role="alertdialog" aria-live="assertive" aria-busy="true">
                     <div class="import-overlay-card">
                         <div class="import-spinner" aria-hidden="true"></div>
-                        <div class="import-overlay-title">Import in progress…</div>
+                        <div class="import-overlay-title" data-import-overlay-title>Import in progress…</div>
                         <p class="import-overlay-note" data-import-overlay-note>Working on it. Please keep this tab open.</p>
                     </div>
                 </div>
@@ -1160,8 +1162,9 @@
             // Show a blocking overlay while an import uploads/processes, so the
             // merchant can't submit twice and can see the work is under way.
             const importOverlay = document.querySelector('[data-import-overlay]');
+            const importOverlayTitle = importOverlay?.querySelector('[data-import-overlay-title]');
             const importOverlayNote = importOverlay?.querySelector('[data-import-overlay-note]');
-            document.querySelectorAll('form[data-import-form]').forEach((form) => {
+            document.querySelectorAll('form[data-import-form]:not([data-photo-import-form])').forEach((form) => {
                 form.addEventListener('submit', (event) => {
                     const submitBtn = form.querySelector('[type="submit"]');
                     // If the browser blocks submit (e.g. no file chosen), don't lock the UI.
@@ -1177,6 +1180,104 @@
                         submitBtn.textContent = 'Importing…';
                     }
                 });
+            });
+
+            const photoImportForm = document.querySelector('[data-photo-import-form]');
+            const photoImportInput = photoImportForm?.querySelector('input[type="file"]');
+            const photoImportError = photoImportForm?.querySelector('[data-photo-import-error]');
+            const photoImportSubmit = photoImportForm?.querySelector('[type="submit"]');
+            const showPhotoImportError = (message) => {
+                if (!photoImportError) return;
+                photoImportError.textContent = message;
+                photoImportError.hidden = false;
+            };
+            const resetPhotoImportUi = () => {
+                importOverlay?.classList.remove('is-active');
+                if (importOverlayTitle) importOverlayTitle.textContent = 'Import in progress…';
+                if (photoImportSubmit) {
+                    photoImportSubmit.disabled = false;
+                    photoImportSubmit.textContent = 'Import as drafts';
+                }
+            };
+
+            window.addEventListener('pageshow', resetPhotoImportUi);
+
+            photoImportForm?.addEventListener('submit', async (event) => {
+                if (typeof window.fetch !== 'function' || typeof window.FormData !== 'function') return;
+
+                event.preventDefault();
+                if (!photoImportForm.checkValidity()) {
+                    photoImportForm.reportValidity();
+                    return;
+                }
+
+                const files = Array.from(photoImportInput?.files || []);
+                const supportedExtension = /\.(jpe?g|png|webp|gif)$/i;
+                const unsupportedFile = files.find((file) => !supportedExtension.test(file.name));
+                const oversizedFile = files.find((file) => file.size > 10 * 1024 * 1024);
+
+                if (files.length > 40) {
+                    showPhotoImportError('Choose no more than 40 photos at a time.');
+                    return;
+                }
+                if (unsupportedFile) {
+                    showPhotoImportError(`${unsupportedFile.name} is not supported. On iPhone, export HEIC photos as JPEG before importing.`);
+                    return;
+                }
+                if (oversizedFile) {
+                    showPhotoImportError(`${oversizedFile.name} is larger than 10 MB. Choose a smaller photo.`);
+                    return;
+                }
+
+                if (photoImportError) photoImportError.hidden = true;
+                if (photoImportSubmit) {
+                    photoImportSubmit.disabled = true;
+                    photoImportSubmit.textContent = 'Importing…';
+                }
+                if (importOverlayTitle) importOverlayTitle.textContent = 'Importing photos…';
+                importOverlay?.classList.add('is-active');
+                window.sbCloseDialog?.(photoImportForm.closest('dialog'));
+
+                let imported = 0;
+                let redirectUrl = '';
+
+                try {
+                    for (let index = 0; index < files.length; index += 1) {
+                        if (importOverlayNote) {
+                            importOverlayNote.textContent = `Uploading and processing photo ${index + 1} of ${files.length}. Please keep this tab open.`;
+                        }
+
+                        const body = new FormData();
+                        body.append('_token', photoImportForm.querySelector('input[name="_token"]')?.value || '');
+                        body.append('tenant_id', photoImportForm.querySelector('input[name="tenant_id"]')?.value || '');
+                        body.append('images[]', files[index], files[index].name);
+
+                        const response = await fetch(photoImportForm.action, {
+                            method: 'POST',
+                            headers: { 'Accept': 'application/json' },
+                            credentials: 'same-origin',
+                            body,
+                        });
+                        const result = await response.json().catch(() => null);
+
+                        if (!response.ok) {
+                            const errorGroups = result?.errors ? Object.values(result.errors) : [];
+                            const firstError = errorGroups.length ? errorGroups[0]?.[0] : null;
+                            throw new Error(firstError || result?.message || `Photo ${index + 1} could not be imported (HTTP ${response.status}).`);
+                        }
+
+                        imported += Number(result?.count || 0);
+                        redirectUrl = result?.redirect_url || redirectUrl;
+                    }
+
+                    if (importOverlayTitle) importOverlayTitle.textContent = 'Import complete';
+                    if (importOverlayNote) importOverlayNote.textContent = `${imported} draft product(s) created. Opening your catalog…`;
+                    window.location.assign(redirectUrl || `${window.location.pathname}${window.location.search}#products`);
+                } catch (error) {
+                    resetPhotoImportUi();
+                    showPhotoImportError(error?.message || 'The photo import stopped. Check your connection and try again. Photos completed before the error were saved.');
+                    window.sbOpenDialog?.(photoImportForm.closest('dialog'));
+                }
             });
 
             document.querySelectorAll('[data-product-ai-generate]').forEach((button) => {

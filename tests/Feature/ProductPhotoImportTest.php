@@ -147,6 +147,33 @@ class ProductPhotoImportTest extends TestCase
         $this->assertNotNull($product->image_path);
     }
 
+    public function test_mobile_progressive_import_receives_a_json_result_for_each_photo(): void
+    {
+        Storage::fake('public');
+        Http::fake();
+        config([
+            'services.ai.provider' => 'anthropic',
+            'services.anthropic.api_key' => null,
+        ]);
+
+        [$user, $tenant] = $this->fixture();
+
+        $this->actingAs($user)
+            ->postJson(route('admin.catalog.products.import'), [
+                'tenant_id' => $tenant->id,
+                'images' => [UploadedFile::fake()->image('mobile-photo.jpg')],
+            ])
+            ->assertOk()
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('redirect_url', route('admin.catalog.index', ['tenant' => $tenant->id]).'#products');
+
+        $this->assertDatabaseHas(Product::class, [
+            'tenant_id' => $tenant->id,
+            'name' => 'Mobile Photo',
+            'status' => ProductStatus::Draft->value,
+        ]);
+    }
+
     /**
      * @return array{User, Tenant}
      */

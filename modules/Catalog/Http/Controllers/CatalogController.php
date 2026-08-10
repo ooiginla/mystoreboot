@@ -169,7 +169,7 @@ final class CatalogController extends Controller
             ->with('status', "Custom key {$data['name']} created.");
     }
 
-    public function importProductsFromImages(Request $request, ImportProductsFromImagesAction $action): RedirectResponse
+    public function importProductsFromImages(Request $request, ImportProductsFromImagesAction $action): RedirectResponse|JsonResponse
     {
         $tenantId = $request->string('tenant_id')->toString();
         $this->authorizeTenantIdAccess($request->user(), $tenantId);
@@ -182,10 +182,20 @@ final class CatalogController extends Controller
 
         $tenant = Tenant::query()->findOrFail($tenantId);
         $result = $action->execute($data['images'], $tenantId, $tenant->currency_code ?? 'NGN');
+        $message = $result['count'].' draft product(s) imported from photos. Set prices and publish them when ready.';
+        $redirectUrl = route('admin.catalog.index', ['tenant' => $tenantId]).'#products';
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'count' => $result['count'],
+                'message' => $message,
+                'redirect_url' => $redirectUrl,
+            ]);
+        }
 
         return redirect()
-            ->to(route('admin.catalog.index', ['tenant' => $tenantId]).'#products')
-            ->with('status', $result['count'].' draft product(s) imported from photos. Set prices and publish them when ready.');
+            ->to($redirectUrl)
+            ->with('status', $message);
     }
 
     public function importProductsFromSheet(Request $request, ImportProductsFromSheetAction $action): RedirectResponse

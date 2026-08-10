@@ -264,7 +264,11 @@
 
             /* ---------- Dialogs ---------- */
             .dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 32px); margin: auto; border: 0; border-radius: 16px; padding: 0; box-shadow: 0 32px 80px rgba(16,24,40,.28); }
+            .dialog:not([open]) { display: none; }
             .dialog::backdrop { background: rgba(9, 20, 15, .5); backdrop-filter: blur(2px); }
+            body.dialog-fallback-active { overflow: hidden; }
+            body.dialog-fallback-active::before { content: ''; position: fixed; inset: 0; z-index: 999; background: rgba(9, 20, 15, .62); }
+            .dialog.dialog-fallback-open { display: block; position: fixed; inset: 16px; z-index: 1000; overflow: auto; }
             .dialog-header { padding: 18px 22px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 14px; align-items: start; }
             .dialog-body { padding: 22px; max-height: min(72vh, 760px); overflow: auto; }
             .icon-btn { width: 36px; height: 36px; display: inline-grid; place-items: center; border: 1px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer; font-weight: 700; color: var(--ink-soft); transition: background .15s, border-color .15s; line-height: 0; }
@@ -596,9 +600,40 @@
                     }
                 });
 
+                const supportsNativeDialog = typeof window.HTMLDialogElement !== 'undefined'
+                    && typeof window.HTMLDialogElement.prototype.showModal === 'function';
+                const openDialog = (dialog) => {
+                    if (!dialog) return;
+
+                    if (supportsNativeDialog) {
+                        if (!dialog.open) dialog.showModal();
+                        return;
+                    }
+
+                    dialog.setAttribute('open', '');
+                    dialog.classList.add('dialog-fallback-open');
+                    document.body.classList.add('dialog-fallback-active');
+                };
+                const closeDialog = (dialog) => {
+                    if (!dialog) return;
+
+                    if (supportsNativeDialog && dialog.open) {
+                        dialog.close();
+                        return;
+                    }
+
+                    dialog.removeAttribute('open');
+                    dialog.classList.remove('dialog-fallback-open');
+                    if (!document.querySelector('dialog.dialog-fallback-open')) {
+                        document.body.classList.remove('dialog-fallback-active');
+                    }
+                };
+                window.sbOpenDialog = openDialog;
+                window.sbCloseDialog = closeDialog;
+
                 const activeBranchDialog = document.querySelector('[data-active-branch-dialog]');
-                if (activeBranchDialog instanceof HTMLDialogElement) {
-                    activeBranchDialog.showModal();
+                if (activeBranchDialog) {
+                    openDialog(activeBranchDialog);
                     activeBranchDialog.addEventListener('cancel', (event) => event.preventDefault());
                 }
 
@@ -636,18 +671,18 @@
                         const nextDialog = document.getElementById(button.dataset.dialogOpen);
 
                         if (currentDialog && currentDialog !== nextDialog) {
-                            currentDialog.close();
-                            window.setTimeout(() => nextDialog?.showModal(), 80);
+                            closeDialog(currentDialog);
+                            window.setTimeout(() => openDialog(nextDialog), 80);
                             return;
                         }
 
-                        nextDialog?.showModal();
+                        openDialog(nextDialog);
                     });
                 });
 
                 document.querySelectorAll('[data-dialog-close]').forEach((button) => {
                     button.addEventListener('click', () => {
-                        button.closest('dialog')?.close();
+                        closeDialog(button.closest('dialog'));
                     });
                 });
 
