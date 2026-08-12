@@ -10,6 +10,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -25,6 +26,7 @@ use Modules\Catalog\Enums\TaxBehavior;
 use Modules\Catalog\Models\Product;
 use Modules\Catalog\Models\ProductCollection;
 use Modules\Catalog\Models\ProductVariant;
+use Modules\Catalog\Support\ProductSeo;
 use Modules\Customers\Enums\CustomerStatus;
 use Modules\Customers\Enums\TicketPriority;
 use Modules\Customers\Enums\TicketStatus;
@@ -87,6 +89,14 @@ final class StorefrontController extends Controller
             ->get()
             ->filter(fn (ProductCollection $collection): bool => $collection->products->isNotEmpty())
             ->values();
+        $seo = app(ProductSeo::class)->forStore($store, $store->categories->pluck('name')->all());
+        $canonical = $selectedCategory
+            ? StorefrontUrl::route($store, 'categories.show', ['categorySlug' => $selectedCategory->slug])
+            : StorefrontUrl::route($store);
+
+        if ($products->currentPage() > 1) {
+            $canonical .= '?page='.$products->currentPage();
+        }
 
         return view('storefront::home', [
             'store' => $store,
@@ -95,6 +105,11 @@ final class StorefrontController extends Controller
             'selectedCategory' => $selectedCategorySlug,
             'selectedCategoryName' => $selectedCategory?->name,
             'selectedCollection' => null,
+            'metaDescription' => $selectedCategory
+                ? "Shop {$selectedCategory->name} from {$store->store_name}. Browse available products and order online."
+                : $seo['description'],
+            'metaKeywords' => $seo['keywords'],
+            'canonical' => $canonical,
         ]);
     }
 
@@ -103,20 +118,30 @@ final class StorefrontController extends Controller
         $store = $this->preparedStore($store);
         $category = $store->categories
             ->first(fn ($item): bool => $item->slug === $categorySlug
+                && $item->status === 'active'
                 && ($item->category_type?->value ?? (string) $item->category_type) === 'product');
 
         abort_unless($category, 404);
 
+        $products = $this->productsFor($store, ProductType::Product)
+            ->where('category_id', $category->id)
+            ->latest()
+            ->paginate(16);
+        $canonical = StorefrontUrl::route($store, 'categories.show', ['categorySlug' => $category->slug]);
+        if ($products->currentPage() > 1) {
+            $canonical .= '?page='.$products->currentPage();
+        }
+
         return view('storefront::home', [
             'store' => $store,
-            'products' => $this->productsFor($store, ProductType::Product)
-                ->where('category_id', $category->id)
-                ->latest()
-                ->paginate(16),
+            'products' => $products,
             'productCollections' => collect(),
             'selectedCategory' => $category->slug,
             'selectedCategoryName' => $category->name,
             'selectedCollection' => null,
+            'metaDescription' => "Shop {$category->name} from {$store->store_name}. Browse available products and order online.",
+            'canonical' => $canonical,
+            'robots' => $products->isEmpty() ? 'noindex, follow' : null,
         ]);
     }
 
@@ -128,16 +153,25 @@ final class StorefrontController extends Controller
 
         abort_unless($collection, 404);
 
+        $products = $this->productsFor($store, ProductType::Product)
+            ->whereHas('collections', fn ($query) => $query->whereKey($collection->id))
+            ->latest()
+            ->paginate(16);
+        $canonical = StorefrontUrl::route($store, 'collections.show', ['collectionSlug' => $collection->slug ?: $collection->id]);
+        if ($products->currentPage() > 1) {
+            $canonical .= '?page='.$products->currentPage();
+        }
+
         return view('storefront::home', [
             'store' => $store,
-            'products' => $this->productsFor($store, ProductType::Product)
-                ->whereHas('collections', fn ($query) => $query->whereKey($collection->id))
-                ->latest()
-                ->paginate(16),
+            'products' => $products,
             'productCollections' => collect(),
             'selectedCategory' => '',
             'selectedCategoryName' => null,
             'selectedCollection' => $collection,
+            'metaDescription' => trim(strip_tags((string) $collection->description))
+                ?: "Shop the {$collection->name} collection from {$store->store_name}.",
+            'canonical' => $canonical,
         ]);
     }
 
@@ -145,12 +179,20 @@ final class StorefrontController extends Controller
     {
         $store = $this->preparedStore($store);
 
+        $services = $this->productsFor($store, ProductType::Service)
+            ->latest()
+            ->paginate(16)
+            ->withQueryString();
+        $canonical = StorefrontUrl::route($store, 'services');
+        if ($services->currentPage() > 1) {
+            $canonical .= '?page='.$services->currentPage();
+        }
+
         return view('storefront::services', [
             'store' => $store,
-            'services' => $this->productsFor($store, ProductType::Service)
-                ->latest()
-                ->paginate(16)
-                ->withQueryString(),
+            'services' => $services,
+            'metaDescription' => "Browse services available from {$store->store_name} and make an enquiry online.",
+            'canonical' => $canonical,
         ]);
     }
 
@@ -175,6 +217,7 @@ final class StorefrontController extends Controller
             'pageKey' => $page,
             'title' => $this->pageTitles()[$page],
             'content' => trim((string) data_get($store->pages, $page)),
+            'metaDescription' => Str::limit(trim(strip_tags((string) data_get($store->pages, $page))), 155, ''),
         ]);
     }
 
@@ -182,6 +225,7 @@ final class StorefrontController extends Controller
     {
         return view('storefront::faq', [
             'store' => $this->preparedStore($store),
+            'metaDescription' => "Frequently asked questions about shopping with {$store->store_name}.",
         ]);
     }
 
@@ -189,7 +233,63 @@ final class StorefrontController extends Controller
     {
         return view('storefront::contact', [
             'store' => $this->preparedStore($store),
+            'metaDescription' => "Contact {$store->store_name} for product, order and delivery enquiries.",
         ]);
+    }
+
+    public function sitemap(OnlineStore $store): Response
+    {
+        $store = $this->preparedStore($store);
+        $categoryIds = $store->categories->pluck('id');
+        $products = Product::query()
+            ->where('tenant_id', $store->tenant_id)
+            ->where('status', ProductStatus::Active->value)
+            ->when($categoryIds->isNotEmpty(), fn ($query) => $query->whereIn('category_id', $categoryIds))
+            ->get(['id', 'slug', 'product_type', 'updated_at']);
+        $urls = collect([[
+            'loc' => StorefrontUrl::route($store),
+            'lastmod' => $store->updated_at,
+        ]]);
+
+        $store->categories
+            ->filter(fn ($category) => $category->status === 'active'
+                && ($category->category_type?->value ?? (string) $category->category_type) === 'product')
+            ->each(fn ($category) => $urls->push([
+                'loc' => StorefrontUrl::route($store, 'categories.show', ['categorySlug' => $category->slug]),
+                'lastmod' => $category->updated_at,
+            ]));
+        $store->productCollections->each(fn (ProductCollection $collection) => $urls->push([
+            'loc' => StorefrontUrl::route($store, 'collections.show', ['collectionSlug' => $collection->slug ?: $collection->id]),
+            'lastmod' => $collection->updated_at,
+        ]));
+        $products->each(fn (Product $product) => $urls->push([
+            'loc' => StorefrontUrl::route(
+                $store,
+                $product->product_type === ProductType::Service ? 'services.show' : 'products.show',
+                [$product->product_type === ProductType::Service ? 'serviceSlug' : 'productSlug' => $product->slug],
+            ),
+            'lastmod' => $product->updated_at,
+        ]));
+
+        if ($products->contains(fn (Product $product) => $product->product_type === ProductType::Service)) {
+            $urls->push(['loc' => StorefrontUrl::route($store, 'services'), 'lastmod' => $store->updated_at]);
+        }
+
+        foreach (['about_us' => 'about', 'terms_of_use' => 'terms', 'return_policy' => 'refunds', 'privacy_policy' => 'privacy', 'shipping_information' => 'shipping'] as $page => $route) {
+            if (filled(data_get($store->pages, $page))) {
+                $urls->push(['loc' => StorefrontUrl::route($store, $route), 'lastmod' => $store->updated_at]);
+            }
+        }
+
+        if (collect($store->faqs)->contains(fn ($faq) => filled($faq['question'] ?? null))) {
+            $urls->push(['loc' => StorefrontUrl::route($store, 'faq'), 'lastmod' => $store->updated_at]);
+        }
+
+        $urls->push(['loc' => StorefrontUrl::route($store, 'contact'), 'lastmod' => $store->updated_at]);
+
+        return response()
+            ->view('storefront::sitemap', ['urls' => $urls->unique('loc')->values()])
+            ->header('Content-Type', 'application/xml; charset=UTF-8');
     }
 
     public function track(OnlineStore $store, Request $request): View
@@ -993,6 +1093,9 @@ final class StorefrontController extends Controller
             'catalogType' => $type,
             'seo' => $seo,
             'seoImage' => $seoImage,
+            'canonical' => StorefrontUrl::route($store, $type === ProductType::Service ? 'services.show' : 'products.show', [
+                $type === ProductType::Service ? 'serviceSlug' : 'productSlug' => $product->slug,
+            ]),
         ]);
     }
 

@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Business\Models\OnlineStore;
 use Modules\Catalog\Enums\ProductStatus;
+use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\Product;
 use Modules\Storefront\Support\StorefrontUrl;
 use Modules\Tenancy\Enums\TenantStatus;
@@ -69,7 +70,56 @@ final class StorefrontSubdomainTest extends TestCase
 
         $this->get(route('storefront.storefront.store.home', $store))
             ->assertOk()
-            ->assertSee('Legacy Store');
+            ->assertSee('Legacy Store')
+            ->assertSee('<link rel="canonical" href="'.StorefrontUrl::route($store).'">', false);
+    }
+
+    public function test_storefront_sitemap_lists_canonical_product_urls(): void
+    {
+        [$tenant, $store] = $this->storeFixture('sitemap-store', 'Sitemap Store');
+        $product = Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Searchable Product',
+            'slug' => 'searchable-product',
+            'product_type' => ProductType::Product->value,
+            'status' => ProductStatus::Active->value,
+            'base_price_minor' => 10000,
+        ]);
+
+        $this->get(StorefrontUrl::route($store, 'sitemap'))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/xml; charset=UTF-8')
+            ->assertSee('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', false)
+            ->assertSee(StorefrontUrl::route($store, 'products.show', ['productSlug' => $product->slug]), false);
+    }
+
+    public function test_paginated_catalog_has_a_page_specific_canonical_url(): void
+    {
+        [$tenant, $store] = $this->storeFixture('paged-store', 'Paged Store');
+
+        foreach (range(1, 17) as $number) {
+            Product::query()->create([
+                'tenant_id' => $tenant->id,
+                'name' => 'Product '.$number,
+                'slug' => 'product-'.$number,
+                'product_type' => ProductType::Product->value,
+                'status' => ProductStatus::Active->value,
+                'base_price_minor' => 10000,
+            ]);
+        }
+
+        $this->get(route('storefront.storefront.store.home', $store).'?page=2')
+            ->assertOk()
+            ->assertSee('<link rel="canonical" href="'.StorefrontUrl::route($store).'?page=2">', false);
+    }
+
+    public function test_order_tracking_page_is_not_indexed(): void
+    {
+        [, $store] = $this->storeFixture('tracking-store', 'Tracking Store');
+
+        $this->get(StorefrontUrl::route($store, 'track'))
+            ->assertOk()
+            ->assertSee('<meta name="robots" content="noindex, follow">', false);
     }
 
     public function test_reserved_subdomain_is_rejected_when_saving_a_store(): void

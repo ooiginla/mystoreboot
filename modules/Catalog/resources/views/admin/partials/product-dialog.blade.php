@@ -210,10 +210,10 @@
                                 <p>To upload a product image, please use the option below to select and upload the relevant file.</p>
                             </div>
                             <label class="catalog-drop-zone" data-product-image-drop-zone>
-                                <input name="images[]" type="file" accept="image/*" multiple data-product-image-input>
+                                <input name="images[]" type="file" accept="image/*" multiple data-product-image-input data-max-files="5">
                                 <span class="catalog-upload-icon">⇧</span>
                                 <strong>Drop files here or click to upload.</strong>
-                                <span>You can drag images here, or browse files via the button below.</span>
+                                <span>You can upload up to 5 images at a time.</span>
                                 <span class="catalog-browse-button">Browse Images</span>
                             </label>
                             @if ($product?->images?->isNotEmpty())

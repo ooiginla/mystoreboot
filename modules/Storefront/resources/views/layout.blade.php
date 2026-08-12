@@ -68,6 +68,8 @@
         'bank_account' => 'Bank transfer',
         'place_order' => 'Place order now, pay later',
     ];
+    $canonicalUrl = $canonical ?? \Modules\Storefront\Support\StorefrontUrl::canonicalForRequest($store, request());
+    $organizationId = \Modules\Storefront\Support\StorefrontUrl::route($store).'#organization';
 @endphp
 <!doctype html>
 <html lang="en" class="scroll-smooth">
@@ -85,12 +87,14 @@
     @endphp
     <meta name="description" content="{{ $seoDescription }}">
     @if (! empty($metaKeywords))<meta name="keywords" content="{{ $metaKeywords }}">@endif
-    <link rel="canonical" href="{{ $canonical ?? url()->current() }}">
+    @if (! empty($robots))<meta name="robots" content="{{ $robots }}">@endif
+    <link rel="canonical" href="{{ $canonicalUrl }}">
+    <link rel="sitemap" type="application/xml" href="{{ $storefrontRoute($store, 'sitemap') }}">
     <meta property="og:type" content="{{ $ogType ?? 'website' }}">
     <meta property="og:site_name" content="{{ $store->store_name }}">
     <meta property="og:title" content="{{ $title ?? $store->store_name }}">
     <meta property="og:description" content="{{ $seoDescription }}">
-    <meta property="og:url" content="{{ url()->current() }}">
+    <meta property="og:url" content="{{ $canonicalUrl }}">
     @if ($seoImage)<meta property="og:image" content="{{ $seoImage }}">@endif
     <meta name="twitter:card" content="{{ $seoImage ? 'summary_large_image' : 'summary' }}">
     <meta name="twitter:title" content="{{ $title ?? $store->store_name }}">
@@ -99,7 +103,30 @@
     @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     @endif
-    <script src="https://js.paystack.co/v2/inline.js"></script>
+    @if (collect($store->payment_methods)->intersect(['storeboot_paystack', 'self_hosted_paystack'])->isNotEmpty())
+        <script defer src="https://js.paystack.co/v2/inline.js"></script>
+    @endif
+    @php
+        $organizationLd = array_filter([
+            '@context' => 'https://schema.org',
+            '@type' => 'Organization',
+            '@id' => $organizationId,
+            'name' => $store->store_name,
+            'url' => \Modules\Storefront\Support\StorefrontUrl::route($store),
+            'logo' => $logoUrl ? url($logoUrl) : null,
+            'email' => $store->site_email ?: null,
+            'telephone' => $store->store_phone ?: null,
+            'address' => $storeAddress !== '' ? [
+                '@type' => 'PostalAddress',
+                'streetAddress' => $store->address ?: null,
+                'addressLocality' => $store->city ?: null,
+                'addressRegion' => $store->state ?: null,
+                'addressCountry' => $store->country ?: null,
+            ] : null,
+            'sameAs' => collect($store->social_accounts ?? [])->except('whatsapp')->filter()->map(fn ($handle, $network) => $socialUrl((string) $network, $handle))->values()->all() ?: null,
+        ], fn ($value) => $value !== null && $value !== '' && $value !== []);
+    @endphp
+    <script type="application/ld+json">{!! json_encode($organizationLd, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
     <style>
         :root {
             --store-primary: {{ $store->theme_primary_color ?: '#00236f' }};
@@ -162,7 +189,7 @@
             <div class="flex items-center gap-4 md:gap-8">
                 <a href="{{ $storefrontRoute($store) }}" class="flex min-w-0 items-center gap-3">
                     @if ($logoUrl)
-                        <img src="{{ $logoUrl }}" alt="{{ $store->store_name }} logo" class="h-10 w-10 rounded-lg object-cover">
+                        <img src="{{ $logoUrl }}" alt="{{ $store->store_name }} logo" width="40" height="40" class="h-10 w-10 rounded-lg object-cover">
                     @else
                         <span class="sf-label-md flex h-10 w-10 items-center justify-center rounded-lg text-white" style="background: var(--store-primary);">{{ Str::of($store->store_name)->substr(0, 2)->upper() }}</span>
                     @endif
@@ -286,6 +313,7 @@
                     @endif
                     <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ $storefrontRoute($store, 'faq') }}">FAQ</a>
                     <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ $storefrontRoute($store, 'contact') }}">Contact</a>
+                    <a class="hover:text-white hover:underline hover:underline-offset-4" href="{{ $storefrontRoute($store, 'sitemap') }}">Sitemap</a>
                 </div>
             </div>
             <div>

@@ -1,4 +1,4 @@
-@extends('storefront::layout', ['title' => 'Contact | '.$store->store_name])
+@extends('storefront::layout', ['title' => 'Contact | '.$store->store_name, 'metaDescription' => $metaDescription ?? null])
 
 @php
     $contactHeroPath = collect($store->slides ?? [])
@@ -103,7 +103,7 @@
     <div class="contact-page">
         <section class="contact-hero" aria-labelledby="contact-page-title">
             @if ($contactHeroUrl)
-                <img src="{{ $contactHeroUrl }}" alt="" class="contact-hero-image">
+                <img src="{{ $contactHeroUrl }}" alt="" loading="lazy" class="contact-hero-image">
             @endif
             <div class="contact-hero-overlay"></div>
             <div class="contact-hero-content store-shell">

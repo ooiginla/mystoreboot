@@ -7,6 +7,8 @@ use Modules\Storefront\Http\Controllers\StorefrontController;
 use Modules\Storefront\Http\Middleware\ShowOnlineStoreMaintenancePage;
 
 $routes = function (): void {
+    Route::get('/sitemap.xml', [StorefrontController::class, 'sitemap'])->name('sitemap');
+
     Route::middleware(ShowOnlineStoreMaintenancePage::class)->group(function (): void {
         Route::get('/', [StorefrontController::class, 'home'])->name('home');
         Route::get('/categories/{categorySlug}', [StorefrontController::class, 'category'])->name('categories.show');

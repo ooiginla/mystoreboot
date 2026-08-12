@@ -1,4 +1,4 @@
-@extends('storefront::layout', ['title' => 'Track order | '.$store->store_name])
+@extends('storefront::layout', ['title' => 'Track order | '.$store->store_name, 'robots' => 'noindex, follow'])
 
 @php
     $currencyCode = $store->tenant?->currency_code ?? 'NGN';

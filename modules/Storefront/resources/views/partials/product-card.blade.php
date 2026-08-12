@@ -41,7 +41,7 @@
     <a href="{{ $detailsUrl }}" class="relative mb-4 flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-[var(--store-soft)]">
         @include('storefront::partials.product-badges', ['product' => $product])
         @if ($image)
-            <img src="{{ $image }}" alt="{{ $product->name }}" class="h-4/5 w-4/5 object-contain transition-transform duration-500 group-hover:scale-110">
+            <img src="{{ $image }}" alt="{{ $product->name }}" loading="lazy" class="h-4/5 w-4/5 object-contain transition-transform duration-500 group-hover:scale-110">
         @else
             <div class="sf-headline-lg flex h-full w-full items-center justify-center text-[var(--store-primary)]">{{ Str::of($product->name)->substr(0, 2)->upper() }}</div>
         @endif

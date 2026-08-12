@@ -38,6 +38,9 @@ class ProductSeoTest extends TestCase
         // JSON-LD Product structured data (the Google rich-result signal).
         $response->assertSee('application/ld+json', false);
         $response->assertSee('"@type":"Product"', false);
+        $response->assertSee('"@type":"Organization"', false);
+        $response->assertSee('"@type":"BreadcrumbList"', false);
+        $response->assertSee('"seller":{"@id":', false);
         $response->assertSee('"availability":"https://schema.org/InStock"', false);
         // Descriptive image alt text.
         $response->assertSee('alt="Cotton Tee', false);

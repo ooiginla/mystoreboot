@@ -1,4 +1,10 @@
-@extends('storefront::layout', ['title' => ($selectedCollection?->name ?? $selectedCategoryName) ? ($selectedCollection?->name ?? $selectedCategoryName).' · '.$store->store_name : $store->store_name])
+@extends('storefront::layout', [
+    'title' => ($selectedCollection?->name ?? $selectedCategoryName) ? ($selectedCollection?->name ?? $selectedCategoryName).' · '.$store->store_name : $store->store_name,
+    'metaDescription' => $metaDescription ?? null,
+    'metaKeywords' => $metaKeywords ?? null,
+    'canonical' => $canonical ?? null,
+    'robots' => $robots ?? null,
+])
 
 @php
     $heroUrl = $store->hero_image_path ? '/storage/'.ltrim($store->hero_image_path, '/') : null;
@@ -78,7 +84,7 @@
                 @foreach ($heroSlides as $index => $slide)
                     <div class="store-hero-slide {{ $index === 0 ? 'is-active' : '' }}" data-store-hero-slide>
                         @if ($slide['image'])
-                            <img src="{{ $slide['image'] }}" alt="{{ $store->store_name }} hero slide {{ $index + 1 }}" class="store-hero-image">
+                            <img src="{{ $slide['image'] }}" alt="{{ $store->store_name }} hero slide {{ $index + 1 }}" @if ($index === 0) fetchpriority="high" @else loading="lazy" @endif class="store-hero-image">
                         @else
                             <div class="store-hero-fallback"></div>
                         @endif

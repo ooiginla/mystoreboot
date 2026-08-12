@@ -1,4 +1,4 @@
-@extends('storefront::layout', ['title' => $title.' | '.$store->store_name])
+@extends('storefront::layout', ['title' => $title.' | '.$store->store_name, 'metaDescription' => $metaDescription ?? null])
 
 @push('styles')
     <style>

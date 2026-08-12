@@ -19,6 +19,7 @@ class MarketingHomeTest extends TestCase
             ->assertSee('Generate product images')
             ->assertSee('Write your store pages')
             ->assertSee('Get found on Google')
+            ->assertSee('data-marketing-menu-label>Menu</span>', false)
             ->assertSee('href="#ai"', false);
     }
 }

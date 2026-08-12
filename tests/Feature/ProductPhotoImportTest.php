@@ -174,6 +174,22 @@ class ProductPhotoImportTest extends TestCase
         ]);
     }
 
+    public function test_photo_import_is_limited_to_five_images(): void
+    {
+        [$user, $tenant] = $this->fixture();
+
+        $this->actingAs($user)
+            ->post(route('admin.catalog.products.import'), [
+                'tenant_id' => $tenant->id,
+                'images' => collect(range(1, 6))
+                    ->map(fn (int $number) => UploadedFile::fake()->image("product-{$number}.jpg"))
+                    ->all(),
+            ])
+            ->assertSessionHasErrors('images');
+
+        $this->assertDatabaseCount(Product::class, 0);
+    }
+
     /**
      * @return array{User, Tenant}
      */

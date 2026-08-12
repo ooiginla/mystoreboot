@@ -289,7 +289,7 @@
                     width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 10px;
                     background: #fff; color: var(--ink); cursor: pointer; place-items: center;
                 }
-                .admin-menu-toggle { display: grid; }
+                .admin-menu-toggle { width: auto; display: inline-flex; align-items: center; gap: 8px; padding: 0 13px; font: inherit; font-weight: 750; }
                 .admin-menu-toggle:hover, .admin-sidebar-close:hover { background: var(--brand-050); border-color: var(--brand-100); color: var(--brand-strong); }
                 .admin-menu-toggle svg, .admin-sidebar-close svg { width: 23px; height: 23px; }
                 .admin-sidebar-close { display: grid; margin-left: auto; border-color: rgba(255,255,255,.16); background: transparent; color: #fff; }
@@ -379,6 +379,7 @@
             </div>
             <button class="admin-menu-toggle" type="button" data-admin-menu-toggle aria-controls="admin-sidebar" aria-expanded="false" aria-label="Open admin menu">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                <span data-admin-menu-label>Menu</span>
             </button>
         </header>
         <button class="admin-sidebar-backdrop" type="button" data-admin-sidebar-backdrop aria-label="Close admin menu" tabindex="-1"></button>

@@ -41,8 +41,9 @@
                     @endauth
 
                     <button type="button" onclick="sbToggleMenu()" aria-label="Open menu"
-                        class="grid h-10 w-10 place-items-center rounded-full border border-zinc-200 text-zinc-700 lg:hidden dark:border-white/10 dark:text-zinc-200">
+                        class="inline-flex h-10 items-center gap-2 rounded-full border border-zinc-200 px-3 text-sm font-bold text-zinc-700 lg:hidden dark:border-white/10 dark:text-zinc-200">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
+                        <span data-marketing-menu-label>Menu</span>
                     </button>
                 </div>
             </nav>

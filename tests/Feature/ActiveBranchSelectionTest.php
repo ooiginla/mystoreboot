@@ -109,6 +109,7 @@ final class ActiveBranchSelectionTest extends TestCase
             ->get(route('admin.catalog.index', ['tenant' => $tenant->id]))
             ->assertOk()
             ->assertSee('data-admin-menu-toggle', false)
+            ->assertSee('data-admin-menu-label>Menu</span>', false)
             ->assertSee('id="admin-sidebar"', false)
             ->assertSee('data-admin-sidebar-backdrop', false)
             ->assertSee(route('admin.inventory.index', ['tenant' => $tenant->id]), false)

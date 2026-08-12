@@ -1,4 +1,4 @@
-@extends('storefront::layout', ['title' => 'FAQ | '.$store->store_name])
+@extends('storefront::layout', ['title' => 'FAQ | '.$store->store_name, 'metaDescription' => $metaDescription ?? null])
 
 @section('content')
     <section class="store-shell py-14">

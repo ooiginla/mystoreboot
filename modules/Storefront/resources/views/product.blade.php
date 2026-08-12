@@ -4,6 +4,7 @@
     'metaKeywords' => $seo['keywords'] ?? null,
     'ogType' => 'product',
     'ogImage' => $seoImage ?? null,
+    'canonical' => $canonical ?? null,
 ])
 
 @php
@@ -90,6 +91,10 @@
 
 @push('head')
     @php
+        $barcode = trim((string) ($variant?->barcode ?? ''));
+        $gtinProperty = ctype_digit($barcode) && in_array(strlen($barcode), [8, 12, 13, 14], true)
+            ? 'gtin'.strlen($barcode)
+            : null;
         $ld = array_filter([
             '@context' => 'https://schema.org/',
             '@type' => $isService ? 'Service' : 'Product',
@@ -97,6 +102,7 @@
             'description' => $seo['description'] ?? null,
             'image' => $seoImage ? [$seoImage] : null,
             'sku' => $variant?->sku ?: null,
+            ...($gtinProperty ? [$gtinProperty => $barcode] : []),
             'brand' => $product->brand ? ['@type' => 'Brand', 'name' => $product->brand] : null,
             'category' => $product->category?->name ?: null,
             'keywords' => $seo['keywords'] ?? null,
@@ -107,11 +113,23 @@
                 'availability' => $product->status === \Modules\Catalog\Enums\ProductStatus::Active
                     ? 'https://schema.org/InStock'
                     : 'https://schema.org/OutOfStock',
+                'itemCondition' => 'https://schema.org/NewCondition',
                 'url' => $shareUrl,
+                'seller' => ['@id' => \Modules\Storefront\Support\StorefrontUrl::route($store).'#organization'],
             ],
         ], fn ($value) => $value !== null && $value !== '');
+        $breadcrumbLd = [
+            '@context' => 'https://schema.org',
+            '@type' => 'BreadcrumbList',
+            'itemListElement' => array_values(array_filter([
+                ['@type' => 'ListItem', 'position' => 1, 'name' => $store->store_name, 'item' => \Modules\Storefront\Support\StorefrontUrl::route($store)],
+                $product->category ? ['@type' => 'ListItem', 'position' => 2, 'name' => $product->category->name, 'item' => \Modules\Storefront\Support\StorefrontUrl::route($store, 'categories.show', ['categorySlug' => $product->category->slug])] : null,
+                ['@type' => 'ListItem', 'position' => $product->category ? 3 : 2, 'name' => $product->name, 'item' => $shareUrl],
+            ])),
+        ];
     @endphp
     <script type="application/ld+json">{!! json_encode($ld, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
+    <script type="application/ld+json">{!! json_encode($breadcrumbLd, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
 @endpush
 
 @section('content')
@@ -120,7 +138,7 @@
             <div class="lg:col-span-7">
                 <div class="relative aspect-[4/5] overflow-hidden rounded-lg bg-[var(--store-soft)]">
                     @if ($primaryImage)
-                        <img src="{{ $primaryImage }}" alt="{{ $seo['image_alt'] ?? $product->name }}" class="h-full w-full object-contain mix-blend-multiply" data-product-main-image>
+                        <img src="{{ $primaryImage }}" alt="{{ $seo['image_alt'] ?? $product->name }}" fetchpriority="high" class="h-full w-full object-contain mix-blend-multiply" data-product-main-image>
                     @else
                         <div class="sf-display-xl flex h-full w-full items-center justify-center text-[var(--store-primary)]">{{ Str::of($product->name)->substr(0, 2)->upper() }}</div>
                     @endif
@@ -134,7 +152,7 @@
                 <div class="mt-4 grid grid-cols-4 gap-4" data-gallery-thumbnails>
                     @forelse ($gallery as $image)
                         <button type="button" class="aspect-square overflow-hidden rounded-lg border border-[var(--store-line)] bg-[var(--store-soft)] p-2 ring-[var(--store-primary)] first:ring-2" data-gallery-image="{{ $image }}" aria-label="View product image">
-                            <img src="{{ $image }}" alt="" class="h-full w-full object-contain">
+                            <img src="{{ $image }}" alt="" loading="lazy" class="h-full w-full object-contain">
                         </button>
                     @empty
                         @for ($i = 0; $i < 4; $i++)

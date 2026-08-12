@@ -296,8 +296,8 @@
                         <div class="import-feedback" data-photo-import-error role="alert" hidden></div>
                         <div class="field">
                             <label for="product-import-images">Product photos</label>
-                            <input id="product-import-images" name="images[]" type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" multiple required>
-                            <p class="subtle">Up to 40 photos, each under 10&nbsp;MB. One product is created per photo.</p>
+                            <input id="product-import-images" name="images[]" type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" multiple required data-max-files="5">
+                            <p class="subtle">Up to 5 photos, each under 10&nbsp;MB. One product is created per photo.</p>
                         </div>
                         <div class="dialog-actions" style="display:flex; gap:8px; justify-content:flex-end;">
                             <button class="btn" type="button" data-dialog-close>Cancel</button>
@@ -1216,8 +1216,8 @@
                 const unsupportedFile = files.find((file) => !supportedExtension.test(file.name));
                 const oversizedFile = files.find((file) => file.size > 10 * 1024 * 1024);
 
-                if (files.length > 40) {
-                    showPhotoImportError('Choose no more than 40 photos at a time.');
+                if (files.length > 5) {
+                    showPhotoImportError('Choose no more than 5 photos at a time.');
                     return;
                 }
                 if (unsupportedFile) {
@@ -1638,6 +1638,8 @@
                 const list = uploader?.querySelector('[data-product-image-list]');
                 const files = Array.from(input.files || []);
 
+                input.setCustomValidity(files.length > 5 ? 'Choose no more than 5 images at a time.' : '');
+
                 if (!list) return;
 
                 list.innerHTML = '';
@@ -1679,7 +1681,7 @@
 
                     const transfer = new DataTransfer();
                     Array.from(input.files || []).forEach((file) => transfer.items.add(file));
-                    images.forEach((file) => transfer.items.add(file));
+                    images.slice(0, Math.max(0, 5 - transfer.items.length)).forEach((file) => transfer.items.add(file));
                     input.files = transfer.files;
                     syncProductImageList(input);
                 });

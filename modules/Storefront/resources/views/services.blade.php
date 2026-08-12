@@ -1,4 +1,4 @@
-@extends('storefront::layout', ['title' => 'Services | '.$store->store_name])
+@extends('storefront::layout', ['title' => 'Services | '.$store->store_name, 'metaDescription' => $metaDescription ?? null, 'canonical' => $canonical ?? null])
 
 @section('content')
     @if ($store->maintenance_mode)

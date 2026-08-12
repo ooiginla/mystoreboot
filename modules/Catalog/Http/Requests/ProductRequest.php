@@ -134,7 +134,7 @@ final class ProductRequest extends FormRequest
             'tax_ids.*' => ['integer', Rule::exists('product_taxes', 'id')->where('tenant_id', $this->string('tenant_id')->toString())],
             'status' => ['required', Rule::in(ProductStatus::values())],
             'image' => ['nullable', 'image', 'max:2048'],
-            'images' => ['nullable', 'array', 'max:12'],
+            'images' => ['nullable', 'array', 'max:5'],
             'images.*' => ['image', 'max:4096'],
             'tag_ids' => ['nullable', 'array'],
             'tag_ids.*' => ['integer', Rule::exists('product_tags', 'id')->where('tenant_id', $this->string('tenant_id')->toString())],

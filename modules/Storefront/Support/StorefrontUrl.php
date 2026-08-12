@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Storefront\Support;
 
+use Illuminate\Http\Request;
 use Modules\Business\Models\OnlineStore;
 
 final class StorefrontUrl
@@ -34,5 +35,23 @@ final class StorefrontUrl
         $scheme = trim((string) config('storefront.scheme', 'https'));
 
         return preg_replace('/^https?:\/\//', $scheme.'://', $url) ?? $url;
+    }
+
+    public static function canonicalForRequest(OnlineStore $store, Request $request): string
+    {
+        $route = $request->route();
+        $routeName = $route?->getName() ?? '';
+
+        if (! preg_match('/\.(?:subdomain|store)\.(.+)$/', $routeName, $matches)) {
+            return self::route($store);
+        }
+
+        $parameters = $route?->parameters() ?? [];
+        unset($parameters['store']);
+
+        $url = self::route($store, $matches[1], $parameters);
+        $page = max(1, $request->integer('page', 1));
+
+        return $page > 1 ? $url.'?page='.$page : $url;
     }
 }
