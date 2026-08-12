@@ -128,7 +128,7 @@
 
             <div class="dialog-local-tabs" role="tablist">
                 <a href="#{{ $dialogId }}-basic" class="active" data-local-tab-target="{{ $dialogId }}-basic">Basic</a>
-                <a href="#{{ $dialogId }}-pricing" data-local-tab-target="{{ $dialogId }}-pricing">Pricing</a>
+                <a href="#{{ $dialogId }}-pricing" data-local-tab-target="{{ $dialogId }}-pricing">Extra Detail</a>
                 <a href="#{{ $dialogId }}-tags-attributes" data-local-tab-target="{{ $dialogId }}-tags-attributes">Tags, Badges & Attributes</a>
                 @if (! $isService)
                     <a href="#{{ $dialogId }}-custom" data-local-tab-target="{{ $dialogId }}-custom">Custom</a>
@@ -138,61 +138,59 @@
             </div>
 
             <section data-local-tab-panel id="{{ $dialogId }}-basic">
-                <div class="form-grid">
-                    <div class="field">
-                        <label>Name</label>
-                        <input name="name" value="{{ old('name', $product?->name) }}" required>
-                    </div>
-                    <div class="field">
-                        <label>Slug</label>
-                        <input name="slug" value="{{ old('slug', $product?->slug) }}" placeholder="auto-generated">
-                    </div>
-                    <div class="field">
-                        <label>Category</label>
-                        <select name="category_id" data-product-category-select>
-                            @if ($isService)
-                                <option value="">Uncategorized</option>
-                            @endif
-                            <option value="__add_new__" data-add-category-option>+ Add new category</option>
-                            @foreach ($categoryOptions as $option)
-                                <option value="{{ $option['category']->id }}" @selected((string) $selectedCategoryId === (string) $option['category']->id)>{{ $option['label'] }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label>Brand</label>
-                        <input name="brand" value="{{ old('brand', $product?->brand) }}">
-                    </div>
-                    <div class="field">
-                        <label>Status</label>
-                        <select name="status" required>
-                            @foreach ($productStatuses as $status)
-                                <option value="{{ $status->value }}" @selected(old('status', $product?->status->value ?? \Modules\Catalog\Enums\ProductStatus::Active->value) === $status->value)>{{ $status->label() }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="field">
+                <div class="catalog-basic-identity">
+                    <div class="field catalog-main-image-field" data-main-image-field>
                         <label>Main Image</label>
                         <label class="catalog-main-image-control" data-main-image-control>
                             <input name="image" type="file" accept="image/*" data-main-image-input>
-                            <span class="catalog-main-image-button">Upload</span>
-                            <span class="catalog-main-image-name" data-main-image-name>No file selected</span>
+                            @if ($product?->image_path && $imageUrl($product->image_path))
+                                <img class="catalog-main-image-preview" src="{{ $imageUrl($product->image_path) }}" alt="{{ $product->name }} image preview" data-main-image-preview>
+                            @else
+                                <img class="catalog-main-image-preview" alt="Product image preview" data-main-image-preview hidden>
+                            @endif
+                            <span class="catalog-main-image-placeholder" data-main-image-placeholder @if ($product?->image_path && $imageUrl($product->image_path)) hidden @endif>
+                                <span class="catalog-upload-icon">⇧</span>
+                                <strong>Add product photo</strong>
+                                <small>Click to choose an image</small>
+                            </span>
+                            <span class="catalog-main-image-button">{{ $product?->image_path ? 'Change photo' : 'Upload photo' }}</span>
                         </label>
-                        @if ($product?->image_path && $imageUrl($product->image_path))
-                            <span class="subtle">Current image</span>
-                            <div class="product-thumb" style="width: 140px; height: 110px;">
-                                <img src="{{ $imageUrl($product->image_path) }}" alt="{{ $product->name }} image preview">
+                        <span class="catalog-main-image-name" data-main-image-name>{{ $product?->image_path ? 'Current image' : 'No file selected' }}</span>
+                    </div>
+                    <div class="catalog-basic-details">
+                        <div class="field">
+                            <label>Name</label>
+                            <input name="name" value="{{ old('name', $product?->name) }}" required>
+                        </div>
+                        <div class="field">
+                            <label>Category</label>
+                            <select name="category_id" data-product-category-select>
+                                @if ($isService)
+                                    <option value="">Uncategorized</option>
+                                @endif
+                                <option value="__add_new__" data-add-category-option>+ Add new category</option>
+                                @foreach ($categoryOptions as $option)
+                                    <option value="{{ $option['category']->id }}" @selected((string) $selectedCategoryId === (string) $option['category']->id)>{{ $option['label'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="catalog-basic-pricing">
+                            <div class="field">
+                                <label>Selling price</label>
+                                <input name="base_price" type="text" inputmode="decimal" data-money-input value="{{ old('base_price', $minorToMoney($product?->base_price_minor)) }}" required>
                             </div>
-                        @endif
+                            <div class="field">
+                                <label>Estimated cost price</label>
+                                <input name="base_cost_price" type="text" inputmode="decimal" data-money-input value="{{ old('base_cost_price', $minorToMoney($product?->base_cost_price_minor)) }}">
+                            </div>
+                            <div class="catalog-profit-summary" data-profit-summary hidden>
+                                <span>Profit: <strong data-profit-value></strong></span>
+                                <span>Margin: <strong data-margin-value></strong></span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="field" @if (! $isService) data-simple-variant-field @endif>
-                        <label>SKU</label>
-                        <input name="sku" value="{{ old('sku', $variant?->sku) }}" placeholder="auto-generated">
-                    </div>
-                    <div class="field" @if (! $isService) data-simple-variant-field @endif>
-                        <label>Barcode</label>
-                        <input name="barcode" value="{{ old('barcode', $variant?->barcode) }}">
-                    </div>
+                </div>
+                <div class="form-grid catalog-basic-supporting">
                     <div class="field full">
                         <label>Description <button type="button" class="catalog-ai-generate-btn" data-product-ai-generate data-product-ai-field="description">✨ Generate with AI</button></label>
                         <textarea name="description">{{ old('description', $product?->description) }}</textarea>
@@ -234,16 +232,28 @@
             <section data-local-tab-panel id="{{ $dialogId }}-pricing" hidden>
                 <div class="form-grid">
                     <div class="field">
-                        <label>Selling price</label>
-                        <input name="base_price" type="text" inputmode="decimal" data-money-input value="{{ old('base_price', $minorToMoney($product?->base_price_minor)) }}" required>
+                        <label>Brand</label>
+                        <input name="brand" value="{{ old('brand', $product?->brand) }}">
                     </div>
                     <div class="field">
-                        <label>Estimated cost price</label>
-                        <input name="base_cost_price" type="text" inputmode="decimal" data-money-input value="{{ old('base_cost_price', $minorToMoney($product?->base_cost_price_minor)) }}">
+                        <label>Slug</label>
+                        <input name="slug" value="{{ old('slug', $product?->slug) }}" placeholder="auto-generated">
                     </div>
-                    <div class="catalog-profit-summary" data-profit-summary hidden>
-                        <span>Profit: <strong data-profit-value></strong></span>
-                        <span>Margin: <strong data-margin-value></strong></span>
+                    <div class="field" @if (! $isService) data-simple-variant-field @endif>
+                        <label>SKU</label>
+                        <input name="sku" value="{{ old('sku', $variant?->sku) }}" placeholder="auto-generated">
+                    </div>
+                    <div class="field" @if (! $isService) data-simple-variant-field @endif>
+                        <label>Barcode</label>
+                        <input name="barcode" value="{{ old('barcode', $variant?->barcode) }}">
+                    </div>
+                    <div class="field">
+                        <label>Status</label>
+                        <select name="status" required>
+                            @foreach ($productStatuses as $status)
+                                <option value="{{ $status->value }}" @selected(old('status', $product?->status->value ?? \Modules\Catalog\Enums\ProductStatus::Active->value) === $status->value)>{{ $status->label() }}</option>
+                            @endforeach
+                        </select>
                     </div>
                     <div class="field">
                         <label>Compare at price</label>

@@ -51,6 +51,17 @@
             "@php artisan config:clear --ansi @no_additional_args",
             "@php artisan test"
         ],
+        "optimize": [
+            "@composer install --no-dev --optimize-autoloader --classmap-authoritative",
+            "@php artisan optimize",
+            "@php artisan event:cache",
+            "npm ci",
+            "npm run build"
+        ],
+        "optimize-clear": [
+            "@php artisan optimize:clear",
+            "@php artisan event:clear"
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"

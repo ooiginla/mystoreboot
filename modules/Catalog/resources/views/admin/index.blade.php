@@ -95,11 +95,22 @@
         .catalog-current-images, .catalog-selected-images { margin: 0 20px 20px; display: flex; gap: 10px; flex-wrap: wrap; }
         .catalog-current-images img { width: 86px; height: 70px; object-fit: cover; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
         .catalog-selected-images span { border: 1px solid #d0d5dd; border-radius: 999px; background: #f8fafc; padding: 6px 10px; color: #344054; font-size: 13px; font-weight: 750; }
-        .catalog-main-image-control { position: relative; min-height: 44px; display: grid; grid-template-columns: minmax(110px, 1fr) minmax(0, 2fr); overflow: hidden; border: 1px solid #d4ddd8; border-radius: var(--radius-sm); background: #fff; cursor: pointer; }
+        .catalog-basic-identity { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 22px; align-items: start; }
+        .catalog-basic-details { display: grid; gap: 16px; }
+        .catalog-basic-pricing { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+        .catalog-basic-pricing .catalog-profit-summary { grid-column: 1 / -1; }
+        .catalog-basic-supporting { margin-top: 18px; }
+        .catalog-main-image-field { min-width: 0; }
+        .catalog-main-image-control { position: relative; aspect-ratio: 1; display: grid; place-items: center; overflow: hidden; border: 2px dashed #cfd8d3; border-radius: 10px; background: #f8fafc; cursor: pointer; }
+        .catalog-main-image-control:hover { border-color: var(--brand); background: var(--brand-050); }
         .catalog-main-image-control:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3.5px var(--brand-ring); }
         .catalog-main-image-control input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; pointer-events: none; }
-        .catalog-main-image-button { display: grid; place-items: center; border-right: 1px solid #d4ddd8; background: var(--panel-soft); color: var(--ink-soft); font-weight: 700; }
-        .catalog-main-image-name { min-width: 0; display: flex; align-items: center; padding: 10px 12px; overflow: hidden; color: var(--muted); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+        .catalog-main-image-preview { width: 100%; height: 100%; object-fit: cover; }
+        .catalog-main-image-placeholder { display: grid; place-items: center; gap: 7px; padding: 18px; color: #667085; text-align: center; }
+        .catalog-main-image-placeholder strong { color: #344054; }
+        .catalog-main-image-placeholder small { color: #98a2b3; }
+        .catalog-main-image-button { position: absolute; right: 10px; bottom: 10px; border: 1px solid #d0d5dd; border-radius: 7px; background: rgba(255,255,255,.94); color: #344054; padding: 7px 10px; font-size: 12px; font-weight: 800; box-shadow: 0 2px 5px rgba(16,24,40,.12); }
+        .catalog-main-image-name { display: block; margin-top: 7px; overflow: hidden; color: var(--muted); font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
         .catalog-ai-generate-btn { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-soft); color: var(--brand); font-size: 11px; font-weight: 700; cursor: pointer; vertical-align: middle; }
         .catalog-ai-generate-btn:hover { border-color: var(--brand); background: var(--brand); color: #fff; }
         .catalog-ai-generate-btn:disabled { cursor: progress; opacity: .6; }
@@ -194,6 +205,11 @@
             .catalog-inline-add-row { grid-template-columns: 1fr; }
             .detail-grid { grid-template-columns: 1fr; }
             .catalog-badge-form-layout { grid-template-columns: 1fr; }
+            .catalog-basic-identity { grid-template-columns: 180px minmax(0, 1fr); }
+        }
+        @media (max-width: 640px) {
+            .catalog-basic-identity, .catalog-basic-pricing { grid-template-columns: 1fr; }
+            .catalog-main-image-field { width: min(100%, 260px); }
         }
     </style>
 
@@ -1554,12 +1570,25 @@
             });
 
             document.querySelectorAll('[data-main-image-input]').forEach((input) => {
-                const fileName = input.closest('[data-main-image-control]')?.querySelector('[data-main-image-name]');
+                const field = input.closest('[data-main-image-field]');
+                const fileName = field?.querySelector('[data-main-image-name]');
+                const preview = field?.querySelector('[data-main-image-preview]');
+                const placeholder = field?.querySelector('[data-main-image-placeholder]');
 
                 if (!fileName) return;
 
                 input.addEventListener('change', () => {
-                    fileName.textContent = input.files?.[0]?.name || 'No file selected';
+                    const file = input.files?.[0];
+                    fileName.textContent = file?.name || 'No file selected';
+
+                    if (!file || !preview) return;
+
+                    if (preview.dataset.objectUrl) URL.revokeObjectURL(preview.dataset.objectUrl);
+                    const objectUrl = URL.createObjectURL(file);
+                    preview.dataset.objectUrl = objectUrl;
+                    preview.src = objectUrl;
+                    preview.hidden = false;
+                    if (placeholder) placeholder.hidden = true;
                 });
             });
 

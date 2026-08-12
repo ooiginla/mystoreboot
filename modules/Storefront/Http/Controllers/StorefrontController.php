@@ -83,12 +83,15 @@ final class StorefrontController extends Controller
             ->where('is_visible', true)
             ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
             ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>=', now()))
+            // Skip empty collections in SQL instead of hydrating them all and filtering in PHP.
+            ->whereHas('products', fn ($query) => $query
+                ->where('tenant_id', $store->tenant_id)
+                ->where('product_type', ProductType::Product->value)
+                ->where('status', ProductStatus::Active->value))
             ->orderByRaw('sort_order is null')
             ->orderBy('sort_order')
             ->orderBy('name')
-            ->get()
-            ->filter(fn (ProductCollection $collection): bool => $collection->products->isNotEmpty())
-            ->values();
+            ->get();
         $seo = app(ProductSeo::class)->forStore($store, $store->categories->pluck('name')->all());
         $canonical = $selectedCategory
             ? StorefrontUrl::route($store, 'categories.show', ['categorySlug' => $selectedCategory->slug])
@@ -487,16 +490,22 @@ final class StorefrontController extends Controller
 
                 $matchingAddress?->update(['last_used_at' => now()]);
 
-                $items = collect($data['items'])->map(function (array $item) use ($store): array {
-                    $variant = ProductVariant::query()
-                        ->with('product.taxes')
-                        ->where('tenant_id', $store->tenant_id)
-                        ->where('status', ProductStatus::Active->value)
-                        ->findOrFail($item['product_variant_id']);
+                // Load every ordered variant in one query (avoids an N+1 across cart items).
+                $variantLookup = ProductVariant::query()
+                    ->with('product.taxes')
+                    ->where('tenant_id', $store->tenant_id)
+                    ->where('status', ProductStatus::Active->value)
+                    ->whereIn('id', collect($data['items'])->pluck('product_variant_id')->unique()->all())
+                    ->get()
+                    ->keyBy('id');
+                $categoryIds = $store->categories->pluck('id');
 
-                    $categoryIds = $store->categories->pluck('id');
+                $items = collect($data['items'])->map(function (array $item) use ($store, $variantLookup, $categoryIds): array {
+                    $variant = $variantLookup->get($item['product_variant_id']);
+
                     abort_unless(
-                        $variant->product
+                        $variant
+                        && $variant->product
                         && $variant->product->status === ProductStatus::Active
                         && ($categoryIds->isEmpty() || $categoryIds->contains($variant->product->category_id)),
                         422,
@@ -586,6 +595,7 @@ final class StorefrontController extends Controller
                     }
                 }
 
+                $orderNumbers = $this->nextOrderNumbers($store->tenant_id);
                 $order = SalesOrder::query()->create([
                     'tenant_id' => $store->tenant_id,
                     'branch_id' => $store->fulfilment_branch_id,
@@ -594,9 +604,9 @@ final class StorefrontController extends Controller
                     'reserved_until' => $reservedUntil,
                     'customer_id' => $customer->id,
                     'source' => 'online',
-                    'order_number' => $this->salesOrderNumber('SO', $store->tenant_id),
-                    'invoice_number' => $this->salesOrderNumber('INV', $store->tenant_id),
-                    'receipt_number' => $this->salesOrderNumber('RCT', $store->tenant_id),
+                    'order_number' => $orderNumbers['order_number'],
+                    'invoice_number' => $orderNumbers['invoice_number'],
+                    'receipt_number' => $orderNumbers['receipt_number'],
                     'order_status' => SalesOrderStatus::Pending->value,
                     'payment_status' => SalesPaymentStatus::Pending->value,
                     'order_date' => now()->toDateString(),
@@ -1018,6 +1028,7 @@ final class StorefrontController extends Controller
 
         return Product::query()
             ->with([
+                'tenant',
                 'badges' => fn ($query) => $query->where('is_visible', true),
                 'category',
                 'images',
@@ -1122,9 +1133,28 @@ final class StorefrontController extends Controller
         return $number;
     }
 
-    private function salesOrderNumber(string $prefix, string $tenantId): string
+    /**
+     * Matching SO/INV/RCT numbers for a new order, computed from a single tenant count
+     * and probed against `order_number` so concurrent checkouts don't collide.
+     *
+     * @return array{order_number: string, invoice_number: string, receipt_number: string}
+     */
+    private function nextOrderNumbers(string $tenantId): array
     {
-        return $prefix.'-'.now()->format('Ymd').'-'.str_pad((string) (SalesOrder::query()->where('tenant_id', $tenantId)->count() + 1), 5, '0', STR_PAD_LEFT);
+        $date = now()->format('Ymd');
+        $seq = SalesOrder::query()->where('tenant_id', $tenantId)->count() + 1;
+
+        do {
+            $suffix = str_pad((string) $seq, 5, '0', STR_PAD_LEFT);
+            $orderNumber = 'SO-'.$date.'-'.$suffix;
+            $seq++;
+        } while (SalesOrder::query()->where('tenant_id', $tenantId)->where('order_number', $orderNumber)->exists());
+
+        return [
+            'order_number' => 'SO-'.$date.'-'.$suffix,
+            'invoice_number' => 'INV-'.$date.'-'.$suffix,
+            'receipt_number' => 'RCT-'.$date.'-'.$suffix,
+        ];
     }
 
     private function shippingMinor(OnlineStore $store, string $location): int

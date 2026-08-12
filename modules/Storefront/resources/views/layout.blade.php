@@ -74,6 +74,13 @@
 <!doctype html>
 <html lang="en" class="scroll-smooth">
 <head>
+    {{-- Warm up connections to third-party origins before their scripts fire. --}}
+    <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin>
+    <link rel="dns-prefetch" href="https://www.googletagmanager.com">
+    @if (collect($store->payment_methods)->intersect(['storeboot_paystack', 'self_hosted_paystack'])->isNotEmpty())
+        <link rel="preconnect" href="https://js.paystack.co" crossorigin>
+    @endif
+
     @include('partials.google-analytics')
 
     <meta charset="utf-8">

@@ -103,7 +103,7 @@
     <div class="contact-page">
         <section class="contact-hero" aria-labelledby="contact-page-title">
             @if ($contactHeroUrl)
-                <img src="{{ $contactHeroUrl }}" alt="" loading="lazy" class="contact-hero-image">
+                <img src="{{ $contactHeroUrl }}" alt="" fetchpriority="high" decoding="async" class="contact-hero-image">
             @endif
             <div class="contact-hero-overlay"></div>
             <div class="contact-hero-content store-shell">

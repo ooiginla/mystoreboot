@@ -104,6 +104,12 @@ class CatalogProductStatusTest extends TestCase
             ->assertSessionHas('status', "{$product->name} deleted.");
 
         $this->assertSoftDeleted('products', ['id' => $product->id]);
+        $this->assertNull(Product::query()->find($product->id));
+        $this->assertNotNull(Product::withTrashed()->find($product->id));
+        $this->assertDatabaseHas('product_variants', [
+            'product_id' => $product->id,
+            'deleted_at' => null,
+        ]);
     }
 
     private function tenant(): Tenant
