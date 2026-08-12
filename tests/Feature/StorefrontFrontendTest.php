@@ -73,6 +73,7 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('All Categories')
             ->assertSee('Footwear')
             ->assertSee('data-mobile-nav-toggle', false)
+            ->assertSee('data-mobile-menu-label>Menu</span>', false)
             ->assertSee('id="store-mobile-nav"', false)
             ->assertSee('data-continue-shopping', false)
             ->assertSee('href="'.route('storefront.storefront.store.home', $store).'"', false)

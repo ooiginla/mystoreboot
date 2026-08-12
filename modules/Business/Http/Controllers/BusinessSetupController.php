@@ -386,6 +386,12 @@ final class BusinessSetupController extends Controller
 
         $store = OnlineStore::query()->firstOrNew(['tenant_id' => $data['tenant_id']]);
         $isNewStore = ! $store->exists;
+        $fulfilmentBranchId = $data['fulfilment_branch_id'] ?? null;
+
+        if ($isNewStore && ! $fulfilmentBranchId) {
+            $fulfilmentBranchId = $this->defaultOnlineStoreBranchId($data['tenant_id']);
+        }
+
         $logoPath = $store->logo_path;
         $heroImagePath = $store->hero_image_path;
 
@@ -437,7 +443,7 @@ final class BusinessSetupController extends Controller
         }
 
         $store->fill([
-            'fulfilment_branch_id' => $data['fulfilment_branch_id'] ?? null,
+            'fulfilment_branch_id' => $fulfilmentBranchId,
             'username' => $data['username'],
             'subdomain' => $data['username'],
             'store_name' => $data['store_name'],
@@ -455,7 +461,7 @@ final class BusinessSetupController extends Controller
             'hero_image_description' => $data['hero_image_description'] ?? null,
             'hero_image_tag' => $data['hero_image_tag'] ?? null,
             'slides' => $slides,
-            'announcement' => $data['announcement'] ?? null,
+            'announcement' => $data['announcement'] ?? ($isNewStore ? 'We are live!!!' : $store->announcement),
             'theme_primary_color' => $data['theme_primary_color'],
             'theme_secondary_color' => $data['theme_secondary_color'],
             'payment_methods' => $data['payment_methods'] ?? [],
@@ -495,6 +501,27 @@ final class BusinessSetupController extends Controller
                 'online_store_section' => $data['online_store_section'] ?? 'online-store-basics',
             ]).'#online-store')
             ->with('status', 'Online store setup saved.');
+    }
+
+    private function defaultOnlineStoreBranchId(string $tenantId): ?int
+    {
+        $activeBranches = Branch::query()
+            ->where('tenant_id', $tenantId)
+            ->where('status', 'active')
+            ->orderByDesc('is_primary')
+            ->orderBy('id')
+            ->limit(2)
+            ->get(['id', 'is_primary']);
+
+        $primaryBranch = $activeBranches->firstWhere('is_primary', true);
+
+        if ($primaryBranch) {
+            return (int) $primaryBranch->id;
+        }
+
+        return $activeBranches->count() === 1
+            ? (int) $activeBranches->first()->id
+            : null;
     }
 
     /**

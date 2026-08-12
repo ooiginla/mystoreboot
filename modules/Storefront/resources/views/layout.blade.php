@@ -212,9 +212,10 @@
                     @include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5 text-[var(--store-primary)]'])
                     <span class="sf-caption absolute right-1 top-1 hidden min-w-5 rounded-full bg-black px-1 text-center font-bold text-white" data-cart-count>0</span>
                 </button>
-                <button type="button" class="grid h-11 w-11 place-items-center rounded-full text-[var(--store-primary)] hover:bg-[var(--store-soft)] lg:hidden" data-mobile-nav-toggle aria-controls="store-mobile-nav" aria-expanded="false" aria-label="Open menu">
+                <button type="button" class="inline-flex h-11 items-center gap-2 rounded-full px-3 font-bold text-[var(--store-primary)] hover:bg-[var(--store-soft)] lg:hidden" data-mobile-nav-toggle aria-controls="store-mobile-nav" aria-expanded="false" aria-label="Open menu">
                     <span data-mobile-menu-open>@include('storefront::partials.icon', ['name' => 'menu', 'class' => 'h-6 w-6'])</span>
                     <span class="hidden" data-mobile-menu-close>@include('storefront::partials.icon', ['name' => 'close', 'class' => 'h-6 w-6'])</span>
+                    <span data-mobile-menu-label>Menu</span>
                 </button>
             </div>
         </div>

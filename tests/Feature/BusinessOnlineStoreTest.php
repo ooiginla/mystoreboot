@@ -351,6 +351,7 @@ class BusinessOnlineStoreTest extends TestCase
             ]).'#online-store');
 
         $store = OnlineStore::query()->where('tenant_id', $tenant->id)->firstOrFail();
+        $this->assertSame('We are live!!!', $store->announcement);
         $this->assertStringContainsString('By accessing or using Default Content Shop', $store->pages['terms_of_use']);
         $this->assertStringContainsString('We want you to be satisfied with your purchase', $store->pages['return_policy']);
         $this->assertStringContainsString('respects your privacy', $store->pages['privacy_policy']);
@@ -362,6 +363,60 @@ class BusinessOnlineStoreTest extends TestCase
             ->assertRedirect();
 
         $this->assertSame([], $store->refresh()->faqs);
+    }
+
+    public function test_new_online_store_defaults_to_the_active_primary_branch(): void
+    {
+        $tenant = Tenant::query()->create([
+            'name' => 'Default Branch Shop',
+            'slug' => 'default-branch-shop',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+        ]);
+        Branch::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Annex',
+            'code' => 'ANNEX',
+            'status' => 'active',
+            'is_primary' => false,
+        ]);
+        $headOffice = Branch::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Head Office',
+            'code' => 'HO',
+            'status' => 'active',
+            'is_primary' => true,
+        ]);
+        $user = User::factory()->create(['is_platform_admin' => true]);
+
+        $this->actingAs($user)
+            ->get(route('admin.business.online-store.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('value="'.$headOffice->id.'" selected', false)
+            ->assertSee('value="storeboot_paystack" checked', false);
+
+        $this->actingAs($user)
+            ->post(route('admin.business.online-store.save'), [
+                'tenant_id' => $tenant->id,
+                'username' => 'default-branch-shop',
+                'store_name' => 'Default Branch Shop',
+                'theme_primary_color' => '#006554',
+                'theme_secondary_color' => '#f59e0b',
+                'payment_methods' => [],
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas(OnlineStore::class, [
+            'tenant_id' => $tenant->id,
+            'fulfilment_branch_id' => $headOffice->id,
+        ]);
+        $this->assertSame(
+            ['storeboot_paystack'],
+            OnlineStore::query()->where('tenant_id', $tenant->id)->firstOrFail()->payment_methods,
+        );
     }
 
     public function test_superadmin_can_manage_tenant_subscriptions_from_business_setup(): void

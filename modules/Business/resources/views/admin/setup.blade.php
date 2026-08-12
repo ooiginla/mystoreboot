@@ -83,11 +83,20 @@
     $onlineSocials = old('socials', $onlineStore?->social_accounts ?? []);
     $onlinePaystack = old('paystack', $onlineStore?->payment_settings['paystack'] ?? []);
     $onlineSettlementBank = old('settlement_bank_account', $onlineStore?->payment_settings['settlement_bank_account'] ?? []);
-    $onlinePaystackMethod = old('paystack_method', in_array('self_hosted_paystack', $onlinePaymentMethods, true) ? 'self_hosted_paystack' : (in_array('storeboot_paystack', $onlinePaymentMethods, true) ? 'storeboot_paystack' : 'none'));
+    $onlinePaystackMethod = old('paystack_method', in_array('self_hosted_paystack', $onlinePaymentMethods, true)
+        ? 'self_hosted_paystack'
+        : (in_array('storeboot_paystack', $onlinePaymentMethods, true)
+            ? 'storeboot_paystack'
+            : ($onlineStore ? 'none' : 'storeboot_paystack')));
     $onlineMaintenanceMode = (bool) old('maintenance_mode', $onlineStore?->maintenance_mode ?? false);
     $onlineStoreName = (string) old('store_name', $onlineStore?->store_name ?? $tenant?->name);
     $onlineStoreUsername = (string) old('username', $onlineStore?->username ?? \Illuminate\Support\Str::slug($onlineStoreName));
     $selectedOnlineCategories = collect(old('category_ids', $onlineStore?->categories?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id);
+    $activeOnlineStoreBranches = $branches->where('status', 'active');
+    $defaultOnlineStoreBranchId = $onlineStore
+        ? $onlineStore->fulfilment_branch_id
+        : ($activeOnlineStoreBranches->firstWhere('is_primary', true)?->id
+            ?? ($activeOnlineStoreBranches->count() === 1 ? $activeOnlineStoreBranches->first()?->id : null));
     $onlinePaymentOptions = [
         'pay_on_delivery' => 'Pay On Delivery',
         'bank_account' => 'Pay via Transfer',
@@ -779,9 +788,9 @@
                                         </div>
                                         <div class="field"><label>Theme primary color</label><input class="theme-color-input" name="theme_primary_color" type="color" value="{{ old('theme_primary_color', $onlineStore?->theme_primary_color ?? '#006554') }}" style="background-color: {{ old('theme_primary_color', $onlineStore?->theme_primary_color ?? '#006554') }};" data-theme-color-field></div>
                                         <div class="field"><label>Theme secondary color</label><input class="theme-color-input" name="theme_secondary_color" type="color" value="{{ old('theme_secondary_color', $onlineStore?->theme_secondary_color ?? '#f59e0b') }}" style="background-color: {{ old('theme_secondary_color', $onlineStore?->theme_secondary_color ?? '#f59e0b') }};" data-theme-color-field></div>
-                                        <div class="field"><label>Fulfilment branch</label><select name="fulfilment_branch_id"><option value="">Select branch</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((string) old('fulfilment_branch_id', $onlineStore?->fulfilment_branch_id) === (string) $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
+                                        <div class="field"><label>Fulfilment branch</label><select name="fulfilment_branch_id"><option value="">Select branch</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((string) old('fulfilment_branch_id', $defaultOnlineStoreBranchId) === (string) $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
                                         <div class="field"><label>Store status</label><label class="inline-check"><input type="checkbox" name="maintenance_mode" value="1" @checked($onlineMaintenanceMode)> Enable maintenance mode</label></div>
-                                        <div class="field full"><label>Announcement</label><textarea name="announcement" rows="2">{{ old('announcement', $onlineStore?->announcement) }}</textarea></div>
+                                        <div class="field full"><label>Announcement</label><textarea name="announcement" rows="2">{{ old('announcement', $onlineStore ? $onlineStore->announcement : 'We are live!!!') }}</textarea></div>
                                     </div>
                                     <div class="button-row"><button class="btn primary" type="submit">Save basics</button></div>
                                 </div>

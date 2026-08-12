@@ -24,7 +24,13 @@ final class OnlineStoreRequest extends FormRequest
             ->map(fn (mixed $method): string => (string) $method)
             ->values()
             ->all();
-        $paystackMethod = (string) $this->input('paystack_method', 'none');
+        $tenantId = $this->string('tenant_id')->toString();
+        $isNewStore = $tenantId !== ''
+            && ! OnlineStore::query()->where('tenant_id', $tenantId)->exists();
+        $paystackMethod = (string) $this->input(
+            'paystack_method',
+            $isNewStore ? 'storeboot_paystack' : 'none',
+        );
 
         $paymentMethods = array_values(array_filter(
             $paymentMethods,
