@@ -86,6 +86,8 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('City Runner')
             ->assertSee('Lagos (3-5 days)')
             ->assertSee('Save this address for future use')
+            ->assertSee("if (saveAddressCheckbox?.checked) requiredFields.push('checkout_address_label');", false)
+            ->assertSee("name.startsWith('customer.') || name === 'shipping_option'", false)
             ->assertSee('placeholder="Recipient Full name"', false)
             ->assertSee('placeholder="Recipient Phone Number(s)"', false)
             ->assertSee('placeholder="Recipient Delivery Address"', false)

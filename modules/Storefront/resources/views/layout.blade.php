@@ -594,11 +594,14 @@
 
             const validateShippingStep = () => {
                 const requiredFields = ['checkout_name', 'checkout_phone', 'checkout_email', 'checkout_address', 'checkout_city'];
+                if (saveAddressCheckbox?.checked) requiredFields.push('checkout_address_label');
                 const invalid = requiredFields.map(field).find((input) => !input?.checkValidity());
 
                 if (invalid) {
                     invalid.reportValidity();
-                    setAlert('Enter the recipient name, email, phone, delivery address, and city to continue.');
+                    setAlert(invalid === addressLabelInput
+                        ? 'Enter a name for this saved address, such as Home or Office.'
+                        : 'Enter the recipient name, email, phone, delivery address, and city to continue.');
                     return false;
                 }
 
@@ -642,6 +645,10 @@
                     const result = await response.json();
 
                     if (!response.ok) {
+                        const errorFields = Object.keys(result.errors || {});
+                        if (errorFields.some((name) => name.startsWith('customer.') || name === 'shipping_option')) {
+                            showStep('shipping');
+                        }
                         setAlert(validationMessage(result.errors));
                         return;
                     }
