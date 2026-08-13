@@ -301,6 +301,31 @@
         .file-upload-copy { display: grid; gap: 2px; min-width: 0; }
         .file-upload-copy strong { font-weight: 700; color: var(--ink); }
 
+        /* Online store identity */
+        .online-store-identity { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 20px; align-items: stretch; }
+        .store-logo-field { display: grid; gap: 7px; }
+        .store-logo-upload { position: relative; min-height: 190px; display: grid; place-items: center; overflow: hidden; border: 1.5px dashed #bfcac4; border-radius: 14px; background: #f7faf8; color: var(--muted); cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s; }
+        .store-logo-upload:hover, .store-logo-upload:focus-within { border-color: var(--brand); background: var(--brand-050); box-shadow: 0 0 0 3px var(--brand-ring); }
+        .store-logo-upload input[type="file"] { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+        .store-logo-preview { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; }
+        .store-logo-preview img { width: 100%; height: 100%; object-fit: cover; }
+        .store-logo-empty { display: grid; justify-items: center; gap: 8px; padding: 18px; text-align: center; }
+        .store-logo-empty svg { width: 42px; height: 42px; color: var(--brand); }
+        .store-logo-empty strong { color: var(--ink); font-size: 14px; }
+        .store-logo-empty small { color: var(--muted); font-weight: 500; }
+        .online-store-identity-fields { display: grid; align-content: start; gap: 16px; }
+        @media (max-width: 700px) {
+            .online-store-identity { grid-template-columns: 120px minmax(0, 1fr); gap: 14px; }
+            .store-logo-upload { min-height: 120px; }
+            .store-logo-empty { gap: 5px; padding: 10px; }
+            .store-logo-empty svg { width: 32px; height: 32px; }
+            .store-logo-empty small { display: none; }
+        }
+        @media (max-width: 480px) {
+            .online-store-identity { grid-template-columns: 1fr; }
+            .store-logo-upload { min-height: 180px; }
+        }
+
         /* Business profile summary cards */
         .profile-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
         .profile-grid .summary-item { border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(180deg, #fff, #fbfdfc); padding: 16px 18px; box-shadow: var(--shadow-sm); transition: border-color .15s, box-shadow .15s, transform .06s; }
@@ -593,7 +618,15 @@
                                                 <tr>
                                                     <td>
                                                         <div class="cell-title">{{ $account->identifier }}</div>
-                                                        <div class="cell-sub">{{ ucfirst($account->account_type) }} · {{ $account->provider_name }}@if ($account->account_number) · {{ $account->account_number }}@endif</div>
+                                                        @php
+                                                            $accountMeta = array_values(array_filter([
+                                                                ucfirst($account->account_type),
+                                                                $account->provider_name.($account->bank_code ? ' ('.$account->bank_code.')' : ''),
+                                                                $account->account_number,
+                                                                $account->account_name,
+                                                            ]));
+                                                        @endphp
+                                                        <div class="cell-sub">{{ implode(' · ', $accountMeta) }}</div>
                                                     </td>
                                                     <td>{{ $account->branch?->name ?? 'All branches' }}</td>
                                                     <td>{{ $account->financeAccount?->code ?? 'Pending' }}</td>
@@ -669,8 +702,9 @@
                                         </tbody>
                                     </table>
                                 </div>
-                                @php $moduleAccessSubscription = $tenantSubscriptions->first(); @endphp
-                                <div class="subscription-modules">
+                                @if ($isPlatformAdmin)
+                                    @php $moduleAccessSubscription = $tenantSubscriptions->first(); @endphp
+                                    <div class="subscription-modules">
                                     <div class="subscription-modules-head">
                                         <div>
                                             <h3>Module access</h3>
@@ -720,7 +754,8 @@
                                             </div>
                                         @endforeach
                                     </div>
-                                </div>
+                                    </div>
+                                @endif
                             @endif
                         @endif
                     </div>
@@ -758,39 +793,53 @@
 
                                 <div class="setup-section online-store-section-panel" id="online-store-basics" role="tabpanel" data-online-store-section-panel>
                                     <h3 class="setup-section-title">Online Store Basics</h3>
-                                    <div class="form-grid">
-                                        <div class="field">
-                                            <label for="online-store-name">Name of Store</label>
-                                            <input id="online-store-name" name="store_name" value="{{ $onlineStoreName }}" required data-store-name-input>
-                                        </div>
-                                        <div class="field">
-                                            <label class="store-address-label" for="online-store-address">
-                                                <span>Store address</span>
-                                                <span class="store-address-label-hint">Your domain name</span>
+                                    <div class="online-store-identity">
+                                        <div class="store-logo-field">
+                                            <label>Store logo</label>
+                                            <label class="store-logo-upload" data-file-upload>
+                                                <input name="logo" type="file" accept="image/*" aria-label="Upload store logo" data-file-input>
+                                                <span class="store-logo-preview" data-file-preview>
+                                                    @if ($onlineStore?->logo_path)
+                                                        <img src="{{ $publicImageUrl($onlineStore->logo_path) }}" alt="{{ $onlineStore->store_name }} logo preview">
+                                                    @else
+                                                        <span class="store-logo-empty">
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                                                <rect x="3" y="4" width="18" height="16" rx="2"/>
+                                                                <circle cx="8.5" cy="9" r="1.5"/>
+                                                                <path stroke-linecap="round" stroke-linejoin="round" d="m4 17 5-5 3.5 3.5 2.5-2.5 5 5"/>
+                                                            </svg>
+                                                            <strong data-file-title>Upload store logo</strong>
+                                                            <small data-file-name>PNG or JPG, up to 2MB</small>
+                                                        </span>
+                                                    @endif
+                                                </span>
                                             </label>
-                                            <div class="store-address-control">
-                                                <input id="online-store-address" name="username" value="{{ $onlineStoreUsername }}" placeholder="abc-fashion" maxlength="63" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" autocomplete="off" aria-describedby="online-store-address-help online-store-address-status" required data-store-address-input data-existing-store="{{ $onlineStore ? '1' : '0' }}">
-                                                <span class="store-address-suffix">.storeboot.com</span>
+                                        </div>
+                                        <div class="online-store-identity-fields">
+                                            <div class="field">
+                                                <label for="online-store-name">Name of Store</label>
+                                                <input id="online-store-name" name="store_name" value="{{ $onlineStoreName }}" required data-store-name-input>
                                             </div>
-                                            <small id="online-store-address-help">Use lowercase letters, numbers, and hyphens. We suggest an address from your store name, but you can edit it.</small>
-                                            <small id="online-store-address-status" class="store-address-status" data-store-address-status aria-live="polite"></small>
-                                        </div>
-                                        <div class="field full"><label>Description of Store <button type="button" class="ai-generate-btn" data-ai-generate data-ai-field="description" data-ai-target="#online-store-description">✨ Generate with AI</button></label><textarea id="online-store-description" name="description" rows="3" placeholder="A short description customers will see on your online store.">{{ old('description', $onlineStore?->description) }}</textarea></div>
-                                        <div class="field">
-                                            <label>Image Logo of the Store</label>
-                                            <input name="logo" type="file" accept="image/*">
-                                            @if ($onlineStore?->logo_path)
-                                                <div class="upload-preview">
-                                                    <img src="{{ $publicImageUrl($onlineStore->logo_path) }}" alt="{{ $onlineStore->store_name }} logo preview">
-                                                    <span class="subtle">Current logo uploaded.</span>
+                                            <div class="field">
+                                                <label class="store-address-label" for="online-store-address">
+                                                    <span>Store address</span>
+                                                    <span class="store-address-label-hint">Your domain name</span>
+                                                </label>
+                                                <div class="store-address-control">
+                                                    <input id="online-store-address" name="username" value="{{ $onlineStoreUsername }}" placeholder="abc-fashion" maxlength="63" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" autocomplete="off" aria-describedby="online-store-address-help online-store-address-status" required data-store-address-input data-existing-store="{{ $onlineStore ? '1' : '0' }}">
+                                                    <span class="store-address-suffix">.storeboot.com</span>
                                                 </div>
-                                            @endif
+                                                <small id="online-store-address-help">Use lowercase letters, numbers, and hyphens. We suggest an address from your store name, but you can edit it.</small>
+                                                <small id="online-store-address-status" class="store-address-status" data-store-address-status aria-live="polite"></small>
+                                            </div>
                                         </div>
+                                    </div>
+                                    <div class="form-grid">
+                                        <div class="field full"><label>Description of Store <button type="button" class="ai-generate-btn" data-ai-generate data-ai-field="description" data-ai-target="#online-store-description">✨ Generate with AI</button></label><textarea id="online-store-description" name="description" rows="3" placeholder="A short description customers will see on your online store.">{{ old('description', $onlineStore?->description) }}</textarea></div>
                                         <div class="field"><label>Theme primary color</label><input class="theme-color-input" name="theme_primary_color" type="color" value="{{ old('theme_primary_color', $onlineStore?->theme_primary_color ?? '#006554') }}" style="background-color: {{ old('theme_primary_color', $onlineStore?->theme_primary_color ?? '#006554') }};" data-theme-color-field></div>
                                         <div class="field"><label>Theme secondary color</label><input class="theme-color-input" name="theme_secondary_color" type="color" value="{{ old('theme_secondary_color', $onlineStore?->theme_secondary_color ?? '#f59e0b') }}" style="background-color: {{ old('theme_secondary_color', $onlineStore?->theme_secondary_color ?? '#f59e0b') }};" data-theme-color-field></div>
                                         <div class="field"><label>Fulfilment branch</label><select name="fulfilment_branch_id"><option value="">Select branch</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((string) old('fulfilment_branch_id', $defaultOnlineStoreBranchId) === (string) $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
                                         <div class="field"><label>Store status</label><label class="inline-check"><input type="checkbox" name="maintenance_mode" value="1" @checked($onlineMaintenanceMode)> Enable maintenance mode</label></div>
-                                        <div class="field full"><label>Announcement</label><textarea name="announcement" rows="2">{{ old('announcement', $onlineStore ? $onlineStore->announcement : 'We are live!!!') }}</textarea></div>
                                     </div>
                                     <div class="button-row"><button class="btn primary" type="submit">Save basics</button></div>
                                 </div>
@@ -882,6 +931,22 @@
                                                     </div>
                                                 @endforeach
                                                 <div class="setup-empty-line" data-online-slides-empty @if ($onlineSlides->isNotEmpty()) hidden @endif>No Slides Added Yet.</div>
+                                            </div>
+                                        </div>
+                                    </details>
+
+                                    <details class="setup-accordion" open>
+                                        <summary>
+                                            <span class="setup-accordion-toggle">
+                                                <span class="setup-accordion-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 4.5 13 10l-6 5.5v-11Z"/></svg></span>
+                                                <span>Section C: Announcements</span>
+                                            </span>
+                                            <span class="subtle">Storefront announcement bar</span>
+                                        </summary>
+                                        <div class="setup-accordion-body">
+                                            <div class="field">
+                                                <label for="online-store-announcement">Store announcement</label>
+                                                <textarea id="online-store-announcement" name="announcement" rows="2" placeholder="Share an update with your customers.">{{ old('announcement', $onlineStore ? $onlineStore->announcement : 'We are live!!!') }}</textarea>
                                             </div>
                                         </div>
                                     </details>
@@ -981,10 +1046,38 @@
                                         <div class="field"><label>Self Hosted Paystack Live Public Key</label><input name="paystack[public_key]" value="{{ $onlinePaystack['public_key'] ?? '' }}"><span class="subtle">Required only when Self Hosted Paystack is selected.</span></div>
                                         <div class="field"><label>Self Hosted Paystack Live Private Key</label><input name="paystack[private_key]" value="{{ $onlinePaystack['private_key'] ?? '' }}"><span class="subtle">Required only when Self Hosted Paystack is selected.</span></div>
                                     </div>
-                                    <div class="form-grid" data-paystack-settlement-bank-fields @if ($onlinePaystackMethod !== 'storeboot_paystack') hidden @endif>
-                                        <div class="field"><label>Settlement Bank Name</label><input name="settlement_bank_account[bank_name]" value="{{ $onlineSettlementBank['bank_name'] ?? '' }}" placeholder="Bank name"></div>
-                                        <div class="field"><label>Settlement Bank Account</label><input name="settlement_bank_account[account_number]" value="{{ $onlineSettlementBank['account_number'] ?? '' }}" placeholder="Account number"></div>
-                                        <div class="field"><label>Settlement Account Name</label><input name="settlement_bank_account[account_name]" value="{{ $onlineSettlementBank['account_name'] ?? '' }}" placeholder="Account name"></div>
+                                    <div data-paystack-settlement-bank-fields data-bank-picker data-tenant="{{ $tenant->id }}" data-banks-url="{{ route('admin.business.banks.index', ['tenant' => $tenant->id]) }}" data-resolve-url="{{ route('admin.business.resolve-account') }}" @if ($onlinePaystackMethod !== 'storeboot_paystack') hidden @endif>
+                                        <p class="subtle" style="margin:0 0 10px;">Storeboot settles your online Paystack earnings to this bank account. We verify the account name automatically.</p>
+                                        <div class="form-grid">
+                                            <div class="field" style="position:relative;">
+                                                <label>Settlement bank</label>
+                                                <input type="text" autocomplete="off" placeholder="Search your bank…" data-bank-search value="{{ $onlineSettlementBank['bank_name'] ?? '' }}">
+                                                <input type="hidden" name="settlement_bank_account[bank_name]" data-bank-provider value="{{ $onlineSettlementBank['bank_name'] ?? '' }}">
+                                                <input type="hidden" name="settlement_bank_account[bank_code]" data-bank-code value="{{ $onlineSettlementBank['bank_code'] ?? '' }}">
+                                                <div class="variant-search-options" data-bank-options hidden></div>
+                                            </div>
+                                            <div class="field"><label>Settlement account number</label><input name="settlement_bank_account[account_number]" inputmode="numeric" maxlength="10" placeholder="10-digit NUBAN" data-account-number value="{{ $onlineSettlementBank['account_number'] ?? '' }}"></div>
+                                            <div class="field full">
+                                                <label>Settlement account name <span class="subtle" style="font-weight:500;">(verified)</span></label>
+                                                <input type="text" name="settlement_bank_account[account_name]" readonly placeholder="Verified automatically after the account number" data-account-name value="{{ $onlineSettlementBank['account_name'] ?? '' }}" style="background:var(--panel-soft);">
+                                                <p class="subtle" data-bank-status style="font-size:12px; margin:6px 0 0;"></p>
+                                            </div>
+                                            @if ($isPlatformAdmin)
+                                                <div class="field full">
+                                                    <label>Payout mode <span class="badge neutral">Storeboot admin only</span></label>
+                                                    <div class="approval-grid" style="margin-top:6px;">
+                                                        @foreach ($payoutModes as $mode)
+                                                            <label class="check-card">
+                                                                <input type="radio" name="payout_mode" value="{{ $mode->value }}" @checked($payoutMode === $mode)>
+                                                                <span class="check-card-text">{{ $mode->label() }}<small>{{ $mode->description() }}</small></span>
+                                                            </label>
+                                                        @endforeach
+                                                    </div>
+                                                </div>
+                                            @else
+                                                <div class="field full"><p class="subtle" style="margin:4px 0 0;">Payout timing: <strong>{{ $payoutMode->label() }}</strong>. Only Storeboot can change this.</p></div>
+                                            @endif
+                                        </div>
                                     </div>
                                     <div class="button-row"><button class="btn primary" type="submit">Save payment method</button></div>
                                 </div>
@@ -1393,6 +1486,7 @@
                         @endif
                     </div>
                 </section>
+
             </div>
         </div>
 
@@ -1523,10 +1617,24 @@
                         <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
                         <div class="form-grid">
                             <div class="field"><label>Identifier</label><input name="identifier" required placeholder="Moniepoint Ikeja POS 001"></div>
-                            <div class="field"><label>Account name</label><input name="account_name" placeholder="Account holder name"></div>
-                            <div class="field"><label>Bank / provider name</label><input name="provider_name" required placeholder="Moniepoint"></div>
-                            <div class="field"><label>Account / terminal number</label><input name="account_number" placeholder="Account number or terminal ID"></div>
                             <div class="field"><label>Type</label><select name="account_type" required><option value="normal">Normal</option><option value="virtual">Virtual</option></select></div>
+                            <div class="field full" data-bank-picker data-tenant="{{ $tenant->id }}" data-banks-url="{{ route('admin.business.banks.index', ['tenant' => $tenant->id]) }}" data-resolve-url="{{ route('admin.business.resolve-account') }}">
+                                <div class="form-grid">
+                                    <div class="field" style="position:relative;">
+                                        <label>Bank / provider</label>
+                                        <input type="text" autocomplete="off" placeholder="Search your bank…" data-bank-search>
+                                        <input type="hidden" name="provider_name" data-bank-provider>
+                                        <input type="hidden" name="bank_code" data-bank-code>
+                                        <div class="variant-search-options" data-bank-options hidden></div>
+                                    </div>
+                                    <div class="field"><label>Account number</label><input name="account_number" inputmode="numeric" maxlength="10" placeholder="10-digit NUBAN" data-account-number></div>
+                                    <div class="field full">
+                                        <label>Account name <span class="subtle" style="font-weight:500;">(verified)</span></label>
+                                        <input type="text" name="account_name" readonly placeholder="Verified automatically after the account number" data-account-name style="background:var(--panel-soft);">
+                                        <p class="subtle" data-bank-status style="font-size:12px; margin:6px 0 0;"></p>
+                                    </div>
+                                </div>
+                            </div>
                             <div class="field"><label>Branch</label><select name="branch_id"><option value="">All branches</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}">{{ $branch->name }}</option>@endforeach</select></div>
                             <div class="field"><label>Status</label><select name="status"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
                             <div class="field full">
@@ -1553,10 +1661,24 @@
                             <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
                             <div class="form-grid">
                                 <div class="field"><label>Identifier</label><input name="identifier" required value="{{ $account->identifier }}"></div>
-                                <div class="field"><label>Account name</label><input name="account_name" value="{{ $account->account_name }}"></div>
-                                <div class="field"><label>Bank / provider name</label><input name="provider_name" required value="{{ $account->provider_name }}"></div>
-                                <div class="field"><label>Account / terminal number</label><input name="account_number" value="{{ $account->account_number }}"></div>
                                 <div class="field"><label>Type</label><select name="account_type" required><option value="normal" @selected($account->account_type === 'normal')>Normal</option><option value="virtual" @selected($account->account_type === 'virtual')>Virtual</option></select></div>
+                                <div class="field full" data-bank-picker data-tenant="{{ $tenant->id }}" data-banks-url="{{ route('admin.business.banks.index', ['tenant' => $tenant->id]) }}" data-resolve-url="{{ route('admin.business.resolve-account') }}">
+                                    <div class="form-grid">
+                                        <div class="field" style="position:relative;">
+                                            <label>Bank / provider</label>
+                                            <input type="text" autocomplete="off" placeholder="Search your bank…" data-bank-search value="{{ $account->provider_name }}">
+                                            <input type="hidden" name="provider_name" data-bank-provider value="{{ $account->provider_name }}">
+                                            <input type="hidden" name="bank_code" data-bank-code value="{{ $account->bank_code }}">
+                                            <div class="variant-search-options" data-bank-options hidden></div>
+                                        </div>
+                                        <div class="field"><label>Account number</label><input name="account_number" inputmode="numeric" maxlength="10" placeholder="10-digit NUBAN" data-account-number value="{{ $account->account_number }}"></div>
+                                        <div class="field full">
+                                            <label>Account name <span class="subtle" style="font-weight:500;">(verified)</span></label>
+                                            <input type="text" name="account_name" readonly placeholder="Verified automatically after the account number" data-account-name value="{{ $account->account_name }}" style="background:var(--panel-soft);">
+                                            <p class="subtle" data-bank-status style="font-size:12px; margin:6px 0 0;"></p>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div class="field"><label>Branch</label><select name="branch_id"><option value="">All branches</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((int) $account->branch_id === (int) $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
                                 <div class="field"><label>Status</label><select name="status"><option value="active" @selected($account->status === 'active')>Active</option><option value="inactive" @selected($account->status === 'inactive')>Inactive</option></select></div>
                                 <div class="field"><label>Finance account</label><input value="{{ $account->financeAccount?->code ?? 'Created on save' }}" disabled></div>
@@ -2573,6 +2695,91 @@
 
         <script>
         document.addEventListener('DOMContentLoaded', () => {
+            const bankPickers = document.querySelectorAll('[data-bank-picker]');
+            if (bankPickers.length) {
+                const banksCache = {}; // banksUrl -> { banks, configured, promise }
+                const loadBanks = (url) => {
+                    if (banksCache[url]?.promise) return banksCache[url].promise;
+                    banksCache[url] = { banks: [], configured: false };
+                    banksCache[url].promise = fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                        .then((r) => r.json())
+                        .then((d) => { banksCache[url].banks = d.banks || []; banksCache[url].configured = !!d.configured; return banksCache[url]; })
+                        .catch(() => banksCache[url]);
+                    return banksCache[url].promise;
+                };
+
+                bankPickers.forEach((root) => {
+                    const search = root.querySelector('[data-bank-search]');
+                    const codeInput = root.querySelector('[data-bank-code]');
+                    const providerInput = root.querySelector('[data-bank-provider]');
+                    const panel = root.querySelector('[data-bank-options]');
+                    const acct = root.querySelector('[data-account-number]');
+                    const nameInput = root.querySelector('[data-account-name]');
+                    const statusEl = root.querySelector('[data-bank-status]');
+                    if (!search || !panel) return;
+
+                    const render = (banks, q) => {
+                        const term = (q || '').toLowerCase().trim();
+                        const matches = banks.filter((b) => b.name.toLowerCase().includes(term)).slice(0, 40);
+                        panel.innerHTML = matches.length
+                            ? matches.map((b) => `<button type="button" class="variant-search-option" data-code="${b.code}">${b.name}</button>`).join('')
+                            : '<div class="variant-search-empty">No banks found</div>';
+                        panel.hidden = false;
+                    };
+                    const resetName = () => { if (nameInput) nameInput.value = ''; if (statusEl) { statusEl.textContent = ''; statusEl.style.color = ''; } };
+                    const tryResolve = async () => {
+                        const number = (acct?.value || '').trim();
+                        if (!codeInput.value || !/^[0-9]{10}$/.test(number)) return;
+                        if (statusEl) { statusEl.textContent = 'Verifying account…'; statusEl.style.color = 'var(--muted)'; }
+                        try {
+                            const body = new URLSearchParams();
+                            body.append('_token', document.querySelector('meta[name=csrf-token]')?.content || '');
+                            body.append('tenant_id', root.dataset.tenant);
+                            body.append('account_number', number);
+                            body.append('bank_code', codeInput.value);
+                            const res = await fetch(root.dataset.resolveUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body });
+                            const data = await res.json();
+                            if (res.ok && data.account_name) {
+                                if (nameInput) nameInput.value = data.account_name;
+                                if (statusEl) { statusEl.textContent = '✓ Account verified'; statusEl.style.color = 'var(--brand-strong)'; }
+                            } else {
+                                if (nameInput) nameInput.value = '';
+                                if (statusEl) { statusEl.textContent = data.message || 'Could not verify this account.'; statusEl.style.color = 'var(--danger)'; }
+                            }
+                        } catch (e) {
+                            if (statusEl) { statusEl.textContent = 'Verification failed. Please try again.'; statusEl.style.color = 'var(--danger)'; }
+                        }
+                    };
+
+                    search.addEventListener('focus', async () => {
+                        const c = await loadBanks(root.dataset.banksUrl);
+                        if (!c.configured && statusEl && !statusEl.textContent) { statusEl.textContent = 'Bank verification is not configured yet.'; }
+                        render(c.banks, search.value);
+                    });
+                    search.addEventListener('input', async () => {
+                        codeInput.value = '';
+                        if (providerInput) providerInput.value = '';
+                        resetName();
+                        const c = await loadBanks(root.dataset.banksUrl);
+                        render(c.banks, search.value);
+                    });
+                    panel.addEventListener('click', (event) => {
+                        const btn = event.target.closest('[data-code]');
+                        if (!btn) return;
+                        search.value = btn.textContent;
+                        codeInput.value = btn.dataset.code;
+                        if (providerInput) providerInput.value = btn.textContent;
+                        panel.hidden = true;
+                        tryResolve();
+                    });
+                    document.addEventListener('click', (event) => { if (!root.contains(event.target)) panel.hidden = true; });
+                    if (acct) {
+                        acct.addEventListener('blur', tryResolve);
+                        acct.addEventListener('input', () => { if (nameInput?.value) resetName(); });
+                    }
+                });
+            }
+
             const master = document.querySelector('[data-approvals-master]');
             const actionsWrap = document.querySelector('[data-approvals-actions]');
             if (master && actionsWrap) {

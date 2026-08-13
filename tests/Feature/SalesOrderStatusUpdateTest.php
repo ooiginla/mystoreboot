@@ -41,6 +41,30 @@ class SalesOrderStatusUpdateTest extends TestCase
         $this->assertNotContains('draft', SalesOrderStatus::values());
     }
 
+    public function test_order_details_show_the_gateway_fee_in_the_payment_summary(): void
+    {
+        [$user, $order] = $this->fixture(paidMinor: 0);
+        $order->update([
+            'tax_minor' => 7500,
+            'shipping_minor' => 10000,
+            'coupon_discount_minor' => 5000,
+            'admin_discount_minor' => 2500,
+            'gateway_charge_minor' => 9850,
+            'total_minor' => 169850,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.sales.orders.index', ['tenant' => $order->tenant_id]).'#orders')
+            ->assertOk()
+            ->assertSee('<span>Gateway fee</span><span>₦ 98.50</span>', false)
+            ->assertSee('aria-label="Order total calculation"', false)
+            ->assertSee('<span>Coupon</span><strong class="receipt-total-amount">₦ 50.00</strong>', false)
+            ->assertSee('<span>Discount</span><strong class="receipt-total-amount">₦ 25.00</strong>', false)
+            ->assertSee('<span>Gateway fee</span><strong class="receipt-total-amount">₦ 98.50</strong>', false)
+            ->assertSee('<span>Outstanding balance</span><strong class="receipt-total-amount">₦ 1,698.50</strong>', false)
+            ->assertDontSee('<span>Amount paid</span><strong class="receipt-total-amount">₦ 0.00</strong>', false);
+    }
+
     public function test_order_and_delivery_status_can_be_updated_from_the_order_dialog(): void
     {
         [$user, $order] = $this->fixture();
@@ -50,6 +74,8 @@ class SalesOrderStatusUpdateTest extends TestCase
             ->assertOk()
             ->assertSee('Update order status')
             ->assertSee('Update delivery status')
+            ->assertSee('<span>Orders (1)</span>', false)
+            ->assertSee('<span>Outstanding balance</span><strong class="receipt-total-amount">₦ 0.00</strong>', false)
             ->assertSee('data-order-list-actions', false)
             ->assertSee('data-order-dialog-actions', false)
             ->assertSee('Cancel Order')

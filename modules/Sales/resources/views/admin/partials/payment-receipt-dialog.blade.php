@@ -39,14 +39,7 @@
                     @endforeach
                 </tbody>
             </table>
-            <div class="summary-grid">
-                <div class="summary-item"><span>Subtotal</span><strong>{{ $currencySymbol }} {{ $money($order->subtotal_minor) }}</strong></div>
-                <div class="summary-item"><span>Tax</span><strong>{{ $currencySymbol }} {{ $money($order->tax_minor) }}</strong></div>
-                <div class="summary-item"><span>Delivery</span><strong>{{ $currencySymbol }} {{ $money($order->shipping_minor) }}</strong></div>
-                <div class="summary-item"><span>Discount</span><strong>-{{ $currencySymbol }} {{ $money($order->coupon_discount_minor + $order->admin_discount_minor) }}</strong></div>
-                <div class="summary-item"><span>Total paid to date</span><strong>{{ $currencySymbol }} {{ $money($order->paid_minor) }}</strong></div>
-                <div class="summary-item"><span>Outstanding balance</span><strong>{{ $currencySymbol }} {{ $money($order->balance_minor) }}</strong></div>
-            </div>
+            @include('sales::admin.partials.order-total-flow')
             @if ($payment->notes)
                 <div><strong>Notes</strong><p class="subtle">{{ $payment->notes }}</p></div>
             @endif

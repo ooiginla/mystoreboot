@@ -18,14 +18,6 @@
     @if ($errors->any())
         <div class="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300">
             <p class="font-medium">{{ $errors->first() }}</p>
-            @if (session('unverified_email'))
-                <form class="mt-3" method="POST" action="{{ route('verification.send') }}">
-                    @csrf
-                    <input type="hidden" name="email" value="{{ session('unverified_email') }}">
-                    <p class="mb-2 text-red-600/90 dark:text-red-300/80">Check your inbox and spam. Missed it? Resend the verification email.</p>
-                    <button type="submit" class="sb-btn sb-btn-ghost w-full !py-2 text-xs">Resend verification email</button>
-                </form>
-            @endif
         </div>
     @endif
 

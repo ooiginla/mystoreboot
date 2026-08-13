@@ -54,6 +54,9 @@ final class RoutePermissionMap
             'admin.business.profile.save' => 'business.settings.manage',
             'admin.business.payment-methods.save' => 'business.settings.manage',
             'admin.business.approvals.save' => 'business.settings.manage',
+            'admin.business.payout.save' => 'business.settings.manage',
+            'admin.business.banks.index' => 'business.settings.manage',
+            'admin.business.resolve-account' => 'business.settings.manage',
             'admin.access.approvals.index' => self::ALLOW,
             'admin.access.approvals.approve' => self::ALLOW,
             'admin.access.approvals.reject' => self::ALLOW,
@@ -67,6 +70,10 @@ final class RoutePermissionMap
             'admin.business.branches.update' => 'branches.manage',
             'admin.business.departments.store' => 'branches.manage',
             'admin.business.departments.update' => 'branches.manage',
+
+            // Platform subscription plans (controller additionally requires platform admin)
+            'admin.subscriptions.plans.index' => 'subscriptions.manage',
+            'admin.subscriptions.plans.update' => 'subscriptions.manage',
 
             // Catalog
             'admin.catalog.index' => 'catalog.view',

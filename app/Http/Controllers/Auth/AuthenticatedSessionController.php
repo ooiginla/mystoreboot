@@ -38,9 +38,9 @@ final class AuthenticatedSessionController extends Controller
             $request->session()->regenerateToken();
 
             return redirect()
-                ->route('login')
-                ->withErrors(['email' => 'Your email is yet to be verified. Please verify your email before signing in.'])
-                ->with('unverified_email', $credentials['email']);
+                ->route('verification.notice')
+                ->withErrors(['code' => 'Your email is not verified. Enter the code sent to your email.'])
+                ->with('verification_email', $credentials['email']);
         }
 
         $request->session()->regenerate();

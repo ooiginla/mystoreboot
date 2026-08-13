@@ -48,9 +48,11 @@
                         <th>Product</th>
                         <th>Shipping</th>
                         <th>Gateway</th>
+                        <th>Customer total</th>
                         <th>Amount</th>
                         <th>Fees</th>
                         <th>Net</th>
+                        <th>Storeboot profit</th>
                         <th>Reference</th>
                     </tr>
                 </thead>
@@ -63,13 +65,15 @@
                             <td>{{ $money((int) $payment->product_amount_minor) }}</td>
                             <td>{{ $money((int) $payment->shipping_amount_minor) }}</td>
                             <td>{{ $money((int) $payment->gateway_charge_minor) }}</td>
+                            <td>{{ $money((int) $payment->customer_total_minor) }}</td>
                             <td>{{ $money((int) $payment->amount_minor) }}</td>
                             <td>{{ $money((int) $payment->fees_minor) }}</td>
                             <td>{{ $money((int) $payment->net_amount_minor) }}</td>
+                            <td>{{ $money((int) $payment->storeboot_profit_minor) }}</td>
                             <td>{{ $payment->provider_reference }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="10"><div class="empty">No payments are tied to this settlement.</div></td></tr>
+                        <tr><td colspan="12"><div class="empty">No payments are tied to this settlement.</div></td></tr>
                     @endforelse
                 </tbody>
             </table>

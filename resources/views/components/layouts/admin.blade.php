@@ -341,6 +341,12 @@
             $hasTenantModule = fn (string $slug): bool => ! $activeBranchTenant
                 || ! $knownTenantModules->contains($slug)
                 || $enabledTenantModules->contains($slug);
+            $pendingOrderCount = ($activeBranchTenant && $hasTenantModule('sales'))
+                ? \Modules\Sales\Models\SalesOrder::query()
+                    ->where('tenant_id', $activeBranchTenant->id)
+                    ->where('order_status', \Modules\Sales\Enums\SalesOrderStatus::Pending->value)
+                    ->count()
+                : 0;
 
             $approvalTypes = ($activeBranchTenant && auth()->user())
                 ? app(\Modules\Access\Support\ApprovalService::class)->typesApprovableBy(auth()->user(), $activeBranchTenant)
@@ -446,7 +452,7 @@
                         <a class="{{ request()->routeIs('admin.sales.index') ? 'active' : '' }}" href="{{ route('admin.sales.index', $activeTenantRouteParams) }}#pos"><svg viewBox="0 0 24 24"><use href="#i-cart"/></svg><span>Record Sale</span></a>
                         @endpermission
                         @permission('sales.view')
-                        <a class="{{ request()->routeIs('admin.sales.orders.index') ? 'active' : '' }}" href="{{ route('admin.sales.orders.index', $activeTenantRouteParams) }}#orders"><svg viewBox="0 0 24 24"><use href="#i-receipt"/></svg><span>Orders</span></a>
+                        <a class="{{ request()->routeIs('admin.sales.orders.index') ? 'active' : '' }}" href="{{ route('admin.sales.orders.index', $activeTenantRouteParams) }}#orders"><svg viewBox="0 0 24 24"><use href="#i-receipt"/></svg><span>Orders ({{ $pendingOrderCount }})</span></a>
                         @endpermission
                     @endif
 
@@ -479,6 +485,7 @@
                     @if (auth()->user()?->is_platform_admin)
                         <div class="nav-group">Platform</div>
                         <a class="{{ request()->routeIs('admin.business.organizations.*') ? 'active' : '' }}" href="{{ route('admin.business.organizations.index') }}"><svg viewBox="0 0 24 24"><use href="#i-building"/></svg><span>Organizations</span></a>
+                        <a class="{{ request()->routeIs('admin.subscriptions.plans.*') ? 'active' : '' }}" href="{{ route('admin.subscriptions.plans.index') }}"><svg viewBox="0 0 24 24"><use href="#i-layers"/></svg><span>Plans</span></a>
                     @endif
                 </nav>
                 @auth

@@ -119,6 +119,9 @@ class BusinessOnlineStoreTest extends TestCase
             ->assertOk()
             ->assertSee('Online Store')
             ->assertSee('Online Store Basics')
+            ->assertSee('class="online-store-identity"', false)
+            ->assertSee('class="store-logo-upload"', false)
+            ->assertSee('Upload store logo')
             ->assertSee('Name of Store')
             ->assertSee('Your domain name')
             ->assertSee('value="web-shop"', false)
@@ -158,6 +161,7 @@ class BusinessOnlineStoreTest extends TestCase
             ->assertSee('Theme')
             ->assertSee('Section A: Menu Setup')
             ->assertSee('Section B: Slides')
+            ->assertSee('Section C: Announcements')
             ->assertSee('No Slides Added Yet.')
             ->assertSee('Add Slide')
             ->assertSee('Pay via Transfer')
@@ -510,6 +514,7 @@ class BusinessOnlineStoreTest extends TestCase
             ->assertOk()
             ->assertSee('Tenant subscriptions')
             ->assertSee('Growth')
+            ->assertDontSee('Module access')
             ->assertDontSee('Add subscription')
             ->assertDontSee('Save subscription');
 
@@ -635,11 +640,12 @@ class BusinessOnlineStoreTest extends TestCase
         $response = $this->actingAs($tenantAdmin)
             ->get(route('admin.business.index', ['tenant' => $tenant->id]).'#subscriptions')
             ->assertOk()
+            ->assertDontSee('Module access')
             ->assertDontSee('Inventory &amp; Stock', false)
             ->assertDontSee('href="'.route('admin.sales.retail-pos', ['tenant' => $tenant->id]).'"', false)
             ->assertSee('Record Sale')
             ->assertSee('Business setup');
-        $this->assertStringContainsString(
+        $this->assertStringNotContainsString(
             route('admin.business.subscriptions.modules.update', [$subscription, $sales]),
             $response->getContent(),
         );

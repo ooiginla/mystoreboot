@@ -172,6 +172,9 @@ final class BusinessSetupController extends Controller
             'approvableActions' => PermissionCatalogue::approvable(),
             'approvalsEnabled' => (bool) ($tenant->settings['approvals']['enabled'] ?? false),
             'approvalActions' => (array) ($tenant->settings['approvals']['actions'] ?? []),
+            'payoutMode' => $tenant ? \Modules\Sales\Enums\PayoutMode::fromTenant($tenant) : \Modules\Sales\Enums\PayoutMode::default(),
+            'payoutModes' => \Modules\Sales\Enums\PayoutMode::cases(),
+            'payoutProfile' => (array) ($tenant->settings['payout'] ?? []),
         ];
     }
 
@@ -259,6 +262,105 @@ final class BusinessSetupController extends Controller
         return redirect()
             ->to(route('admin.business.index', ['tenant' => $tenant->id]).'#approvals')
             ->with('status', 'Approval workflow settings saved.');
+    }
+
+    public function banks(Request $request, \Modules\Business\Support\PaystackDirectory $paystack): JsonResponse
+    {
+        $tenantId = $request->string('tenant')->toString() ?: $request->string('tenant_id')->toString();
+        $this->authorizeTenantIdAccess($request->user(), $tenantId);
+        $tenant = Tenant::query()->findOrFail($tenantId);
+
+        return response()->json([
+            'configured' => $paystack->configured(),
+            'banks' => $paystack->banks($tenant->currency_code ?: 'NGN'),
+        ]);
+    }
+
+    public function resolveBankAccount(Request $request, \Modules\Business\Support\PaystackDirectory $paystack): JsonResponse
+    {
+        $data = $request->validate([
+            'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            'account_number' => ['required', 'string', 'regex:/^[0-9]{10}$/'],
+            'bank_code' => ['required', 'string', 'max:20'],
+        ]);
+        $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+
+        $result = $paystack->resolveAccount($data['account_number'], $data['bank_code']);
+
+        if (! $result['ok']) {
+            return response()->json(['message' => $result['message'] ?? 'We could not verify this account.'], 422);
+        }
+
+        return response()->json(['account_name' => $result['account_name']]);
+    }
+
+    public function savePayoutSettings(Request $request): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $this->authorizeTenantIdAccess($user, $request->string('tenant_id')->toString());
+        $tenant = Tenant::query()->findOrFail($request->string('tenant_id')->toString());
+
+        $data = $request->validate([
+            'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            'payout_mode' => ['nullable', Rule::in(array_column(\Modules\Sales\Enums\PayoutMode::cases(), 'value'))],
+            'settlement_bank_code' => ['nullable', 'string', 'max:20'],
+            'settlement_account_number' => ['nullable', 'string', 'regex:/^[0-9]{10}$/'],
+        ]);
+
+        $settings = $tenant->settings ?? [];
+        $paystack = app(\Modules\Business\Support\PaystackDirectory::class);
+
+        // The bank/subaccount profile is editable by anyone with business-settings access.
+        // Bank name + account name are always taken from Paystack — never trusted from the client.
+        if (filled($data['settlement_bank_code'] ?? null) && filled($data['settlement_account_number'] ?? null)) {
+            $currency = $tenant->currency_code ?: 'NGN';
+
+            abort_unless($paystack->isValidBankCode($data['settlement_bank_code'], $currency), 422, 'Select a valid bank.');
+
+            $result = $paystack->resolveAccount($data['settlement_account_number'], $data['settlement_bank_code']);
+
+            if (! $result['ok']) {
+                return back()->withErrors(['settlement_account_number' => $result['message'] ?? 'We could not verify this account with the bank.'])->withInput();
+            }
+
+            $settings['payout'] = array_merge((array) ($settings['payout'] ?? []), [
+                'bank_name' => $paystack->bankName($data['settlement_bank_code'], $currency),
+                'bank_code' => $data['settlement_bank_code'],
+                'account_number' => $data['settlement_account_number'],
+                'account_name' => $result['account_name'],
+            ]);
+        }
+
+        // The payout MODE can only be changed by a Storeboot platform admin (custody/float implications).
+        $status = 'Payout settings saved.';
+        if ($user->is_platform_admin && array_key_exists('payout_mode', $data) && $data['payout_mode'] !== null) {
+            $previous = \Modules\Sales\Enums\PayoutMode::fromTenant($tenant);
+            $new = \Modules\Sales\Enums\PayoutMode::from($data['payout_mode']);
+
+            if ($new !== $previous) {
+                $settings['payout_mode'] = $new->value;
+                $status = "Payout mode changed to “{$new->label()}”.";
+
+                app(AuditLogger::class)->log(
+                    $tenant->id,
+                    $user,
+                    'payout.mode.changed',
+                    "Payout mode changed from “{$previous->label()}” to “{$new->label()}”.",
+                    'security',
+                    'tenant',
+                    $tenant->id,
+                    ['from' => $previous->value, 'to' => $new->value],
+                );
+            }
+        }
+
+        $tenant->settings = $settings;
+        $tenant->save();
+
+        return redirect()
+            ->to(route('admin.business.index', ['tenant' => $tenant->id]).'#payouts')
+            ->with('status', $status);
     }
 
     public function storePaymentAccount(Request $request): RedirectResponse
@@ -382,7 +484,75 @@ final class BusinessSetupController extends Controller
         SafeRichText $richText,
     ): RedirectResponse {
         $data = $request->validated();
-        $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+        /** @var User $user */
+        $user = $request->user();
+        $this->authorizeTenantIdAccess($user, $data['tenant_id']);
+
+        // Storeboot Paystack settlement: verify the bank account with Paystack and take the
+        // bank name + account name from Paystack (never trusted from the client).
+        $settlement = (array) ($data['settlement_bank_account'] ?? []);
+        if (filled($settlement['bank_code'] ?? null) && preg_match('/^[0-9]{10}$/', (string) ($settlement['account_number'] ?? ''))) {
+            $paystack = app(\Modules\Business\Support\PaystackDirectory::class);
+            $currency = Tenant::query()->whereKey($data['tenant_id'])->value('currency_code') ?: 'NGN';
+
+            if (! $paystack->isValidBankCode((string) $settlement['bank_code'], $currency)) {
+                return back()->withErrors(['settlement_bank_account.bank_code' => 'Select a valid bank.'])->withInput();
+            }
+
+            $resolved = $paystack->resolveAccount((string) $settlement['account_number'], (string) $settlement['bank_code']);
+
+            if (! $resolved['ok']) {
+                return back()->withErrors(['settlement_bank_account.account_number' => $resolved['message'] ?? 'We could not verify this account.'])->withInput();
+            }
+
+            $settlement['bank_name'] = $paystack->bankName((string) $settlement['bank_code'], $currency) ?: ($settlement['bank_name'] ?? null);
+            $settlement['account_name'] = $resolved['account_name'];
+
+            // Create/update the Paystack subaccount so Paystack settles the merchant's
+            // share directly to this bank (direct settlement).
+            $existingStore = OnlineStore::query()->where('tenant_id', $data['tenant_id'])->first();
+            $existingCode = $existingStore?->payment_settings['settlement_bank_account']['subaccount_code'] ?? null;
+
+            $subaccount = $paystack->createOrUpdateSubaccount([
+                'business_name' => (string) ($data['store_name'] ?? Tenant::query()->whereKey($data['tenant_id'])->value('name') ?? 'Merchant'),
+                'bank_code' => (string) $settlement['bank_code'],
+                'account_number' => (string) $settlement['account_number'],
+                // percentage_charge stays 0 — our cut is the per-transaction gateway charge.
+                'subaccount_code' => $existingCode,
+            ]);
+
+            if ($subaccount['ok']) {
+                $settlement['subaccount_code'] = $subaccount['subaccount_code'];
+            } else {
+                $settlement['subaccount_code'] = $existingCode;
+                session()->flash('payout_warning', 'Your bank was verified, but Storeboot could not set up direct settlement yet: '.($subaccount['message'] ?? 'please try again').'.');
+            }
+
+            $data['settlement_bank_account'] = $settlement;
+        }
+
+        // Payout mode is a Storeboot-admin-only setting, stored on the tenant.
+        if ($user->is_platform_admin && filled($data['payout_mode'] ?? null)) {
+            $tenantModel = Tenant::query()->find($data['tenant_id']);
+            $previousMode = \Modules\Sales\Enums\PayoutMode::fromTenant($tenantModel);
+            $newMode = \Modules\Sales\Enums\PayoutMode::from($data['payout_mode']);
+
+            if ($tenantModel && $newMode !== $previousMode) {
+                $tenantModel->settings = array_merge($tenantModel->settings ?? [], ['payout_mode' => $newMode->value]);
+                $tenantModel->save();
+
+                app(AuditLogger::class)->log(
+                    $tenantModel->id,
+                    $user,
+                    'payout.mode.changed',
+                    "Payout mode changed from “{$previousMode->label()}” to “{$newMode->label()}”.",
+                    'security',
+                    'tenant',
+                    $tenantModel->id,
+                    ['from' => $previousMode->value, 'to' => $newMode->value],
+                );
+            }
+        }
 
         $store = OnlineStore::query()->firstOrNew(['tenant_id' => $data['tenant_id']]);
         $isNewStore = ! $store->exists;
@@ -472,8 +642,10 @@ final class BusinessSetupController extends Controller
                 ],
                 'settlement_bank_account' => [
                     'bank_name' => $data['settlement_bank_account']['bank_name'] ?? null,
+                    'bank_code' => $data['settlement_bank_account']['bank_code'] ?? null,
                     'account_number' => $data['settlement_bank_account']['account_number'] ?? null,
                     'account_name' => $data['settlement_bank_account']['account_name'] ?? null,
+                    'subaccount_code' => $data['settlement_bank_account']['subaccount_code'] ?? null,
                 ],
                 'bank_account_key' => $selectedBankAccountKey,
             ],
@@ -804,6 +976,7 @@ final class BusinessSetupController extends Controller
             'identifier' => ['required', 'string', 'max:140'],
             'account_name' => ['nullable', 'string', 'max:160'],
             'provider_name' => ['required', 'string', 'max:140'],
+            'bank_code' => ['nullable', 'string', 'max:20'],
             'account_number' => ['nullable', 'string', 'max:100'],
             'account_type' => ['required', Rule::in(['normal', 'virtual'])],
             'supported_payment_methods' => ['required', 'array', 'min:1'],
@@ -829,6 +1002,26 @@ final class BusinessSetupController extends Controller
      */
     private function savePaymentAccount(array $data, ?BusinessPaymentAccount $paymentAccount = null): BusinessPaymentAccount
     {
+        // When a bank + 10-digit account are supplied, verify with Paystack and take the
+        // bank name + account name from Paystack (never trusted from the client).
+        if (filled($data['bank_code'] ?? null) && preg_match('/^[0-9]{10}$/', (string) ($data['account_number'] ?? ''))) {
+            $paystack = app(\Modules\Business\Support\PaystackDirectory::class);
+            $currency = Tenant::query()->whereKey($data['tenant_id'])->value('currency_code') ?: 'NGN';
+
+            if (! $paystack->isValidBankCode((string) $data['bank_code'], $currency)) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['bank_code' => 'Select a valid bank.']);
+            }
+
+            $result = $paystack->resolveAccount((string) $data['account_number'], (string) $data['bank_code']);
+
+            if (! $result['ok']) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['account_number' => $result['message'] ?? 'We could not verify this account.']);
+            }
+
+            $data['account_name'] = $result['account_name'];
+            $data['provider_name'] = $paystack->bankName((string) $data['bank_code'], $currency) ?: $data['provider_name'];
+        }
+
         $paymentAccount ??= new BusinessPaymentAccount(['tenant_id' => $data['tenant_id']]);
         $financeAccount = $paymentAccount->financeAccount ?: FinanceAccount::query()->create([
             'tenant_id' => $data['tenant_id'],
@@ -858,6 +1051,7 @@ final class BusinessSetupController extends Controller
             'identifier' => trim((string) $data['identifier']),
             'account_name' => trim((string) ($data['account_name'] ?? '')) ?: null,
             'provider_name' => trim((string) $data['provider_name']),
+            'bank_code' => trim((string) ($data['bank_code'] ?? '')) ?: null,
             'account_number' => trim((string) ($data['account_number'] ?? '')) ?: null,
             'account_type' => $data['account_type'],
             'supported_payment_methods' => $data['supported_payment_methods'],

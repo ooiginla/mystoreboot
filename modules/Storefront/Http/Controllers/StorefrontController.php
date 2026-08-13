@@ -776,24 +776,43 @@ final class StorefrontController extends Controller
         $order->refresh();
         $reference = 'PSK-'.$order->id.'-'.Str::upper(Str::random(10));
 
+        $payload = [
+            'email' => $order->customer?->email,
+            'amount' => $order->total_minor,
+            'currency' => $store->tenant?->currency_code ?? 'NGN',
+            'reference' => $reference,
+            'callback_url' => StorefrontUrl::route($store, 'paystack.callback'),
+            'metadata' => [
+                'store_id' => $store->id,
+                'tenant_id' => $store->tenant_id,
+                'sales_order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'payment_method' => $data['payment_method'],
+                'gateway_charge_minor' => $gatewayChargeMinor,
+            ],
+        ];
+
+        // Direct settlement: on the platform Paystack + auto-settle payout mode with a
+        // configured subaccount, split the transaction so Paystack settles the merchant's
+        // share straight to their bank. The platform keeps the gateway charge (flat), and
+        // bears Paystack's processing fee out of it — preserving the existing economics.
+        $subaccountCode = data_get($store->payment_settings, 'settlement_bank_account.subaccount_code');
+        $usesSubaccountSplit = $data['payment_method'] === 'storeboot_paystack'
+            && \Modules\Sales\Enums\PayoutMode::fromTenant($store->tenant) === \Modules\Sales\Enums\PayoutMode::AutoSubaccount
+            && filled($subaccountCode);
+
+        if ($usesSubaccountSplit) {
+            $payload['subaccount'] = $subaccountCode;
+            $payload['bearer'] = 'account';
+            if ($gatewayChargeMinor > 0) {
+                $payload['transaction_charge'] = $gatewayChargeMinor;
+            }
+        }
+
         $response = Http::withToken($keys['secret_key'])
             ->acceptJson()
             ->asJson()
-            ->post(rtrim((string) config('services.paystack.base_url'), '/').'/transaction/initialize', [
-                'email' => $order->customer?->email,
-                'amount' => $order->total_minor,
-                'currency' => $store->tenant?->currency_code ?? 'NGN',
-                'reference' => $reference,
-                'callback_url' => StorefrontUrl::route($store, 'paystack.callback'),
-                'metadata' => [
-                    'store_id' => $store->id,
-                    'tenant_id' => $store->tenant_id,
-                    'sales_order_id' => $order->id,
-                    'order_number' => $order->order_number,
-                    'payment_method' => $data['payment_method'],
-                    'gateway_charge_minor' => $gatewayChargeMinor,
-                ],
-            ]);
+            ->post(rtrim((string) config('services.paystack.base_url'), '/').'/transaction/initialize', $payload);
 
         if (! $response->successful() || ! (bool) data_get($response->json(), 'status')) {
             throw ValidationException::withMessages([
@@ -911,6 +930,17 @@ final class StorefrontController extends Controller
             $shippingAmountMinor = (int) $lockedOrder->shipping_minor;
             $gatewayChargeMinor = (int) ($lockedOrder->gateway_charge_minor ?? 0);
             $productAmountMinor = max(0, $paidAmountMinor - $shippingAmountMinor - $gatewayChargeMinor);
+            $customerTotalMinor = max(0,
+                (int) $lockedOrder->subtotal_minor
+                + (int) $lockedOrder->tax_minor
+                + $shippingAmountMinor
+                - (int) $lockedOrder->coupon_discount_minor
+                - (int) $lockedOrder->admin_discount_minor
+            );
+            $netAmountMinor = max(0, $paidAmountMinor - $feesMinor);
+            // Split transactions are settled by Paystack straight to the merchant's bank,
+            // so the merchant portion needs no Storeboot settlement run.
+            $settledViaSubaccount = filled(data_get($payload, 'data.subaccount'));
 
             OnlineCollectedPayment::query()->updateOrCreate([
                 'tenant_id' => $lockedOrder->tenant_id,
@@ -927,11 +957,13 @@ final class StorefrontController extends Controller
                 'product_amount_minor' => $productAmountMinor,
                 'shipping_amount_minor' => $shippingAmountMinor,
                 'gateway_charge_minor' => $gatewayChargeMinor,
+                'customer_total_minor' => $customerTotalMinor,
                 'amount_minor' => $paidAmountMinor,
                 'fees_minor' => $feesMinor,
-                'net_amount_minor' => max(0, $paidAmountMinor - $feesMinor),
+                'net_amount_minor' => $netAmountMinor,
+                'storeboot_profit_minor' => $netAmountMinor - $customerTotalMinor,
                 'status' => 'successful',
-                'is_settled' => false,
+                'is_settled' => $settledViaSubaccount,
                 'collected_at' => data_get($payload, 'data.paid_at') ? (string) data_get($payload, 'data.paid_at') : now(),
                 'verified_at' => now(),
                 'raw_payload' => $payload,
@@ -1001,10 +1033,9 @@ final class StorefrontController extends Controller
 
     private function sendOrderConfirmation(OnlineStore $store, SalesOrder $order): void
     {
-        if (! app()->environment('production')) {
-            return;
-        }
-
+        // Send in every environment — the configured mail driver decides real delivery
+        // (log/array locally, a real provider in production). A missing customer email
+        // or a transport failure is swallowed so it never blocks checkout.
         $order->loadMissing(['customer', 'items', 'branch']);
 
         if (! filled($order->customer?->email)) {

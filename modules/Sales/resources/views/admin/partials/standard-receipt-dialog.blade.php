@@ -61,18 +61,7 @@
                 </tbody>
             </table>
 
-            <div class="summary-grid">
-                <div class="summary-item"><span>Subtotal</span><strong>{{ $currencySymbol }} {{ $money($order->subtotal_minor) }}</strong></div>
-                <div class="summary-item"><span>Tax</span><strong>{{ $currencySymbol }} {{ $money($order->tax_minor) }}</strong></div>
-                <div class="summary-item"><span>Delivery</span><strong>{{ $currencySymbol }} {{ $money($order->shipping_minor) }}</strong></div>
-                <div class="summary-item"><span>Discount</span><strong>-{{ $currencySymbol }} {{ $money($order->coupon_discount_minor + $order->admin_discount_minor) }}</strong></div>
-                <div class="summary-item"><span>Order total</span><strong>{{ $currencySymbol }} {{ $money($order->total_minor) }}</strong></div>
-                <div class="summary-item"><span>Amount paid</span><strong>{{ $currencySymbol }} {{ $money($order->paid_minor) }}</strong></div>
-                @if ($order->change_due_minor > 0)
-                    <div class="summary-item"><span>Change due</span><strong>{{ $currencySymbol }} {{ $money($order->change_due_minor) }}</strong></div>
-                @endif
-                <div class="summary-item"><span>Outstanding balance</span><strong>{{ $currencySymbol }} {{ $money($order->balance_minor) }}</strong></div>
-            </div>
+            @include('sales::admin.partials.order-total-flow')
 
             @if ($order->delivery_method || $order->delivery_address)
                 <div>

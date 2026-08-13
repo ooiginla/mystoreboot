@@ -115,7 +115,7 @@
                             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                                 @php
                                     $steps = [
-                                        ['Verify your email', 'Confirm your address from the verification email we just sent.'],
+                                        ['Verify your email', 'Enter the six-digit verification code we just sent.'],
                                         ['Set up your business', 'Add your business profile, branches, and payment accounts.'],
                                         ['Make your first sale', 'Add a few products and record a sale — it takes minutes.'],
                                     ];

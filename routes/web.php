@@ -24,6 +24,13 @@ Route::middleware('guest')->group(function (): void {
     Route::post('/login', [AuthenticatedSessionController::class, 'store'])->name('login.store');
     Route::get('/register', [RegisteredTenantController::class, 'create'])->name('register');
     Route::post('/register', [RegisteredTenantController::class, 'store'])->name('register.store');
+    Route::get('/email/verify', [RegisteredTenantController::class, 'verificationNotice'])->name('verification.notice');
+    Route::post('/email/verify', [RegisteredTenantController::class, 'verify'])
+        ->middleware('throttle:6,1')
+        ->name('verification.verify');
+    Route::post('/email/verification-notification', [RegisteredTenantController::class, 'resendVerification'])
+        ->middleware('throttle:3,1')
+        ->name('verification.send');
 
     // Password reset
     Route::get('/forgot-password', [PasswordResetController::class, 'create'])->name('password.request');
@@ -31,12 +38,6 @@ Route::middleware('guest')->group(function (): void {
     Route::get('/reset-password/{token}', [PasswordResetController::class, 'edit'])->name('password.reset');
     Route::post('/reset-password', [PasswordResetController::class, 'update'])->name('password.update');
 });
-
-Route::get('/email/verify/{user}', [RegisteredTenantController::class, 'verify'])
-    ->name('verification.verify');
-Route::post('/email/verification-notification', [RegisteredTenantController::class, 'resendVerification'])
-    ->middleware('guest')
-    ->name('verification.send');
 
 Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
     ->middleware('auth')
@@ -49,3 +50,15 @@ Route::post('/admin/active-branch', [ActiveBranchController::class, 'update'])
 Route::get('/admin', [\App\Http\Controllers\Admin\AdminHomeController::class, 'index'])
     ->middleware('auth')
     ->name('admin.home');
+
+Route::middleware('auth')->prefix('onboarding')->name('onboarding.')->group(function (): void {
+    Route::get('/', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'index'])->name('index');
+    Route::get('/step/{step}', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'show'])->whereNumber('step')->name('step');
+    Route::post('/username-check', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'checkUsername'])->name('username.check');
+    Route::post('/address', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'saveAddress'])->name('address');
+    Route::post('/theme', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'saveTheme'])->name('theme');
+    Route::post('/bank', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'saveBank'])->name('bank');
+    Route::post('/product/photo', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'productFromPhoto'])->name('product.photo');
+    Route::post('/product', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'saveProduct'])->name('product');
+    Route::post('/complete', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'complete'])->name('complete');
+});

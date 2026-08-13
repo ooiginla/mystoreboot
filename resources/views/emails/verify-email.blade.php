@@ -11,7 +11,7 @@
     <!--[if mso]><style>table,td,div,p,a{font-family:Arial,Helvetica,sans-serif !important;}</style><![endif]-->
 </head>
 <body style="margin:0; padding:0; width:100%; background-color:#f4f7f5; -webkit-font-smoothing:antialiased; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
-    <div style="display:none; max-height:0; overflow:hidden; opacity:0; mso-hide:all;">Confirm your email to secure your Storeboot account and sign in. This link expires in 24 hours.</div>
+    <div style="display:none; max-height:0; overflow:hidden; opacity:0; mso-hide:all;">Use your six-digit code to verify your Storeboot account. It expires in 15 minutes.</div>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f7f5;">
         <tr>
@@ -40,37 +40,15 @@
                             <div style="font-family:Arial,Helvetica,sans-serif; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#027a45;">Confirm your email</div>
                             <h1 style="margin:10px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:25px; line-height:1.25; font-weight:800; color:#0f1b16;">Verify your email address</h1>
                             <p style="margin:14px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:1.65; color:#334155;">
-                                Hi {{ $user->name }}, please confirm this is your email so we can secure your Storeboot account and get you signed in. It only takes a click.
+                                Hi {{ $user->name }}, enter this code on Storeboot to confirm your email and continue to your dashboard.
                             </p>
                         </td>
                     </tr>
 
-                    {{-- ===== CTA ===== --}}
+                    {{-- ===== Verification code ===== --}}
                     <tr>
                         <td align="center" style="padding:28px 32px 8px;">
-                            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                                <tr>
-                                    <td style="border-radius:10px; background-color:#009a53; box-shadow:0 6px 16px rgba(6,193,104,0.35);">
-                                        <a href="{{ $verificationUrl }}" target="_blank" style="display:inline-block; padding:15px 34px; font-family:Arial,Helvetica,sans-serif; font-size:16px; font-weight:700; color:#ffffff; text-decoration:none; border-radius:10px;">Verify email address</a>
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-
-                    {{-- ===== Fallback link ===== --}}
-                    <tr>
-                        <td style="padding:16px 32px 0;">
-                            <p style="margin:0 0 8px; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:1.6; color:#64748b;">
-                                If the button doesn't work, copy and paste this link into your browser:
-                            </p>
-                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f7f5; border:1px solid #e4eae7; border-radius:10px;">
-                                <tr>
-                                    <td style="padding:12px 14px; word-break:break-all;">
-                                        <a href="{{ $verificationUrl }}" target="_blank" style="font-family:Arial,Helvetica,sans-serif; font-size:12.5px; line-height:1.5; color:#027a45; text-decoration:none; word-break:break-all;">{{ $verificationUrl }}</a>
-                                    </td>
-                                </tr>
-                            </table>
+                            <div style="display:inline-block; border:1px solid #a6f4c5; border-radius:12px; background:#ecfdf3; padding:16px 24px; font-family:Arial,Helvetica,sans-serif; font-size:32px; line-height:1; font-weight:800; letter-spacing:0.24em; color:#027a45;">{{ $verificationCode }}</div>
                         </td>
                     </tr>
 
@@ -78,7 +56,7 @@
                     <tr>
                         <td style="padding:20px 32px 0;">
                             <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:1.6; color:#64748b;">
-                                ⏱ This verification link expires in <strong style="color:#0f1b16;">24 hours</strong>.
+                                ⏱ This verification code expires in <strong style="color:#0f1b16;">15 minutes</strong>. If you request another code, this one will stop working.
                             </p>
                         </td>
                     </tr>

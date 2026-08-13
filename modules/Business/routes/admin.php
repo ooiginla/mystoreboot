@@ -13,6 +13,9 @@ Route::get('/online-store/address-availability', [BusinessSetupController::class
 Route::post('/profile', [BusinessSetupController::class, 'saveProfile'])->name('profile.save');
 Route::post('/payment-methods', [BusinessSetupController::class, 'savePaymentMethods'])->name('payment-methods.save');
 Route::post('/approvals', [BusinessSetupController::class, 'saveApprovals'])->name('approvals.save');
+Route::post('/payout-settings', [BusinessSetupController::class, 'savePayoutSettings'])->name('payout.save');
+Route::get('/banks', [BusinessSetupController::class, 'banks'])->name('banks.index');
+Route::post('/resolve-account', [BusinessSetupController::class, 'resolveBankAccount'])->name('resolve-account');
 Route::post('/payment-accounts', [BusinessSetupController::class, 'storePaymentAccount'])->name('payment-accounts.store');
 Route::put('/payment-accounts/{paymentAccount}', [BusinessSetupController::class, 'updatePaymentAccount'])->name('payment-accounts.update');
 Route::delete('/payment-accounts/{paymentAccount}', [BusinessSetupController::class, 'destroyPaymentAccount'])->name('payment-accounts.destroy');

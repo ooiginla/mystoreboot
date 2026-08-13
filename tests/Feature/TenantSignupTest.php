@@ -12,6 +12,7 @@ use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
 use Modules\Finance\Models\FinanceExpenseCategory;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
+use Modules\Subscriptions\Models\Plan;
 use Modules\Subscriptions\Models\TenantSubscription;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
@@ -21,7 +22,7 @@ class TenantSignupTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_local_signup_bypasses_recaptcha_and_is_activated_automatically(): void
+    public function test_local_signup_bypasses_recaptcha_but_requires_the_email_code(): void
     {
         Mail::fake();
         $this->app->detectEnvironment(fn (): string => 'local');
@@ -45,20 +46,26 @@ class TenantSignupTest extends TestCase
         ]);
 
         $response
-            ->assertRedirect(route('login'))
-            ->assertSessionHas('status', 'Your Storeboot account has been created and activated. You can now sign in.');
+            ->assertRedirect(route('verification.notice'))
+            ->assertSessionHas('verification_email', 'local@bootup.test');
 
         $user = User::query()->where('email', 'local@bootup.test')->firstOrFail();
 
-        $this->assertNotNull($user->email_verified_at);
+        $this->assertNull($user->email_verified_at);
+        $this->assertMatchesRegularExpression('/^\d{6}$/', $user->email_verification_code);
+        $this->assertTrue($user->email_verification_code_expires_at->isFuture());
         Http::assertNothingSent();
-        Mail::assertNotSent(VerifyEmailMail::class);
+        Mail::assertSent(VerifyEmailMail::class, fn (VerifyEmailMail $mail): bool => $mail->user->is($user)
+            && $mail->verificationCode === $user->email_verification_code);
 
-        $this->post(route('login.store'), [
+        $this->post(route('verification.verify'), [
             '_token' => 'local-test-token',
             'email' => 'local@bootup.test',
-            'password' => 'password123',
+            'code' => $user->email_verification_code,
         ])->assertRedirect(route('admin.home'));
+
+        $this->assertNotNull($user->refresh()->email_verified_at);
+        $this->assertNull($user->email_verification_code);
 
         // admin.home dispatches the owner to the first area their role can access.
         $this->get(route('admin.home'))->assertRedirect(route('admin.analytics.index'));
@@ -91,7 +98,7 @@ class TenantSignupTest extends TestCase
             'g-recaptcha-response' => 'valid-token',
         ]);
 
-        $response->assertRedirect(route('login'));
+        $response->assertRedirect(route('verification.notice'));
 
         $tenant = Tenant::query()->where('slug', 'bootup-retail')->firstOrFail();
         $user = User::query()->where('email', 'owner@bootup.test')->firstOrFail();
@@ -114,46 +121,76 @@ class TenantSignupTest extends TestCase
         ]);
         $this->assertSame(1, Branch::query()->where('tenant_id', $tenant->id)->count());
         $this->assertSame(SubscriptionStatus::Trialing, $subscription->status);
-        $this->assertGreaterThan(0, $subscription->plan->modules->count());
+        $this->assertSame('starter', $subscription->plan->slug);
+        $this->assertEqualsCanonicalizing(
+            ['access', 'business', 'catalog', 'finance', 'inventory', 'retail-pos', 'sales', 'subscriptions'],
+            $subscription->plan->modules->pluck('slug')->all(),
+        );
         $this->assertTrue(FinanceExpenseCategory::query()->where('tenant_id', $tenant->id)->where('code', 'office-supplies')->exists());
         $this->assertTrue(FinanceExpenseCategory::query()->where('tenant_id', $tenant->id)->where('code', 'bank-pos-and-gateway-charges')->exists());
 
         Mail::assertSent(TenantWelcomeMail::class, fn (TenantWelcomeMail $mail): bool => $mail->tenant->is($tenant) && $mail->user->is($user));
 
-        $verificationUrl = null;
-        Mail::assertSent(VerifyEmailMail::class, function (VerifyEmailMail $mail) use ($user, &$verificationUrl): bool {
-            $verificationUrl = $mail->verificationUrl;
-
-            return $mail->user->is($user);
-        });
-
-        $this->assertNotNull($verificationUrl);
+        $verificationCode = $user->email_verification_code;
+        $this->assertMatchesRegularExpression('/^\d{6}$/', $verificationCode);
+        Mail::assertSent(VerifyEmailMail::class, fn (VerifyEmailMail $mail): bool => $mail->user->is($user)
+            && $mail->verificationCode === $verificationCode);
 
         $this->post(route('login.store'), [
             'email' => 'owner@bootup.test',
             'password' => 'password123',
         ])
-            ->assertRedirect(route('login'))
-            ->assertSessionHasErrors('email')
-            ->assertSessionHas('unverified_email', 'owner@bootup.test');
+            ->assertRedirect(route('verification.notice'))
+            ->assertSessionHasErrors('code')
+            ->assertSessionHas('verification_email', 'owner@bootup.test');
 
         $this->assertGuest();
 
-        $this->get($verificationUrl)
-            ->assertRedirect(route('login'))
-            ->assertSessionHas('status', 'Email verified. You can now sign in.');
+        $this->post(route('verification.verify'), [
+            'email' => 'owner@bootup.test',
+            'code' => $verificationCode,
+        ])->assertRedirect(route('admin.home'));
 
         $this->assertNotNull($user->refresh()->email_verified_at);
-
-        $this->post(route('login.store'), [
-            'email' => 'owner@bootup.test',
-            'password' => 'password123',
-        ])->assertRedirect(route('admin.home'));
+        $this->assertNull($user->email_verification_code);
 
         // admin.home dispatches the owner to the first area their role can access.
         $this->get(route('admin.home'))->assertRedirect(route('admin.analytics.index'));
 
         $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_signup_preserves_modules_customized_for_the_starter_plan(): void
+    {
+        Mail::fake();
+        $this->app->detectEnvironment(fn (): string => 'local');
+        $this->withSession(['_token' => 'starter-plan-test-token']);
+        $starter = Plan::query()->create([
+            'name' => 'Starter',
+            'slug' => 'starter',
+            'monthly_price_minor' => 0,
+            'yearly_price_minor' => 0,
+            'currency_code' => 'NGN',
+            'is_active' => true,
+        ]);
+
+        $this->post(route('register.store'), [
+            '_token' => 'starter-plan-test-token',
+            'business_name' => 'Simple Retail',
+            'business_category' => 'retail',
+            'city' => 'Lagos',
+            'country' => 'NG',
+            'name' => 'Simple Owner',
+            'email' => 'simple@bootup.test',
+            'phone' => '+2348033333333',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ])->assertRedirect(route('verification.notice'));
+
+        $subscription = TenantSubscription::query()->firstOrFail();
+
+        $this->assertSame($starter->id, $subscription->plan_id);
+        $this->assertSame(0, $starter->modules()->count());
     }
 
     public function test_signup_requires_a_whatsapp_phone_number(): void
@@ -216,6 +253,8 @@ class TenantSignupTest extends TestCase
 
         $user = User::factory()->unverified()->create([
             'email' => 'unverified@bootup.test',
+            'email_verification_code' => '111111',
+            'email_verification_code_expires_at' => now()->addMinutes(5),
         ]);
 
         $this->post(route('verification.send'), [
@@ -224,6 +263,10 @@ class TenantSignupTest extends TestCase
             ->assertRedirect()
             ->assertSessionHas('status');
 
-        Mail::assertSent(VerifyEmailMail::class, fn (VerifyEmailMail $mail): bool => $mail->user->is($user));
+        $user->refresh();
+        $this->assertNotSame('111111', $user->email_verification_code);
+        $this->assertTrue($user->email_verification_code_expires_at->isFuture());
+        Mail::assertSent(VerifyEmailMail::class, fn (VerifyEmailMail $mail): bool => $mail->user->is($user)
+            && $mail->verificationCode === $user->email_verification_code);
     }
 }

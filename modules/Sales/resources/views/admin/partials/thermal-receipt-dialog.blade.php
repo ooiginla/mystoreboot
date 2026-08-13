@@ -96,13 +96,15 @@
             <div class="receipt-rule"></div>
 
             <div class="receipt-totals">
-                <span>Subtotal</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->subtotal_minor) }}</strong>
-                <span>Tax</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->tax_minor) }}</strong>
-                <span>Delivery</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->shipping_minor) }}</strong>
-                <span>Discount</span><strong>-{{ $receiptCurrencySymbol }} {{ $money($order->coupon_discount_minor + $order->admin_discount_minor) }}</strong>
-                <span class="receipt-grand-total">Total</span><strong class="receipt-grand-total">{{ $receiptCurrencySymbol }} {{ $money($order->total_minor) }}</strong>
-                <span>Paid</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->paid_minor) }}</strong>
-                <span>Balance</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->balance_minor) }}</strong>
+                @if ($order->subtotal_minor > 0)<span>Subtotal</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->subtotal_minor) }}</strong>@endif
+                @if ($order->tax_minor > 0)<span>+ Tax</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->tax_minor) }}</strong>@endif
+                @if ($order->coupon_discount_minor > 0)<span>− Coupon</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->coupon_discount_minor) }}</strong>@endif
+                @if ($order->admin_discount_minor > 0)<span>− Discount</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->admin_discount_minor) }}</strong>@endif
+                @if ($order->shipping_minor > 0)<span>+ Delivery amount</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->shipping_minor) }}</strong>@endif
+                @if ($order->gateway_charge_minor > 0)<span>+ Gateway fee</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->gateway_charge_minor) }}</strong>@endif
+                @if ($order->total_minor > 0)<span class="receipt-grand-total">= Order total</span><strong class="receipt-grand-total">{{ $receiptCurrencySymbol }} {{ $money($order->total_minor) }}</strong>@endif
+                @if ($order->paid_minor > 0)<span>− Amount paid</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->paid_minor) }}</strong>@endif
+                <span>= Outstanding balance</span><strong>{{ $receiptCurrencySymbol }} {{ $money($order->balance_minor) }}</strong>
             </div>
 
             <div class="receipt-rule"></div>

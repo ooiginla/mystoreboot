@@ -18,13 +18,13 @@ final class VerifyEmailMail extends Mailable
 
     public function __construct(
         public readonly User $user,
-        public readonly string $verificationUrl,
+        public readonly string $verificationCode,
     ) {}
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Verify your Storeboot email',
+            subject: 'Your Storeboot verification code',
         );
     }
 

@@ -630,7 +630,7 @@ class StorefrontFrontendTest extends TestCase
             'city' => 'Lagos',
             'is_default' => true,
         ]);
-        Mail::assertNothingSent();
+        Mail::assertSent(OnlineOrderConfirmationMail::class, fn (OnlineOrderConfirmationMail $mail): bool => $mail->hasTo('ada@example.com'));
 
         (new OnlineOrderConfirmationMail($store->load('tenant'), $order))
             ->assertSeeInHtml($order->order_number)
@@ -838,6 +838,7 @@ class StorefrontFrontendTest extends TestCase
             'payment_status' => 'pending',
             'order_date' => now()->toDateString(),
             'payment_method' => 'self_hosted_paystack',
+            'subtotal_minor' => 650000,
             'gateway_charge_minor' => 9850,
             'total_minor' => 659850,
         ]);
@@ -864,7 +865,9 @@ class StorefrontFrontendTest extends TestCase
             'product_amount_minor' => 650000,
             'shipping_amount_minor' => 0,
             'gateway_charge_minor' => 9850,
+            'customer_total_minor' => 650000,
             'amount_minor' => 659850,
+            'storeboot_profit_minor' => 9850,
             'is_settled' => false,
         ]);
         Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer sk_test_tenant'));

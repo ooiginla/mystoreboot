@@ -24,6 +24,78 @@
     @if (session('status'))
         <div class="alert">{{ session('status') }}</div>
     @endif
+
+    @php
+        $maskedAccount = ($settlementBank['account_number'] ?? '') !== ''
+            ? '••••'.substr((string) $settlementBank['account_number'], -4)
+            : null;
+        $isDirect = $payoutMode === \Modules\Sales\Enums\PayoutMode::AutoSubaccount;
+    @endphp
+
+    <section class="panel" style="margin-bottom: 18px;">
+        <div class="panel-header">
+            <div>
+                <h2 class="panel-title">Payouts</h2>
+                <p class="subtle">How your online earnings reach your bank.</p>
+            </div>
+            <span class="badge">{{ $payoutMode->label() }}</span>
+        </div>
+        <div class="panel-body">
+            @if (! empty($settlementBank['account_name']))
+                <p class="subtle" style="margin:0 0 14px;">
+                    Settlement account: <strong>{{ $settlementBank['account_name'] }}</strong>
+                    @if (! empty($settlementBank['bank_name'])) · {{ $settlementBank['bank_name'] }}@endif
+                    @if ($maskedAccount) · {{ $maskedAccount }}@endif
+                    @if ($isDirect) <span class="subtle">— Paystack settles each sale straight to this account (T+1).</span>@endif
+                </p>
+            @else
+                <div class="alert" style="margin-bottom:14px;">No settlement bank set yet. Add it under <strong>Online Store → Payment → Storeboot Paystack</strong> to receive online payouts.</div>
+            @endif
+            <div class="stats-grid">
+                <div class="stat"><span class="subtle">Online earnings</span><strong>{{ $money($stats['earnings_minor']) }}</strong></div>
+                <div class="stat"><span class="subtle">{{ $isDirect ? 'Settled to your bank' : 'Settled' }}</span><strong>{{ $money($stats['earnings_settled_minor']) }}</strong></div>
+                <div class="stat"><span class="subtle">Pending</span><strong>{{ $money($stats['earnings_pending_minor']) }}</strong></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel" style="margin-bottom: 18px;">
+        <div class="panel-header">
+            <div>
+                <h2 class="panel-title">Online payments</h2>
+                <p class="subtle">Each verified online sale and its settlement status.</p>
+            </div>
+        </div>
+        <div class="panel-body">
+            @if ($payments->isEmpty())
+                <div class="empty">No online payments yet.</div>
+            @else
+                <div class="table-scroll">
+                    <table class="table">
+                        <thead><tr><th>Date</th><th>Order</th><th>Customer</th><th>Earnings</th><th>Status</th></tr></thead>
+                        <tbody>
+                            @foreach ($payments as $payment)
+                                <tr>
+                                    <td class="subtle">{{ $payment->collected_at?->format('M j, Y') }}</td>
+                                    <td><div class="cell-title">{{ $payment->order?->order_number ?? '—' }}</div></td>
+                                    <td>{{ $payment->order?->customer?->name ?? $payment->customer_email }}</td>
+                                    <td>{{ $money((int) $payment->customer_total_minor) }}</td>
+                                    <td>
+                                        @if ($payment->is_settled)
+                                            <span class="badge">{{ $isDirect ? 'Settled → bank' : 'Settled' }}</span>
+                                        @else
+                                            <span class="badge neutral">Pending</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+        </div>
+    </section>
+
     <div class="stats-grid" style="margin-bottom: 18px;">
         <div class="stat"><span class="subtle">Unsettled payments</span><strong>{{ $stats['unsettled_count'] }}</strong></div>
         <div class="stat"><span class="subtle">Unsettled amount</span><strong>{{ $money($stats['unsettled_minor']) }}</strong></div>

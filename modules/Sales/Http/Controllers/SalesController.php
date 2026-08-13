@@ -442,18 +442,37 @@ final class SalesController extends Controller
             ->latest('collected_at')
             ->get();
 
+        // Direct-settlement (subaccount) payout model: earnings are the merchant's goods
+        // value; "settled" means Paystack has paid it to the merchant's bank.
+        $payments = OnlineCollectedPayment::query()
+            ->with('order.customer')
+            ->where('tenant_id', $tenant->id)
+            ->where('status', 'successful')
+            ->latest('collected_at')
+            ->limit(50)
+            ->get();
+        $payoutMode = \Modules\Sales\Enums\PayoutMode::fromTenant($tenant);
+        $onlineStore = \Modules\Business\Models\OnlineStore::query()->where('tenant_id', $tenant->id)->first();
+        $settlementBank = (array) ($onlineStore?->payment_settings['settlement_bank_account'] ?? []);
+
         return view('sales::admin.settlements.index', [
             'tenant' => $tenant,
             'tenants' => $tenants,
             'isPlatformAdmin' => $user->is_platform_admin,
             'settlements' => $settlements,
             'unsettledPayments' => $unsettledPayments,
+            'payments' => $payments,
+            'payoutMode' => $payoutMode,
+            'settlementBank' => $settlementBank,
             'stats' => [
                 'unsettled_count' => $unsettledPayments->count(),
                 'unsettled_minor' => $unsettledPayments->sum('amount_minor'),
                 'settled_minor' => $settlements->sum('total_settled_minor'),
                 'total_gateway_charge_minor' => $settlements->sum('total_gateway_charge_minor'),
                 'storeboot_charges_minor' => $settlements->sum('storeboot_charges_minor'),
+                'earnings_minor' => (int) $payments->sum('customer_total_minor'),
+                'earnings_settled_minor' => (int) $payments->where('is_settled', true)->sum('customer_total_minor'),
+                'earnings_pending_minor' => (int) $payments->where('is_settled', false)->sum('customer_total_minor'),
             ],
         ]);
     }
@@ -688,7 +707,7 @@ final class SalesController extends Controller
 
         return response()->streamDownload(function () use ($settlement): void {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['Settlement', 'Order', 'Payment Reference', 'Customer', 'Email', 'Collected At', 'Currency', 'Product Amount', 'Shipping Amount', 'Gateway Charge', 'Amount', 'Fees', 'Net', 'Status']);
+            fputcsv($handle, ['Settlement', 'Order', 'Payment Reference', 'Customer', 'Email', 'Collected At', 'Currency', 'Product Amount', 'Shipping Amount', 'Gateway Charge', 'Customer Total', 'Amount', 'Fees', 'Net', 'Storeboot Profit', 'Status']);
 
             foreach ($settlement->payments as $payment) {
                 fputcsv($handle, [
@@ -702,9 +721,11 @@ final class SalesController extends Controller
                     number_format($payment->product_amount_minor / 100, 2, '.', ''),
                     number_format($payment->shipping_amount_minor / 100, 2, '.', ''),
                     number_format($payment->gateway_charge_minor / 100, 2, '.', ''),
+                    number_format($payment->customer_total_minor / 100, 2, '.', ''),
                     number_format($payment->amount_minor / 100, 2, '.', ''),
                     number_format($payment->fees_minor / 100, 2, '.', ''),
                     number_format($payment->net_amount_minor / 100, 2, '.', ''),
+                    number_format($payment->storeboot_profit_minor / 100, 2, '.', ''),
                     $payment->status,
                 ]);
             }

@@ -10,10 +10,10 @@ use App\Mail\VerifyEmailMail;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -47,8 +47,6 @@ final class RegisteredTenantController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $localSignupBypassEnabled = $this->localSignupBypassEnabled();
-
         $data = $request->validate([
             'business_name' => ['required', 'string', 'max:160'],
             'business_category' => ['required', Rule::in(array_column(BusinessType::cases(), 'value'))],
@@ -70,7 +68,7 @@ final class RegisteredTenantController extends Controller
             ],
         ]);
 
-        [$tenant, $user] = DB::transaction(function () use ($data, $localSignupBypassEnabled): array {
+        [$tenant, $user] = DB::transaction(function () use ($data): array {
             $tenant = Tenant::query()->create([
                 'name' => $data['business_name'],
                 'slug' => $this->uniqueTenantSlug($data['business_name']),
@@ -95,10 +93,6 @@ final class RegisteredTenantController extends Controller
                 'password' => $data['password'],
                 'is_platform_admin' => false,
             ]);
-
-            if ($localSignupBypassEnabled) {
-                $user->forceFill(['email_verified_at' => now()])->save();
-            }
 
             // Seed the atomic permission catalogue and every system role template,
             // then make the founding user a protected Business Owner.
@@ -130,7 +124,7 @@ final class RegisteredTenantController extends Controller
 
             TenantSubscription::query()->create([
                 'tenant_id' => $tenant->id,
-                'plan_id' => $this->allModulesTrialPlan()->id,
+                'plan_id' => $this->starterPlan()->id,
                 'status' => SubscriptionStatus::Trialing,
                 'billing_interval' => 'monthly',
                 'trial_ends_at' => $tenant->trial_ends_at,
@@ -144,33 +138,55 @@ final class RegisteredTenantController extends Controller
         });
 
         Mail::to($user->email)->send(new TenantWelcomeMail($tenant, $user));
-
-        if (! $localSignupBypassEnabled) {
-            Mail::to($user->email)->send(new VerifyEmailMail($user, $this->verificationUrl($user)));
-        }
+        $this->sendVerificationCode($user);
 
         return redirect()
-            ->route('login')
-            ->with(
-                'status',
-                $localSignupBypassEnabled
-                    ? 'Your Storeboot account has been created and activated. You can now sign in.'
-                    : 'Your Storeboot account has been created. We sent a welcome email and a verification email. Please verify your email before signing in.',
-            );
+            ->route('verification.notice')
+            ->with('verification_email', $user->email)
+            ->with('status', 'Your account has been created. Enter the six-digit code sent to your email.');
     }
 
-    public function verify(Request $request, User $user): RedirectResponse
+    public function verificationNotice(Request $request): View
     {
-        abort_unless($request->hasValidSignature(), 403);
-        abort_unless(hash_equals(sha1($user->email), (string) $request->query('hash')), 403);
+        return view('auth.verify-email', [
+            'email' => old('email', session('verification_email', $request->query('email', ''))),
+        ]);
+    }
 
-        if (! $user->email_verified_at) {
-            $user->forceFill(['email_verified_at' => now()])->save();
+    public function verify(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email:rfc'],
+            'code' => ['required', 'digits:6'],
+        ]);
+
+        $user = User::query()->where('email', Str::lower($data['email']))->first();
+
+        if (! $user || $user->email_verified_at || ! $user->email_verification_code
+            || ! hash_equals($user->email_verification_code, $data['code'])) {
+            return back()
+                ->withInput(['email' => $data['email']])
+                ->withErrors(['code' => 'The verification code is invalid.']);
         }
 
+        if (! $user->email_verification_code_expires_at || $user->email_verification_code_expires_at->isPast()) {
+            return back()
+                ->withInput(['email' => $data['email']])
+                ->withErrors(['code' => 'This verification code has expired. Please request a new code.']);
+        }
+
+        $user->forceFill([
+            'email_verified_at' => now(),
+            'email_verification_code' => null,
+            'email_verification_code_expires_at' => null,
+        ])->save();
+
+        Auth::login($user);
+        $request->session()->regenerate();
+
         return redirect()
-            ->route('login')
-            ->with('status', 'Email verified. You can now sign in.');
+            ->route('onboarding.index')
+            ->with('status', 'Email verified. Welcome to Storeboot.');
     }
 
     public function resendVerification(Request $request): RedirectResponse
@@ -182,22 +198,25 @@ final class RegisteredTenantController extends Controller
         $user = User::query()->where('email', Str::lower($data['email']))->first();
 
         if ($user && ! $user->email_verified_at) {
-            Mail::to($user->email)->send(new VerifyEmailMail($user, $this->verificationUrl($user)));
+            $this->sendVerificationCode($user);
         }
 
-        return back()->with('status', 'If that email is registered and unverified, we have resent the verification email. Please check your inbox and spam messages.');
+        return redirect()
+            ->route('verification.notice')
+            ->with('verification_email', Str::lower($data['email']))
+            ->with('status', 'If that email is registered and unverified, a new code has been sent.');
     }
 
-    private function verificationUrl(User $user): string
+    private function sendVerificationCode(User $user): void
     {
-        return URL::temporarySignedRoute(
-            'verification.verify',
-            now()->addHours(24),
-            [
-                'user' => $user->id,
-                'hash' => sha1($user->email),
-            ],
-        );
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+        $user->forceFill([
+            'email_verification_code' => $code,
+            'email_verification_code_expires_at' => now()->addMinutes(15),
+        ])->save();
+
+        Mail::to($user->email)->send(new VerifyEmailMail($user, $code));
     }
 
     private function recaptchaEnabled(): bool
@@ -229,34 +248,48 @@ final class RegisteredTenantController extends Controller
         return $response->ok() && (bool) $response->json('success');
     }
 
-    private function allModulesTrialPlan(): Plan
+    private function starterPlan(): Plan
     {
         $this->ensureBillableModules();
 
-        $plan = Plan::query()->where('slug', 'all-modules-trial')->first();
+        $plan = Plan::query()->where('slug', 'starter')->first();
 
         if (! $plan) {
             $plan = Plan::query()->create([
-                'name' => 'All Modules Trial',
-                'slug' => 'all-modules-trial',
-                'sort_order' => 1,
+                'name' => 'Starter',
+                'slug' => 'starter',
+                'sort_order' => 10,
                 'monthly_price_minor' => 0,
                 'yearly_price_minor' => 0,
                 'currency_code' => 'NGN',
-                'limits' => ['trial' => true],
+                'limits' => [
+                    'branches' => 1,
+                    'users' => 2,
+                    'products' => 100,
+                    'invoices_per_month' => 100,
+                ],
                 'is_active' => true,
             ]);
-        }
 
-        $modules = Module::query()->where('is_active', true)->get();
+            $moduleIds = Module::query()
+                ->whereIn('slug', [
+                    'business',
+                    'access',
+                    'subscriptions',
+                    'catalog',
+                    'inventory',
+                    'sales',
+                    'retail-pos',
+                    'finance',
+                ])
+                ->pluck('id');
 
-        foreach ($modules as $module) {
-            $plan->modules()->syncWithoutDetaching([
-                $module->id => [
+            $plan->modules()->sync($moduleIds->mapWithKeys(
+                fn (int $moduleId): array => [$moduleId => [
                     'is_enabled' => true,
                     'limits' => null,
-                ],
-            ]);
+                ]],
+            )->all());
         }
 
         return $plan->refresh();

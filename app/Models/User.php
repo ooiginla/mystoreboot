@@ -19,7 +19,7 @@ use Modules\Access\Support\PermissionService;
 use Modules\Tenancy\Models\Tenant;
 
 #[Fillable(['name', 'email', 'password', 'is_platform_admin'])]
-#[Hidden(['password', 'remember_token'])]
+#[Hidden(['password', 'remember_token', 'email_verification_code'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -34,6 +34,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'email_verification_code_expires_at' => 'datetime',
             'password' => 'hashed',
             'is_platform_admin' => 'boolean',
         ];

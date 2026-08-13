@@ -146,6 +146,7 @@
                     <div class="row"><span>Subtotal</span><span>{{ $currencySymbol }} {{ $money($order->subtotal_minor) }}</span></div>
                     @if ($order->tax_minor > 0)<div class="row"><span>Tax</span><span>{{ $currencySymbol }} {{ $money($order->tax_minor) }}</span></div>@endif
                     <div class="row"><span>Delivery fee</span><span>{{ $currencySymbol }} {{ $money($order->shipping_minor) }}</span></div>
+                    @if ($order->gateway_charge_minor > 0)<div class="row"><span>Gateway fee</span><span>{{ $currencySymbol }} {{ $money($order->gateway_charge_minor) }}</span></div>@endif
                     @if (($order->coupon_discount_minor + $order->admin_discount_minor) > 0)<div class="row"><span>Discounts</span><span>−{{ $currencySymbol }} {{ $money($order->coupon_discount_minor + $order->admin_discount_minor) }}</span></div>@endif
                     <div class="row grand"><span>Total</span><span>{{ $currencySymbol }} {{ $money($order->total_minor) }}</span></div>
                     @if ($order->balance_minor > 0)<div class="row"><span>Balance due</span><span>{{ $currencySymbol }} {{ $money($order->balance_minor) }}</span></div>@endif
