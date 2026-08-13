@@ -303,13 +303,16 @@ final class StorefrontController extends Controller
         $timeline = [];
 
         if ($reference !== '') {
-            // Scope to THIS store's tenant so one storefront can only reveal its
-            // own orders, even though tracking references are globally unique.
+            // Scope to THIS store's tenant before matching either public reference,
+            // so a storefront can never reveal another business's order.
             $order = SalesOrder::query()
                 ->with(['items', 'customer', 'payments'])
                 ->where('tenant_id', $store->tenant_id)
                 ->where('source', 'online')
-                ->where('tracking_reference', $reference)
+                ->where(function ($query) use ($reference): void {
+                    $query->where('tracking_reference', $reference)
+                        ->orWhere('order_number', $reference);
+                })
                 ->first();
 
             if ($order) {
@@ -669,7 +672,13 @@ final class StorefrontController extends Controller
             ], 422);
         }
 
-        $this->sendOrderConfirmation($store, $order);
+        // Prepaid online payments (Paystack) are still "Pending" here — they only become
+        // "Paid" once the gateway callback is verified — so their confirmation email is sent
+        // from verifyPaystackPayment() instead, when it reflects the real paid status.
+        // Pay-on-delivery / place-order are legitimately pending now, so confirm immediately.
+        if (! in_array($order->payment_method, ['storeboot_paystack', 'self_hosted_paystack'], true)) {
+            $this->sendOrderConfirmation($store, $order);
+        }
 
         return response()->json([
             'order_id' => $order->id,
@@ -906,6 +915,8 @@ final class StorefrontController extends Controller
                 ->with('payment_error', 'The verified Paystack payment did not match this order.');
         }
 
+        $wasPaid = $order->payment_status === SalesPaymentStatus::Paid;
+
         DB::transaction(function () use ($order, $reference, $amountMinor, $payload): void {
             $lockedOrder = SalesOrder::query()->lockForUpdate()->findOrFail($order->id);
             $payment = SalesOrderPayment::query()
@@ -994,6 +1005,13 @@ final class StorefrontController extends Controller
                 'deposit_received',
             );
         });
+
+        // Send the order confirmation now that payment is verified — but only on the
+        // transition into Paid, so a second verify (e.g. Paystack callback + the
+        // browser redirect both firing) doesn't email the customer twice.
+        if (! $wasPaid && $order->refresh()->payment_status === SalesPaymentStatus::Paid) {
+            $this->sendOrderConfirmation($store, $order);
+        }
 
         if ($request->expectsJson()) {
             return response()->json([

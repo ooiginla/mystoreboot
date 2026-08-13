@@ -32,14 +32,14 @@
 @section('content')
 <section class="store-shell track-wrap">
     <h1 style="font-size: 26px; font-weight: 800; color: #0f1b16;">Track your order</h1>
-    <p style="color: var(--store-muted); margin-top: 6px;">Enter the tracking reference from your order confirmation email.</p>
+    <p style="color: var(--store-muted); margin-top: 6px;">Enter your sales order reference or tracking reference from the order confirmation email.</p>
 
     <form method="GET" action="{{ $storefrontRoute($store, 'track') }}" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px;">
         <input
             type="text"
             name="reference"
             value="{{ $reference }}"
-            placeholder="e.g. TRK-4KQ7MPX2"
+            placeholder="e.g. SO-20260813-00002"
             required
             style="flex: 1 1 220px; min-width: 0; padding: 12px 14px; border: 1px solid var(--store-line); border-radius: 10px; font-size: 15px; text-transform: uppercase;"
         >
@@ -49,7 +49,7 @@
     @if ($searched && ! $order)
         <div class="track-card" style="margin-top: 22px; border-color: #f2c7c1; background: #fff5f4;">
             <strong style="color: #b42318;">No order found</strong>
-            <p style="margin: 6px 0 0; color: var(--store-muted);">We couldn't find an order with reference <strong>{{ $reference }}</strong> for this store. Check the reference in your confirmation email and try again.</p>
+            <p style="margin: 6px 0 0; color: var(--store-muted);">We couldn't find an online order with reference <strong>{{ $reference }}</strong> for this store. Check the reference in your confirmation email and try again.</p>
         </div>
     @endif
 

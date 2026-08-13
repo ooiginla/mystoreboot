@@ -392,6 +392,89 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('We will be back soon');
     }
 
+    public function test_order_tracking_accepts_sales_order_reference_and_remains_tenant_scoped(): void
+    {
+        [$firstTenant, $firstStore] = $this->storeFixture([
+            'username' => 'first-tracking-store',
+            'subdomain' => 'first-tracking-store',
+            'store_name' => 'First Tracking Store',
+        ]);
+        $secondTenant = Tenant::query()->create([
+            'name' => 'Second Tracking Tenant',
+            'slug' => 'second-tracking-tenant',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+        ]);
+        $secondStore = OnlineStore::query()->create([
+            'tenant_id' => $secondTenant->id,
+            'username' => 'second-tracking-store',
+            'subdomain' => 'second-tracking-store',
+            'store_name' => 'Second Tracking Store',
+            'theme_primary_color' => '#005f73',
+            'theme_secondary_color' => '#ee9b00',
+            'payment_methods' => [],
+            'shipping_options' => [],
+            'social_accounts' => [],
+            'pages' => [],
+            'faqs' => [],
+            'is_active' => true,
+            'maintenance_mode' => false,
+        ]);
+        $sharedOrderNumber = 'SO-20260813-00002';
+
+        $firstOrder = SalesOrder::query()->create([
+            'tenant_id' => $firstTenant->id,
+            'source' => 'online',
+            'order_number' => $sharedOrderNumber,
+            'invoice_number' => 'INV-FIRST-00002',
+            'receipt_number' => 'RCT-FIRST-00002',
+            'order_status' => 'pending',
+            'payment_status' => 'unpaid',
+            'order_date' => now()->toDateString(),
+            'subtotal_minor' => 125000,
+            'total_minor' => 125000,
+        ]);
+        $secondOrder = SalesOrder::query()->create([
+            'tenant_id' => $secondTenant->id,
+            'source' => 'online',
+            'order_number' => $sharedOrderNumber,
+            'invoice_number' => 'INV-SECOND-00002',
+            'receipt_number' => 'RCT-SECOND-00002',
+            'order_status' => 'processing',
+            'payment_status' => 'paid',
+            'order_date' => now()->toDateString(),
+            'subtotal_minor' => 975000,
+            'total_minor' => 975000,
+        ]);
+
+        $this->get(route('storefront.storefront.store.track', [
+            $firstStore,
+            'reference' => strtolower($sharedOrderNumber),
+        ]))
+            ->assertOk()
+            ->assertSee('Order '.$sharedOrderNumber)
+            ->assertSee('₦ 1,250.00')
+            ->assertDontSee('₦ 9,750.00');
+
+        $this->get(route('storefront.storefront.store.track', [
+            $firstStore,
+            'reference' => $secondOrder->tracking_reference,
+        ]))
+            ->assertOk()
+            ->assertSee('No order found')
+            ->assertDontSee('Order '.$sharedOrderNumber);
+
+        $this->get(route('storefront.storefront.store.track', [
+            $secondStore,
+            'reference' => $firstOrder->tracking_reference,
+        ]))
+            ->assertOk()
+            ->assertSee('No order found');
+    }
+
     public function test_storefront_content_pages_use_configured_copy(): void
     {
         [, $store] = $this->storeFixture([
