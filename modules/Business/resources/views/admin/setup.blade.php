@@ -503,7 +503,9 @@
                 <a href="#departments" role="tab" data-tab-target="departments">Departments / units <span class="badge neutral">{{ $departments->count() }}</span></a>
                 <a href="#roles" role="tab" data-tab-target="roles">User roles <span class="badge neutral">{{ $roles->count() }}</span></a>
                 <a href="#users" role="tab" data-tab-target="users">Organization users <span class="badge neutral">{{ $memberships->count() }}</span></a>
-                <a href="#approvals" role="tab" data-tab-target="approvals">Approvals @if ($approvalsEnabled)<span class="badge">On</span>@else<span class="badge neutral">Off</span>@endif</a>
+                @unless ($isStarterPlan)
+                    <a href="#approvals" role="tab" data-tab-target="approvals">Approvals @if ($approvalsEnabled)<span class="badge">On</span>@else<span class="badge neutral">Off</span>@endif</a>
+                @endunless
             </nav>
             @endunless
 
@@ -1439,6 +1441,7 @@
                     </div>
                 </section>
 
+                @unless ($isStarterPlan)
                 <section class="panel tab-panel" id="approvals" role="tabpanel" data-tab-panel hidden>
                     <div class="panel-header">
                         <div>
@@ -1486,6 +1489,7 @@
                         @endif
                     </div>
                 </section>
+                @endunless
 
             </div>
         </div>
@@ -1570,15 +1574,23 @@
                         </div>
                         <div class="field"><label for="tax_identifier">Tax identifier</label><input id="tax_identifier" name="tax_identifier" value="{{ old('tax_identifier', $tenant?->tax_identifier) }}"></div>
                         <div class="field"><label for="default_tax_rate">Default tax rate (%)</label><input id="default_tax_rate" name="default_tax_rate" type="number" step="0.01" min="0" max="100" value="{{ old('default_tax_rate', $tenant?->default_tax_rate ?? 0) }}" required></div>
-                        <div class="field">
-                            <label for="plan_id">Subscription plan</label>
-                            <select id="plan_id" name="plan_id">
-                                <option value="">No plan selected</option>
-                                @foreach ($plans as $plan)
-                                    <option value="{{ $plan->id }}" data-has-inventory="{{ $plan->modules->contains(fn ($module) => $module->slug === 'inventory' && (bool) ($module->pivot->is_enabled ?? true)) ? '1' : '0' }}" @selected((string) old('plan_id', $selectedPlanId) === (string) $plan->id)>{{ $plan->name }}</option>
-                                @endforeach
-                            </select>
-                        </div>
+                        @if ($isPlatformAdmin)
+                            <div class="field">
+                                <label for="plan_id">Subscription plan</label>
+                                <select id="plan_id" name="plan_id">
+                                    <option value="">No plan selected</option>
+                                    @foreach ($plans as $plan)
+                                        <option value="{{ $plan->id }}" data-has-inventory="{{ $plan->modules->contains(fn ($module) => $module->slug === 'inventory' && (bool) ($module->pivot->is_enabled ?? true)) ? '1' : '0' }}" @selected((string) old('plan_id', $selectedPlanId) === (string) $plan->id)>{{ $plan->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        @else
+                            <div class="field">
+                                <label>Subscription plan</label>
+                                <input value="{{ $selectedPlan?->name ?? 'No plan assigned' }}" disabled aria-label="Current subscription plan">
+                                <small>Only Storeboot can change your subscription plan.</small>
+                            </div>
+                        @endif
                         <div class="field full" data-estimated-cost-cogs-setting @if ($selectedPlanHasInventory) hidden @endif>
                             <label><input type="hidden" name="use_estimated_cost_for_cogs" value="0" @disabled($selectedPlanHasInventory)><input type="checkbox" name="use_estimated_cost_for_cogs" value="1" @checked($useEstimatedCostForCogs) @disabled($selectedPlanHasInventory)> Use Estimated cost for COGS</label>
                         </div>

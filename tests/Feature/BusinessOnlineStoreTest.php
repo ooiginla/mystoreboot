@@ -319,8 +319,8 @@ class BusinessOnlineStoreTest extends TestCase
         $response = $this->actingAs($user)
             ->get(route('admin.business.online-store.index', ['tenant' => $tenant->id]).'#online-store')
             ->assertOk()
-            ->assertSee('Settlement Bank Name');
-        $this->assertMatchesRegularExpression('/data-paystack-settlement-bank-fields\s+hidden/', $response->getContent());
+            ->assertSee('Settlement bank');
+        $this->assertMatchesRegularExpression('/data-paystack-settlement-bank-fields[^>]*\shidden/', $response->getContent());
     }
 
     public function test_new_online_store_gets_default_policies_and_removable_generic_faqs(): void
@@ -526,6 +526,148 @@ class BusinessOnlineStoreTest extends TestCase
                 'billing_interval' => 'monthly',
             ])
             ->assertForbidden();
+    }
+
+    public function test_starter_plan_hides_approval_and_access_review_navigation(): void
+    {
+        $tenant = Tenant::query()->create([
+            'name' => 'Starter Shop',
+            'slug' => 'starter-shop',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+        ]);
+        Branch::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Head Office',
+            'code' => 'HO',
+            'is_primary' => true,
+            'status' => 'active',
+        ]);
+        $starter = Plan::query()->create([
+            'name' => 'Starter',
+            'slug' => 'starter',
+            'currency_code' => 'NGN',
+            'is_active' => true,
+        ]);
+        $growth = Plan::query()->create([
+            'name' => 'Growth',
+            'slug' => 'growth',
+            'currency_code' => 'NGN',
+            'is_active' => true,
+        ]);
+        $subscription = TenantSubscription::query()->create([
+            'tenant_id' => $tenant->id,
+            'plan_id' => $starter->id,
+            'status' => SubscriptionStatus::Active,
+            'billing_interval' => 'monthly',
+        ]);
+        $superadmin = User::factory()->create(['is_platform_admin' => true]);
+
+        $starterResponse = $this->actingAs($superadmin)
+            ->get(route('admin.business.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertDontSee(route('admin.access.approvals.index', ['tenant' => $tenant->id]), false)
+            ->assertDontSee(route('admin.access.review.index', ['tenant' => $tenant->id]), false)
+            ->assertDontSee('data-tab-target="approvals"', false)
+            ->assertDontSee('id="approvals"', false);
+
+        $this->assertStringNotContainsString('<span>Approvals</span>', $starterResponse->getContent());
+        $this->assertStringNotContainsString('<span>Access review</span>', $starterResponse->getContent());
+
+        $subscription->update(['plan_id' => $growth->id]);
+
+        $this->actingAs($superadmin)
+            ->get(route('admin.business.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee(route('admin.access.approvals.index', ['tenant' => $tenant->id]), false)
+            ->assertSee(route('admin.access.review.index', ['tenant' => $tenant->id]), false)
+            ->assertSee('data-tab-target="approvals"', false)
+            ->assertSee('id="approvals"', false);
+    }
+
+    public function test_only_platform_admin_can_change_a_business_subscription_plan(): void
+    {
+        $tenant = Tenant::query()->create([
+            'name' => 'Plan Protected Shop',
+            'slug' => 'plan-protected-shop',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+            'default_tax_rate' => 0,
+        ]);
+        $starter = Plan::query()->create([
+            'name' => 'Starter',
+            'slug' => 'starter',
+            'currency_code' => 'NGN',
+            'is_active' => true,
+        ]);
+        $growth = Plan::query()->create([
+            'name' => 'Growth',
+            'slug' => 'growth',
+            'currency_code' => 'NGN',
+            'is_active' => true,
+        ]);
+        $subscription = TenantSubscription::query()->create([
+            'tenant_id' => $tenant->id,
+            'plan_id' => $starter->id,
+            'status' => SubscriptionStatus::Active,
+            'billing_interval' => 'monthly',
+        ]);
+        $tenantUser = User::factory()->create(['is_platform_admin' => false]);
+        TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $tenantUser->id,
+            'status' => MembershipStatus::Active,
+        ]);
+
+        $this->actingAs($tenantUser)
+            ->get(route('admin.business.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('Only Storeboot can change your subscription plan.')
+            ->assertSee('value="Starter" disabled', false)
+            ->assertDontSee('name="plan_id"', false);
+
+        $this->actingAs($tenantUser)
+            ->post(route('admin.business.profile.save'), [
+                'tenant_id' => $tenant->id,
+                'name' => $tenant->name,
+                'business_type' => 'retail',
+                'country_code' => 'NG',
+                'timezone' => 'Africa/Lagos',
+                'currency_code' => 'NGN',
+                'default_tax_rate' => '0',
+                'plan_id' => $growth->id,
+            ])
+            ->assertSessionHasErrors('plan_id');
+
+        $this->assertSame($starter->id, $subscription->refresh()->plan_id);
+
+        $platformAdmin = User::factory()->create(['is_platform_admin' => true]);
+
+        $this->actingAs($platformAdmin)
+            ->get(route('admin.business.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('name="plan_id"', false);
+
+        $this->actingAs($platformAdmin)
+            ->post(route('admin.business.profile.save'), [
+                'tenant_id' => $tenant->id,
+                'name' => $tenant->name,
+                'business_type' => 'retail',
+                'country_code' => 'NG',
+                'timezone' => 'Africa/Lagos',
+                'currency_code' => 'NGN',
+                'default_tax_rate' => '0',
+                'plan_id' => $growth->id,
+            ])
+            ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#business-profile');
+
+        $this->assertSame($growth->id, $subscription->refresh()->plan_id);
     }
 
     public function test_authorized_administrators_can_toggle_non_core_tenant_modules_and_sidebar_follows_access(): void

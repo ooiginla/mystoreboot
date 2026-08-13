@@ -49,7 +49,12 @@ final class BusinessProfileRequest extends FormRequest
             'currency_code' => ['required', 'string', 'size:3'],
             'tax_identifier' => ['nullable', 'string', 'max:80'],
             'default_tax_rate' => ['required', 'numeric', 'min:0', 'max:100'],
-            'plan_id' => ['nullable', 'integer', 'exists:plans,id'],
+            'plan_id' => [
+                Rule::prohibitedIf(! (bool) $this->user()?->is_platform_admin),
+                'nullable',
+                'integer',
+                'exists:plans,id',
+            ],
             'logo' => ['nullable', 'image', 'max:2048'],
             'opening_hours' => ['array'],
             'opening_hours.*.is_open' => ['nullable', 'boolean'],

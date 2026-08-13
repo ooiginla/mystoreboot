@@ -267,10 +267,22 @@ final class OnboardingController extends Controller
         // the products it lists.
         $this->store($tenant)->categories()->syncWithoutDetaching([$categoryId]);
 
-        $saveProduct->execute([
+        // Idempotent: onboarding creates exactly one product. Reuse the product recorded on
+        // a previous submit (guards against double-submits and re-visiting this step) so we
+        // update it in place instead of creating duplicates.
+        $existing = null;
+        $existingId = $this->state($tenant)['product_id'] ?? null;
+        if ($existingId) {
+            $existing = \Modules\Catalog\Models\Product::query()
+                ->where('tenant_id', $tenant->id)
+                ->whereKey($existingId)
+                ->first();
+        }
+
+        $product = $saveProduct->execute([
             'tenant_id' => $tenant->id,
             'name' => $data['name'],
-            'slug' => $this->uniqueProductSlug($tenant->id, $data['name']),
+            'slug' => $existing?->slug ?? $this->uniqueProductSlug($tenant->id, $data['name']),
             'product_type' => 'product',
             'category_id' => $categoryId,
             'base_price' => $data['base_price'],
@@ -281,7 +293,9 @@ final class OnboardingController extends Controller
             'description' => $data['description'] ?? null,
             'new_tags' => $data['tags'] ?? null,
             'image' => $request->file('image'),
-        ]);
+        ], $existing);
+
+        $this->remember($tenant, ['product_id' => $product->id]);
 
         return $this->advance($tenant, 5);
     }
@@ -325,13 +339,28 @@ final class OnboardingController extends Controller
 
     private function advance(Tenant $tenant, int $nextStep): RedirectResponse
     {
-        $current = (int) ($this->state($tenant)['step'] ?? 1);
+        $onboarding = $this->state($tenant);
+        $current = (int) ($onboarding['step'] ?? 1);
         $tenant->settings = array_merge($tenant->settings ?? [], [
-            'onboarding' => ['completed' => false, 'step' => max($current, $nextStep)],
+            'onboarding' => array_merge($onboarding, ['completed' => false, 'step' => max($current, $nextStep)]),
         ]);
         $tenant->save();
 
         return redirect()->route('onboarding.step', ['step' => $nextStep]);
+    }
+
+    /**
+     * Merge extra keys (e.g. the created product id) into the onboarding state without
+     * disturbing completed/step.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private function remember(Tenant $tenant, array $values): void
+    {
+        $tenant->settings = array_merge($tenant->settings ?? [], [
+            'onboarding' => array_merge($this->state($tenant), $values),
+        ]);
+        $tenant->save();
     }
 
     private function store(Tenant $tenant): OnlineStore

@@ -256,6 +256,18 @@
 document.addEventListener('DOMContentLoaded', () => {
     const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
 
+    // Prevent double-submits: once a wizard form is submitting, block further submits
+    // and disable its submit button (a slow POST previously let people click twice and
+    // create duplicate records).
+    document.querySelectorAll('form').forEach((form) => {
+        form.addEventListener('submit', (e) => {
+            if (form.dataset.submitting) { e.preventDefault(); return; }
+            form.dataset.submitting = '1';
+            const b = form.querySelector('button[type=submit]');
+            if (b) { b.disabled = true; b.style.opacity = '.7'; b.style.cursor = 'progress'; }
+        });
+    });
+
     // Store username (step 1): sanitise input + live availability
     const addrForm = document.querySelector('[data-address-form]');
     if (addrForm) {

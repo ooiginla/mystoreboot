@@ -341,6 +341,14 @@
             $hasTenantModule = fn (string $slug): bool => ! $activeBranchTenant
                 || ! $knownTenantModules->contains($slug)
                 || $enabledTenantModules->contains($slug);
+            $activeTenantPlanSlug = $activeBranchTenant
+                ? app('db')->table('tenant_subscriptions')
+                    ->join('plans', 'plans.id', '=', 'tenant_subscriptions.plan_id')
+                    ->where('tenant_subscriptions.tenant_id', $activeBranchTenant->id)
+                    ->latest('tenant_subscriptions.id')
+                    ->value('plans.slug')
+                : null;
+            $isStarterPlan = $activeTenantPlanSlug === 'starter';
             $pendingOrderCount = ($activeBranchTenant && $hasTenantModule('sales'))
                 ? \Modules\Sales\Models\SalesOrder::query()
                     ->where('tenant_id', $activeBranchTenant->id)
@@ -407,10 +415,10 @@
                     @if (\Illuminate\Support\Facades\Gate::any(['business.settings.manage', 'branches.manage', 'users.manage', 'roles.manage', 'subscriptions.manage']))
                         <a class="{{ request()->routeIs('admin.business.*') && ! request()->routeIs('admin.business.organizations.*') && ! request()->routeIs('admin.business.online-store.*') ? 'active' : '' }}" href="{{ route('admin.business.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-store"/></svg><span>Business setup</span></a>
                     @endif
-                    @if ($canApproveAny)
+                    @if (! $isStarterPlan && $canApproveAny)
                         <a class="{{ request()->routeIs('admin.access.approvals.*') ? 'active' : '' }}" href="{{ route('admin.access.approvals.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-shield"/></svg><span>Approvals</span>@if ($pendingApprovalCount > 0)<span class="badge" style="margin-left:auto;">{{ $pendingApprovalCount }}</span>@endif</a>
                     @endif
-                    @if (\Illuminate\Support\Facades\Gate::any(['roles.manage', 'users.manage']))
+                    @if (! $isStarterPlan && \Illuminate\Support\Facades\Gate::any(['roles.manage', 'users.manage']))
                         <a class="{{ request()->routeIs('admin.access.review.*') ? 'active' : '' }}" href="{{ route('admin.access.review.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-badge"/></svg><span>Access review</span></a>
                     @endif
 

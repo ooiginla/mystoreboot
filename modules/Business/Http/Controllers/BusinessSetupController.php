@@ -7,12 +7,12 @@ namespace Modules\Business\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
-use Modules\Business\Actions\GenerateStoreContentAction;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\Role;
@@ -21,6 +21,7 @@ use Modules\Access\Support\AuditLogger;
 use Modules\Access\Support\PermissionCatalogue;
 use Modules\Business\Actions\CreateBranchAction;
 use Modules\Business\Actions\CreateDepartmentAction;
+use Modules\Business\Actions\GenerateStoreContentAction;
 use Modules\Business\Actions\SaveBusinessProfileAction;
 use Modules\Business\Enums\BusinessType;
 use Modules\Business\Http\Requests\BranchRequest;
@@ -33,10 +34,12 @@ use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Business\Models\Department;
 use Modules\Business\Models\OnlineStore;
 use Modules\Business\Support\OnlineStoreContentDefaults;
+use Modules\Business\Support\PaystackDirectory;
 use Modules\Business\Support\SafeRichText;
 use Modules\Catalog\Actions\EnsureDefaultProductCategoryAction;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Finance\Models\FinanceAccount;
+use Modules\Sales\Enums\PayoutMode;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Module;
 use Modules\Subscriptions\Models\Plan;
@@ -163,6 +166,13 @@ final class BusinessSetupController extends Controller
             'selectedPlanId' => $tenant
                 ? app('db')->table('tenant_subscriptions')->where('tenant_id', $tenant->id)->latest('id')->value('plan_id')
                 : null,
+            'isStarterPlan' => $tenant
+                ? app('db')->table('tenant_subscriptions')
+                    ->join('plans', 'plans.id', '=', 'tenant_subscriptions.plan_id')
+                    ->where('tenant_subscriptions.tenant_id', $tenant->id)
+                    ->latest('tenant_subscriptions.id')
+                    ->value('plans.slug') === 'starter'
+                : false,
             'onlineStore' => $tenant
                 ? OnlineStore::query()->with(['categories', 'fulfilmentBranch'])->where('tenant_id', $tenant->id)->first()
                 : null,
@@ -172,8 +182,8 @@ final class BusinessSetupController extends Controller
             'approvableActions' => PermissionCatalogue::approvable(),
             'approvalsEnabled' => (bool) ($tenant->settings['approvals']['enabled'] ?? false),
             'approvalActions' => (array) ($tenant->settings['approvals']['actions'] ?? []),
-            'payoutMode' => $tenant ? \Modules\Sales\Enums\PayoutMode::fromTenant($tenant) : \Modules\Sales\Enums\PayoutMode::default(),
-            'payoutModes' => \Modules\Sales\Enums\PayoutMode::cases(),
+            'payoutMode' => $tenant ? PayoutMode::fromTenant($tenant) : PayoutMode::default(),
+            'payoutModes' => PayoutMode::cases(),
             'payoutProfile' => (array) ($tenant->settings['payout'] ?? []),
         ];
     }
@@ -190,7 +200,13 @@ final class BusinessSetupController extends Controller
 
         $this->authorizeTenantAccess($user, $tenant);
 
-        $savedTenant = $action->execute($request->validated(), $tenant);
+        $data = $request->validated();
+
+        if (! $user->is_platform_admin) {
+            unset($data['plan_id']);
+        }
+
+        $savedTenant = $action->execute($data, $tenant);
 
         return redirect()
             ->to(route('admin.business.index', ['tenant' => $savedTenant->id]).'#business-profile')
@@ -264,7 +280,7 @@ final class BusinessSetupController extends Controller
             ->with('status', 'Approval workflow settings saved.');
     }
 
-    public function banks(Request $request, \Modules\Business\Support\PaystackDirectory $paystack): JsonResponse
+    public function banks(Request $request, PaystackDirectory $paystack): JsonResponse
     {
         $tenantId = $request->string('tenant')->toString() ?: $request->string('tenant_id')->toString();
         $this->authorizeTenantIdAccess($request->user(), $tenantId);
@@ -276,7 +292,7 @@ final class BusinessSetupController extends Controller
         ]);
     }
 
-    public function resolveBankAccount(Request $request, \Modules\Business\Support\PaystackDirectory $paystack): JsonResponse
+    public function resolveBankAccount(Request $request, PaystackDirectory $paystack): JsonResponse
     {
         $data = $request->validate([
             'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
@@ -303,13 +319,13 @@ final class BusinessSetupController extends Controller
 
         $data = $request->validate([
             'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
-            'payout_mode' => ['nullable', Rule::in(array_column(\Modules\Sales\Enums\PayoutMode::cases(), 'value'))],
+            'payout_mode' => ['nullable', Rule::in(array_column(PayoutMode::cases(), 'value'))],
             'settlement_bank_code' => ['nullable', 'string', 'max:20'],
             'settlement_account_number' => ['nullable', 'string', 'regex:/^[0-9]{10}$/'],
         ]);
 
         $settings = $tenant->settings ?? [];
-        $paystack = app(\Modules\Business\Support\PaystackDirectory::class);
+        $paystack = app(PaystackDirectory::class);
 
         // The bank/subaccount profile is editable by anyone with business-settings access.
         // Bank name + account name are always taken from Paystack — never trusted from the client.
@@ -335,8 +351,8 @@ final class BusinessSetupController extends Controller
         // The payout MODE can only be changed by a Storeboot platform admin (custody/float implications).
         $status = 'Payout settings saved.';
         if ($user->is_platform_admin && array_key_exists('payout_mode', $data) && $data['payout_mode'] !== null) {
-            $previous = \Modules\Sales\Enums\PayoutMode::fromTenant($tenant);
-            $new = \Modules\Sales\Enums\PayoutMode::from($data['payout_mode']);
+            $previous = PayoutMode::fromTenant($tenant);
+            $new = PayoutMode::from($data['payout_mode']);
 
             if ($new !== $previous) {
                 $settings['payout_mode'] = $new->value;
@@ -492,7 +508,7 @@ final class BusinessSetupController extends Controller
         // bank name + account name from Paystack (never trusted from the client).
         $settlement = (array) ($data['settlement_bank_account'] ?? []);
         if (filled($settlement['bank_code'] ?? null) && preg_match('/^[0-9]{10}$/', (string) ($settlement['account_number'] ?? ''))) {
-            $paystack = app(\Modules\Business\Support\PaystackDirectory::class);
+            $paystack = app(PaystackDirectory::class);
             $currency = Tenant::query()->whereKey($data['tenant_id'])->value('currency_code') ?: 'NGN';
 
             if (! $paystack->isValidBankCode((string) $settlement['bank_code'], $currency)) {
@@ -534,8 +550,8 @@ final class BusinessSetupController extends Controller
         // Payout mode is a Storeboot-admin-only setting, stored on the tenant.
         if ($user->is_platform_admin && filled($data['payout_mode'] ?? null)) {
             $tenantModel = Tenant::query()->find($data['tenant_id']);
-            $previousMode = \Modules\Sales\Enums\PayoutMode::fromTenant($tenantModel);
-            $newMode = \Modules\Sales\Enums\PayoutMode::from($data['payout_mode']);
+            $previousMode = PayoutMode::fromTenant($tenantModel);
+            $newMode = PayoutMode::from($data['payout_mode']);
 
             if ($tenantModel && $newMode !== $previousMode) {
                 $tenantModel->settings = array_merge($tenantModel->settings ?? [], ['payout_mode' => $newMode->value]);
@@ -1005,17 +1021,17 @@ final class BusinessSetupController extends Controller
         // When a bank + 10-digit account are supplied, verify with Paystack and take the
         // bank name + account name from Paystack (never trusted from the client).
         if (filled($data['bank_code'] ?? null) && preg_match('/^[0-9]{10}$/', (string) ($data['account_number'] ?? ''))) {
-            $paystack = app(\Modules\Business\Support\PaystackDirectory::class);
+            $paystack = app(PaystackDirectory::class);
             $currency = Tenant::query()->whereKey($data['tenant_id'])->value('currency_code') ?: 'NGN';
 
             if (! $paystack->isValidBankCode((string) $data['bank_code'], $currency)) {
-                throw \Illuminate\Validation\ValidationException::withMessages(['bank_code' => 'Select a valid bank.']);
+                throw ValidationException::withMessages(['bank_code' => 'Select a valid bank.']);
             }
 
             $result = $paystack->resolveAccount((string) $data['account_number'], (string) $data['bank_code']);
 
             if (! $result['ok']) {
-                throw \Illuminate\Validation\ValidationException::withMessages(['account_number' => $result['message'] ?? 'We could not verify this account.']);
+                throw ValidationException::withMessages(['account_number' => $result['message'] ?? 'We could not verify this account.']);
             }
 
             $data['account_name'] = $result['account_name'];
