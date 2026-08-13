@@ -22,6 +22,12 @@ return [
         'key' => env('RESEND_API_KEY'),
     ],
 
+    'payments' => [
+        // The platform's default online payment gateway. Swapping providers is a config
+        // change here plus a matching PaymentGateway implementation.
+        'default' => env('PAYMENT_GATEWAY_PROVIDER', 'paystack'),
+    ],
+
     'paystack' => [
         'public_key' => env('STOREBOOT_PAYSTACK_PUBLIC_KEY'),
         'secret_key' => env('STOREBOOT_PAYSTACK_SECRET_KEY'),

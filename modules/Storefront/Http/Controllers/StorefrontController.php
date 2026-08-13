@@ -33,14 +33,13 @@ use Modules\Customers\Enums\TicketStatus;
 use Modules\Customers\Enums\TicketType;
 use Modules\Customers\Models\Customer;
 use Modules\Customers\Models\SupportTicket;
-use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Inventory\Actions\AdjustInventoryReservationAction;
 use Modules\Sales\Actions\ExpireOnlineOrderReservationsAction;
+use Modules\Sales\Actions\RecordGatewayPaymentAction;
 use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Enums\SalesPaymentStatus;
-use Modules\Sales\Models\OnlineCollectedPayment;
 use Modules\Sales\Models\SalesOrder;
-use Modules\Sales\Models\SalesOrderPayment;
+use Modules\Sales\Support\Payments\PaymentGatewayManager;
 use Modules\Storefront\Support\StorefrontUrl;
 use Modules\Subscriptions\Support\TenantModuleAccess;
 use Throwable;
@@ -885,133 +884,21 @@ final class StorefrontController extends Controller
             ? $order->payment_method
             : 'storeboot_paystack';
         $keys = $this->paystackKeys($store, $paymentMethod);
-        $response = Http::withToken($keys['secret_key'])
-            ->acceptJson()
-            ->get(rtrim((string) config('services.paystack.base_url'), '/').'/transaction/verify/'.rawurlencode($reference));
-        $payload = $response->json();
 
-        if (! $response->successful() || ! (bool) data_get($payload, 'status') || data_get($payload, 'data.status') !== 'success') {
-            if ($request->expectsJson()) {
-                return response()->json([
-                    'message' => data_get($payload, 'message', 'Paystack could not verify this payment.'),
-                ], 422);
-            }
+        // Re-verify server-side via the gateway, then record + settle through the shared,
+        // idempotent action — the same path the webhook uses.
+        $payment = app(PaymentGatewayManager::class)->for('paystack')
+            ->fetchTransaction($reference, $keys['secret_key']);
 
-            return redirect()
-                ->to(StorefrontUrl::route($store))
-                ->with('payment_error', data_get($payload, 'message', 'Paystack could not verify this payment.'));
+        if (! $payment || ! $payment->successful) {
+            return $this->paystackVerifyError($store, $request, 'Paystack could not verify this payment.');
         }
 
-        $amountMinor = (int) data_get($payload, 'data.amount', 0);
-        $currency = (string) data_get($payload, 'data.currency', '');
-
-        if ($amountMinor < $order->total_minor || ! hash_equals(strtoupper($store->tenant?->currency_code ?? 'NGN'), strtoupper($currency))) {
-            if ($request->expectsJson()) {
-                return response()->json(['message' => 'The verified Paystack payment did not match this order.'], 422);
-            }
-
-            return redirect()
-                ->to(StorefrontUrl::route($store))
-                ->with('payment_error', 'The verified Paystack payment did not match this order.');
+        if (! $payment->coversOrder($order, strtoupper($store->tenant?->currency_code ?? 'NGN'))) {
+            return $this->paystackVerifyError($store, $request, 'The verified Paystack payment did not match this order.');
         }
 
-        $wasPaid = $order->payment_status === SalesPaymentStatus::Paid;
-
-        DB::transaction(function () use ($order, $reference, $amountMinor, $payload): void {
-            $lockedOrder = SalesOrder::query()->lockForUpdate()->findOrFail($order->id);
-            $payment = SalesOrderPayment::query()
-                ->where('sales_order_id', $lockedOrder->id)
-                ->where('reference_number', $reference)
-                ->first();
-
-            if (! $payment) {
-                $payment = $lockedOrder->payments()->create([
-                    'tenant_id' => $lockedOrder->tenant_id,
-                    'payment_date' => now()->toDateString(),
-                    'payment_method' => $lockedOrder->payment_method ?? 'Paystack',
-                    'amount_minor' => min($amountMinor, $lockedOrder->total_minor),
-                    'reference_number' => $reference,
-                    'notes' => 'Verified Paystack payment.',
-                ]);
-            }
-
-            $paidMinor = (int) $lockedOrder->payments()->sum('amount_minor');
-            $feesMinor = (int) data_get($payload, 'data.fees', 0);
-            $paidAmountMinor = min($amountMinor, $lockedOrder->total_minor);
-            $shippingAmountMinor = (int) $lockedOrder->shipping_minor;
-            $gatewayChargeMinor = (int) ($lockedOrder->gateway_charge_minor ?? 0);
-            $productAmountMinor = max(0, $paidAmountMinor - $shippingAmountMinor - $gatewayChargeMinor);
-            $customerTotalMinor = max(0,
-                (int) $lockedOrder->subtotal_minor
-                + (int) $lockedOrder->tax_minor
-                + $shippingAmountMinor
-                - (int) $lockedOrder->coupon_discount_minor
-                - (int) $lockedOrder->admin_discount_minor
-            );
-            $netAmountMinor = max(0, $paidAmountMinor - $feesMinor);
-            // Split transactions are settled by Paystack straight to the merchant's bank,
-            // so the merchant portion needs no Storeboot settlement run.
-            $settledViaSubaccount = filled(data_get($payload, 'data.subaccount'));
-
-            OnlineCollectedPayment::query()->updateOrCreate([
-                'tenant_id' => $lockedOrder->tenant_id,
-                'provider' => 'paystack',
-                'provider_reference' => $reference,
-            ], [
-                'branch_id' => $lockedOrder->branch_id,
-                'sales_order_id' => $lockedOrder->id,
-                'sales_order_payment_id' => $payment?->id,
-                'payment_method' => $lockedOrder->payment_method,
-                'gateway_reference' => data_get($payload, 'data.id') ? (string) data_get($payload, 'data.id') : null,
-                'customer_email' => data_get($payload, 'data.customer.email', $lockedOrder->customer?->email),
-                'currency' => (string) data_get($payload, 'data.currency', 'NGN'),
-                'product_amount_minor' => $productAmountMinor,
-                'shipping_amount_minor' => $shippingAmountMinor,
-                'gateway_charge_minor' => $gatewayChargeMinor,
-                'customer_total_minor' => $customerTotalMinor,
-                'amount_minor' => $paidAmountMinor,
-                'fees_minor' => $feesMinor,
-                'net_amount_minor' => $netAmountMinor,
-                'storeboot_profit_minor' => $netAmountMinor - $customerTotalMinor,
-                'status' => 'successful',
-                'is_settled' => $settledViaSubaccount,
-                'collected_at' => data_get($payload, 'data.paid_at') ? (string) data_get($payload, 'data.paid_at') : now(),
-                'verified_at' => now(),
-                'raw_payload' => $payload,
-            ]);
-
-            $lockedOrder->update([
-                'paid_minor' => min($paidMinor, $lockedOrder->total_minor),
-                'payment_status' => $paidMinor >= $lockedOrder->total_minor
-                    ? SalesPaymentStatus::Paid->value
-                    : SalesPaymentStatus::PartiallyPaid->value,
-                // Paid orders no longer auto-cancel; the reservation is held until
-                // the order is completed (stock deducted) or later cancelled.
-                'reserved_until' => null,
-            ]);
-
-            // Recognise the gateway receipt now: debit Online Payment Clearing and
-            // credit Customer Deposits (unearned revenue) until the order completes.
-            app(PostJournalEntryAction::class)->execute(
-                $lockedOrder->tenant_id,
-                now()->toDateString(),
-                'Online deposit received for '.$lockedOrder->order_number,
-                [
-                    ['account_code' => '1060', 'branch_id' => $lockedOrder->branch_id, 'debit_minor' => (int) $payment->amount_minor, 'party_type' => 'customer', 'party_id' => $lockedOrder->customer_id],
-                    ['account_code' => '2310', 'branch_id' => $lockedOrder->branch_id, 'credit_minor' => (int) $payment->amount_minor, 'party_type' => 'customer', 'party_id' => $lockedOrder->customer_id],
-                ],
-                'sales_order_payment',
-                $payment->id,
-                'deposit_received',
-            );
-        });
-
-        // Send the order confirmation now that payment is verified — but only on the
-        // transition into Paid, so a second verify (e.g. Paystack callback + the
-        // browser redirect both firing) doesn't email the customer twice.
-        if (! $wasPaid && $order->refresh()->payment_status === SalesPaymentStatus::Paid) {
-            $this->sendOrderConfirmation($store, $order);
-        }
+        app(RecordGatewayPaymentAction::class)->execute($order, $payment);
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -1024,6 +911,17 @@ final class StorefrontController extends Controller
             ->to(StorefrontUrl::route($store))
             ->with('status', 'Payment successful. Your order reference is '.$order->order_number.'.')
             ->with('clear_cart', true);
+    }
+
+    private function paystackVerifyError(OnlineStore $store, Request $request, string $message): JsonResponse|RedirectResponse
+    {
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $message], 422);
+        }
+
+        return redirect()
+            ->to(StorefrontUrl::route($store))
+            ->with('payment_error', $message);
     }
 
     private function preparedStore(OnlineStore $store): OnlineStore

@@ -7,7 +7,13 @@ use App\Http\Controllers\Admin\ActiveBranchController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\MarketingController;
+use App\Http\Controllers\Payments\PaymentWebhookController;
 use Illuminate\Support\Facades\Route;
+
+// Server-to-server payment webhook (one fixed URL per provider, set in the gateway
+// dashboard). Signature-verified inside the controller; CSRF-exempt (see bootstrap/app.php).
+Route::post('/payments/webhook/{provider}', [PaymentWebhookController::class, 'handle'])
+    ->name('payments.webhook');
 
 Route::get('/', [MarketingController::class, 'home'])->name('home');
 

@@ -12,7 +12,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Payment webhooks are server-to-server POSTs from the gateway; they carry no CSRF
+        // token and are authenticated by signature verification in the controller.
+        $middleware->validateCsrfTokens(except: [
+            'payments/webhook/*',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
