@@ -36,6 +36,13 @@ final class ReconcileWalletSettlementAction
             if ($this->wallet->markSaleAvailable($orderId, $settlementId)) {
                 $flipped++;
             }
+
+            // Mark the underlying collection settled — for wallet modes, "settled" means the
+            // funds have reached Storeboot (and are now withdrawable).
+            OnlineCollectedPayment::query()
+                ->where('provider_reference', $reference)
+                ->whereNull('settled_at')
+                ->update(['is_settled' => true, 'settled_at' => now()]);
         }
 
         return $flipped;

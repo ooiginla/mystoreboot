@@ -134,6 +134,10 @@ final class RegisteredTenantController extends Controller
 
             app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
 
+            // Every business gets a zero-balance wallet from day one, regardless of payout
+            // mode, so they can always see and move any balance held for them.
+            app(\Modules\Sales\Support\Wallet\WalletService::class)->walletFor($tenant);
+
             return [$tenant, $user];
         });
 

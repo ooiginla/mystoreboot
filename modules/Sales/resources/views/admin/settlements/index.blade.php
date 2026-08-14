@@ -51,6 +51,21 @@
             @else
                 <div class="alert" style="margin-bottom:14px;">No settlement bank set yet. Add it under <strong>Online Store → Payment → Storeboot Paystack</strong> to receive online payouts.</div>
             @endif
+            @if ($isPlatformAdmin)
+                <form method="POST" action="{{ route('admin.sales.settlements.payout-mode', ['tenant' => $tenant->id]) }}" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:6px;">
+                    @csrf
+                    <div class="field" style="min-width:300px; margin:0;">
+                        <label for="payout_mode">Payout mode <span class="subtle">(platform admin only)</span></label>
+                        <select id="payout_mode" name="payout_mode">
+                            @foreach (\Modules\Sales\Enums\PayoutMode::cases() as $mode)
+                                <option value="{{ $mode->value }}" @selected($mode === $payoutMode)>{{ $mode->label() }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <button type="submit" class="btn secondary">Update mode</button>
+                </form>
+                <p class="subtle" style="margin:0 0 16px;">{{ $payoutMode->description() }}</p>
+            @endif
             <div class="stats-grid">
                 <div class="stat"><span class="subtle">Online earnings</span><strong>{{ $money($stats['earnings_minor']) }}</strong></div>
                 <div class="stat"><span class="subtle">{{ $isDirect ? 'Settled to your bank' : 'Settled' }}</span><strong>{{ $money($stats['earnings_settled_minor']) }}</strong></div>
@@ -59,30 +74,60 @@
         </div>
     </section>
 
-    <section class="panel" style="margin-bottom: 18px;">
-        <div class="panel-header">
+    <section class="panel">
+        <div class="panel-header" style="gap:14px; flex-wrap:wrap;">
             <div>
-                <h2 class="panel-title">Online payments</h2>
-                <p class="subtle">Each verified online sale and its settlement status.</p>
+                <h2 class="panel-title">Settlement report</h2>
+                <p class="subtle">Every verified online sale, the mode it settled under, and its status — a permanent trail across payout-mode changes.</p>
             </div>
+            <form method="GET" action="{{ route('admin.sales.settlements.index') }}" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+                @if ($isPlatformAdmin)<input type="hidden" name="tenant" value="{{ $tenant->id }}">@endif
+                <div class="field" style="margin:0;">
+                    <label for="mode">Mode</label>
+                    <select id="mode" name="mode">
+                        <option value="">All modes</option>
+                        @foreach ($payoutModes as $mode)
+                            <option value="{{ $mode->value }}" @selected($filters['mode'] === $mode->value)>{{ $mode->label() }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="field" style="margin:0;">
+                    <label for="status">Status</label>
+                    <select id="status" name="status">
+                        <option value="">All</option>
+                        <option value="settled" @selected($filters['status'] === 'settled')>Settled</option>
+                        <option value="pending" @selected($filters['status'] === 'pending')>Pending</option>
+                    </select>
+                </div>
+                <div class="field" style="margin:0;"><label for="from">From</label><input type="date" id="from" name="from" value="{{ $filters['from'] }}"></div>
+                <div class="field" style="margin:0;"><label for="to">To</label><input type="date" id="to" name="to" value="{{ $filters['to'] }}"></div>
+                <div class="field" style="margin:0;"><label for="search">Search</label><input type="text" id="search" name="search" value="{{ $filters['search'] }}" placeholder="Order / ref / email"></div>
+                <button type="submit" class="btn secondary">Filter</button>
+                <a class="btn secondary" href="{{ route('admin.sales.settlements.statement', array_filter(array_merge(['tenant' => $isPlatformAdmin ? $tenant->id : null], $filters))) }}">Download CSV</a>
+            </form>
         </div>
         <div class="panel-body">
             @if ($payments->isEmpty())
-                <div class="empty">No online payments yet.</div>
+                <div class="empty">No online payments match these filters.</div>
             @else
                 <div class="table-scroll">
                     <table class="table">
-                        <thead><tr><th>Date</th><th>Order</th><th>Customer</th><th>Earnings</th><th>Status</th></tr></thead>
+                        <thead><tr><th>Date</th><th>Order</th><th>Customer</th><th>Gateway ref</th><th>Mode</th><th>Earnings</th><th>Gateway charge</th><th>Fees</th><th>Status</th></tr></thead>
                         <tbody>
                             @foreach ($payments as $payment)
+                                @php $mode = \Modules\Sales\Enums\PayoutMode::tryFrom((string) $payment->payout_mode); @endphp
                                 <tr>
                                     <td class="subtle">{{ $payment->collected_at?->format('M j, Y') }}</td>
                                     <td><div class="cell-title">{{ $payment->order?->order_number ?? '—' }}</div></td>
                                     <td>{{ $payment->order?->customer?->name ?? $payment->customer_email }}</td>
+                                    <td class="subtle">{{ $payment->provider_reference }}</td>
+                                    <td><span class="badge neutral">{{ $mode?->label() ?? ($payment->payout_mode ?? '—') }}</span></td>
                                     <td>{{ $money((int) $payment->customer_total_minor) }}</td>
+                                    <td>{{ $money((int) $payment->gateway_charge_minor) }}</td>
+                                    <td>{{ $money((int) $payment->fees_minor) }}</td>
                                     <td>
                                         @if ($payment->is_settled)
-                                            <span class="badge">{{ $isDirect ? 'Settled → bank' : 'Settled' }}</span>
+                                            <span class="badge success">Settled</span>
                                         @else
                                             <span class="badge neutral">Pending</span>
                                         @endif
@@ -92,41 +137,8 @@
                         </tbody>
                     </table>
                 </div>
+                <p class="subtle" style="margin-top:12px;">Showing the {{ $payments->count() }} most recent matching transactions. Download the CSV for the full statement.</p>
             @endif
         </div>
     </section>
-
-    <div class="stats-grid" style="margin-bottom: 18px;">
-        <div class="stat"><span class="subtle">Unsettled payments</span><strong>{{ $stats['unsettled_count'] }}</strong></div>
-        <div class="stat"><span class="subtle">Unsettled amount</span><strong>{{ $money($stats['unsettled_minor']) }}</strong></div>
-    </div>
-
-    <div class="grid">
-        <aside class="stack">
-            <section class="panel">
-                <div class="panel-header">
-                    <div>
-                        <h2 class="panel-title">Unsettled payments</h2>
-                        <p class="subtle">Successful online collections waiting for settlement.</p>
-                    </div>
-                </div>
-                <div class="panel-body">
-                    <table class="table">
-                        <thead><tr><th>Order</th><th>Amount</th><th>Ref</th></tr></thead>
-                        <tbody>
-                            @forelse ($unsettledPayments as $payment)
-                                <tr>
-                                    <td>{{ $payment->order?->order_number }}<br><span class="subtle">{{ $payment->customer_email }}</span></td>
-                                    <td>{{ $money((int) $payment->amount_minor) }}</td>
-                                    <td>{{ $payment->provider_reference }}</td>
-                                </tr>
-                            @empty
-                                <tr><td colspan="3"><div class="empty">No unsettled successful payments.</div></td></tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-        </aside>
-    </div>
 </x-layouts.admin>

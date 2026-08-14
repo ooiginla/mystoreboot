@@ -77,6 +77,9 @@ final class RecordGatewayPaymentAction
             // Split transactions are settled by the gateway straight to the merchant's bank,
             // so the merchant portion needs no Storeboot settlement run.
             $settledDirectly = $payment->settledDirectly;
+            // Stamp the mode in force now, so the settlement report stays accurate even after
+            // the tenant later switches payout modes.
+            $payoutMode = PayoutMode::fromTenant($lockedOrder->tenant)->value;
 
             OnlineCollectedPayment::query()->updateOrCreate([
                 'tenant_id' => $lockedOrder->tenant_id,
@@ -87,6 +90,7 @@ final class RecordGatewayPaymentAction
                 'sales_order_id' => $lockedOrder->id,
                 'sales_order_payment_id' => $orderPayment?->id,
                 'payment_method' => $lockedOrder->payment_method,
+                'payout_mode' => $payoutMode,
                 'gateway_reference' => $payment->gatewayReference,
                 'customer_email' => $payment->customerEmail ?: $lockedOrder->customer?->email,
                 'currency' => $payment->currency ?: 'NGN',
@@ -100,6 +104,7 @@ final class RecordGatewayPaymentAction
                 'storeboot_profit_minor' => $netAmountMinor - $customerTotalMinor,
                 'status' => 'successful',
                 'is_settled' => $settledDirectly,
+                'settled_at' => $settledDirectly ? now() : null,
                 'collected_at' => $payment->paidAt ?: now(),
                 'verified_at' => now(),
                 'raw_payload' => $payment->raw,

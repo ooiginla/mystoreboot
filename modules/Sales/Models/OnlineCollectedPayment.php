@@ -21,6 +21,7 @@ final class OnlineCollectedPayment extends Model
             'is_settled' => 'boolean',
             'collected_at' => 'datetime',
             'verified_at' => 'datetime',
+            'settled_at' => 'datetime',
             'raw_payload' => 'array',
         ];
     }

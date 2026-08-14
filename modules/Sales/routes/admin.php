@@ -21,3 +21,9 @@ Route::post('/orders/{order}/payments', [SalesController::class, 'storePayment']
 Route::post('/orders/{order}/returns', [SalesController::class, 'storeReturn'])->name('orders.returns.store');
 Route::post('/coupons', [SalesController::class, 'storeCoupon'])->name('coupons.store');
 Route::get('/settlements', [SalesController::class, 'settlements'])->name('settlements.index');
+Route::get('/settlements/statement', [SalesController::class, 'settlementsStatement'])->name('settlements.statement');
+Route::post('/settlements/payout-mode', [SalesController::class, 'updatePayoutMode'])->name('settlements.payout-mode');
+Route::get('/wallet', [SalesController::class, 'wallet'])->name('wallet.index');
+Route::get('/wallet/statement', [SalesController::class, 'walletStatement'])->name('wallet.statement');
+Route::post('/wallet/preview', [SalesController::class, 'walletWithdrawPreview'])->name('wallet.preview');
+Route::post('/wallet/withdraw', [SalesController::class, 'walletWithdraw'])->name('wallet.withdraw');

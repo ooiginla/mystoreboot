@@ -428,23 +428,15 @@ final class SalesController extends Controller
 
         abort_if(! $tenant, 403);
 
-        $unsettledPayments = OnlineCollectedPayment::query()
-            ->with('order.customer')
-            ->where('tenant_id', $tenant->id)
-            ->where('status', 'successful')
-            ->where('is_settled', false)
-            ->latest('collected_at')
-            ->get();
+        $filters = $this->settlementReportFilters($request);
+        $payments = $this->settlementReportQuery($tenant, $filters)->limit(300)->get();
 
-        // Direct-settlement (subaccount) payout model: earnings are the merchant's goods
-        // value; "settled" means Paystack has paid it to the merchant's bank.
-        $payments = OnlineCollectedPayment::query()
-            ->with('order.customer')
+        // Stats reflect ALL successful collections (unfiltered) for an accurate overview.
+        $all = OnlineCollectedPayment::query()
             ->where('tenant_id', $tenant->id)
             ->where('status', 'successful')
-            ->latest('collected_at')
-            ->limit(50)
-            ->get();
+            ->get(['customer_total_minor', 'is_settled']);
+
         $payoutMode = \Modules\Sales\Enums\PayoutMode::fromTenant($tenant);
         $onlineStore = \Modules\Business\Models\OnlineStore::query()->where('tenant_id', $tenant->id)->first();
         $settlementBank = (array) ($onlineStore?->payment_settings['settlement_bank_account'] ?? []);
@@ -453,18 +445,247 @@ final class SalesController extends Controller
             'tenant' => $tenant,
             'tenants' => $tenants,
             'isPlatformAdmin' => $user->is_platform_admin,
-            'unsettledPayments' => $unsettledPayments,
-            'payments' => $payments,
             'payoutMode' => $payoutMode,
             'settlementBank' => $settlementBank,
+            'payments' => $payments,
+            'filters' => $filters,
+            'payoutModes' => \Modules\Sales\Enums\PayoutMode::cases(),
             'stats' => [
-                'unsettled_count' => $unsettledPayments->count(),
-                'unsettled_minor' => $unsettledPayments->sum('amount_minor'),
-                'earnings_minor' => (int) $payments->sum('customer_total_minor'),
-                'earnings_settled_minor' => (int) $payments->where('is_settled', true)->sum('customer_total_minor'),
-                'earnings_pending_minor' => (int) $payments->where('is_settled', false)->sum('customer_total_minor'),
+                'earnings_minor' => (int) $all->sum('customer_total_minor'),
+                'earnings_settled_minor' => (int) $all->where('is_settled', true)->sum('customer_total_minor'),
+                'earnings_pending_minor' => (int) $all->where('is_settled', false)->sum('customer_total_minor'),
+                'count' => $all->count(),
             ],
         ]);
+    }
+
+    public function settlementsStatement(Request $request)
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenant = $this->resolveTenant($request, $this->visibleTenantsFor($user));
+
+        abort_if(! $tenant, 403);
+
+        $filters = $this->settlementReportFilters($request);
+        $payments = $this->settlementReportQuery($tenant, $filters)->get();
+        $currency = $tenant->currency_code ?: 'NGN';
+        $filename = 'settlements-'.$tenant->slug.'-'.now()->format('Ymd').'.csv';
+
+        return response()->streamDownload(function () use ($payments, $currency): void {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, ['Order', 'Date', 'Customer', 'Gateway Reference', 'Mode', "Customer Total ({$currency})", "Gateway Charge ({$currency})", "Fees ({$currency})", 'Status', 'Settled At']);
+
+            foreach ($payments as $payment) {
+                fputcsv($handle, [
+                    $payment->order?->order_number,
+                    optional($payment->collected_at)->toDateTimeString(),
+                    $payment->order?->customer?->name ?? $payment->customer_email,
+                    $payment->provider_reference,
+                    $payment->payout_mode,
+                    number_format($payment->customer_total_minor / 100, 2, '.', ''),
+                    number_format($payment->gateway_charge_minor / 100, 2, '.', ''),
+                    number_format($payment->fees_minor / 100, 2, '.', ''),
+                    $payment->is_settled ? 'Settled' : 'Pending',
+                    optional($payment->settled_at)->toDateTimeString(),
+                ]);
+            }
+
+            fclose($handle);
+        }, $filename, ['Content-Type' => 'text/csv']);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function settlementReportFilters(Request $request): array
+    {
+        return [
+            'mode' => $request->string('mode')->toString(),
+            'status' => $request->string('status')->toString(),
+            'from' => $request->string('from')->toString(),
+            'to' => $request->string('to')->toString(),
+            'search' => trim($request->string('search')->toString()),
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $filters
+     */
+    private function settlementReportQuery(Tenant $tenant, array $filters)
+    {
+        return OnlineCollectedPayment::query()
+            ->with('order.customer')
+            ->where('tenant_id', $tenant->id)
+            ->where('status', 'successful')
+            ->when($filters['mode'] !== '', fn ($query) => $query->where('payout_mode', $filters['mode']))
+            ->when($filters['status'] === 'settled', fn ($query) => $query->where('is_settled', true))
+            ->when($filters['status'] === 'pending', fn ($query) => $query->where('is_settled', false))
+            ->when($filters['from'] !== '', fn ($query) => $query->whereDate('collected_at', '>=', $filters['from']))
+            ->when($filters['to'] !== '', fn ($query) => $query->whereDate('collected_at', '<=', $filters['to']))
+            ->when($filters['search'] !== '', fn ($query) => $query->where(function ($query) use ($filters): void {
+                $query->where('provider_reference', 'like', '%'.$filters['search'].'%')
+                    ->orWhere('customer_email', 'like', '%'.$filters['search'].'%')
+                    ->orWhereHas('order', fn ($orderQuery) => $orderQuery->where('order_number', 'like', '%'.$filters['search'].'%'));
+            }))
+            ->latest('collected_at');
+    }
+
+    public function wallet(Request $request): View
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenants = $this->visibleTenantsFor($user);
+        $tenant = $this->resolveTenant($request, $tenants);
+
+        abort_if(! $tenant, 403);
+
+        $payoutMode = \Modules\Sales\Enums\PayoutMode::fromTenant($tenant);
+        $wallet = app(\Modules\Sales\Support\Wallet\WalletService::class)->walletFor($tenant);
+        $from = $request->string('from')->toString();
+        $to = $request->string('to')->toString();
+        $transactions = \Modules\Sales\Models\WalletTransaction::query()
+            ->where('tenant_id', $tenant->id)
+            ->when($from !== '', fn ($query) => $query->whereDate('created_at', '>=', $from))
+            ->when($to !== '', fn ($query) => $query->whereDate('created_at', '<=', $to))
+            ->latest('id')
+            ->limit(200)
+            ->get();
+        $withdrawals = \Modules\Sales\Models\WalletWithdrawal::query()
+            ->where('tenant_id', $tenant->id)
+            ->latest('id')
+            ->limit(50)
+            ->get();
+        $onlineStore = \Modules\Business\Models\OnlineStore::query()->where('tenant_id', $tenant->id)->first();
+        $settlementBank = (array) ($onlineStore?->payment_settings['settlement_bank_account'] ?? []);
+        // Withdrawal depends on having a settlement bank and a positive balance — not on the
+        // payout mode. A business can always move any balance held for them.
+        $hasSettlementBank = filled($settlementBank['bank_code'] ?? null) && filled($settlementBank['account_number'] ?? null);
+        $canWithdraw = $hasSettlementBank && (int) $wallet->available_balance_minor > 0;
+
+        return view('sales::admin.wallet.index', [
+            'tenant' => $tenant,
+            'tenants' => $tenants,
+            'isPlatformAdmin' => $user->is_platform_admin,
+            'payoutMode' => $payoutMode,
+            'wallet' => $wallet,
+            'transactions' => $transactions,
+            'withdrawals' => $withdrawals,
+            'settlementBank' => $settlementBank,
+            'canWithdraw' => $canWithdraw,
+            'hasSettlementBank' => $hasSettlementBank,
+            'currency' => $tenant->currency_code ?: 'NGN',
+            'from' => $from,
+            'to' => $to,
+        ]);
+    }
+
+    public function walletStatement(Request $request)
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenant = $this->resolveTenant($request, $this->visibleTenantsFor($user));
+
+        abort_if(! $tenant, 403);
+
+        $from = $request->string('from')->toString();
+        $to = $request->string('to')->toString();
+        $currency = $tenant->currency_code ?: 'NGN';
+
+        $transactions = \Modules\Sales\Models\WalletTransaction::query()
+            ->where('tenant_id', $tenant->id)
+            ->when($from !== '', fn ($query) => $query->whereDate('created_at', '>=', $from))
+            ->when($to !== '', fn ($query) => $query->whereDate('created_at', '<=', $to))
+            ->oldest('id')
+            ->get();
+
+        $filename = 'wallet-statement-'.$tenant->slug.'-'.now()->format('Ymd').'.csv';
+
+        return response()->streamDownload(function () use ($transactions, $currency): void {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, ['Date', 'Reference', 'Description', 'Category', 'Direction', 'State', "Amount ({$currency})"]);
+
+            foreach ($transactions as $txn) {
+                $signed = ($txn->direction === 'debit' ? -1 : 1) * ($txn->amount_minor / 100);
+                fputcsv($handle, [
+                    optional($txn->created_at)->toDateTimeString(),
+                    $txn->reference,
+                    $txn->description,
+                    $txn->category,
+                    $txn->direction,
+                    $txn->state,
+                    number_format($signed, 2, '.', ''),
+                ]);
+            }
+
+            fclose($handle);
+        }, $filename, ['Content-Type' => 'text/csv']);
+    }
+
+    public function walletWithdrawPreview(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenant = $this->resolveTenant($request, $this->visibleTenantsFor($user));
+
+        abort_if(! $tenant, 403);
+
+        $receiveMinor = $this->moneyToMinor($request->input('amount'));
+        $currency = $tenant->currency_code ?: 'NGN';
+        $gatewayFee = app(\Modules\Sales\Support\Payments\PaymentGatewayManager::class)
+            ->payout((string) config('services.payments.default', 'paystack'))
+            ->transferFeeMinor($receiveMinor, $currency);
+        $platformFee = app(\Modules\Sales\Support\PlatformFees::class)->transferFeeMinor($tenant->id, $receiveMinor);
+        $available = (int) app(\Modules\Sales\Support\Wallet\WalletService::class)->walletFor($tenant)->available_balance_minor;
+        $total = $receiveMinor + $gatewayFee + $platformFee;
+
+        return response()->json([
+            'amount_minor' => $receiveMinor,
+            'gateway_fee_minor' => $gatewayFee,
+            'platform_fee_minor' => $platformFee,
+            'total_minor' => $total,
+            'available_minor' => $available,
+            'affordable' => $receiveMinor > 0 && $total <= $available,
+        ]);
+    }
+
+    public function walletWithdraw(Request $request, \Modules\Sales\Actions\RequestWalletWithdrawalAction $withdraw): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $tenant = $this->resolveTenant($request, $this->visibleTenantsFor($user));
+
+        abort_if(! $tenant, 403);
+
+        $data = $request->validate(['amount' => ['required']]);
+        $receiveMinor = $this->moneyToMinor($data['amount']);
+
+        try {
+            $withdrawal = $withdraw->execute($tenant, $receiveMinor, $user->id);
+        } catch (ValidationException $exception) {
+            return back()->withErrors($exception->errors())->withInput();
+        }
+
+        $currency = $tenant->currency_code ?: 'NGN';
+
+        return back()->with('status', 'Withdrawal of '.$currency.' '.number_format($withdrawal->amount_minor / 100, 2).' started — status: '.$withdrawal->status.'.');
+    }
+
+    public function updatePayoutMode(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()?->is_platform_admin, 403);
+
+        $tenant = $this->resolveTenant($request, $this->visibleTenantsFor($request->user()));
+        abort_if(! $tenant, 403);
+
+        $data = $request->validate([
+            'payout_mode' => ['required', Rule::in(array_map(static fn (\Modules\Sales\Enums\PayoutMode $mode): string => $mode->value, \Modules\Sales\Enums\PayoutMode::cases()))],
+        ]);
+
+        $tenant->settings = array_merge($tenant->settings ?? [], ['payout_mode' => $data['payout_mode']]);
+        $tenant->save();
+
+        return back()->with('status', 'Payout mode set to '.\Modules\Sales\Enums\PayoutMode::from($data['payout_mode'])->label().'.');
     }
 
     public function openTill(TillOpenRequest $request, PostJournalEntryAction $postJournalEntry): RedirectResponse
