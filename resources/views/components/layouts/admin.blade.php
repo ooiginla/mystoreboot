@@ -471,9 +471,6 @@
                         @permission('settlements.view')
                         <a class="{{ request()->routeIs('admin.sales.settlements.*') ? 'active' : '' }}" href="{{ route('admin.sales.settlements.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-wallet"/></svg><span>Business Settlements</span></a>
                         @endpermission
-                        @if (auth()->user()?->is_platform_admin)
-                            <a class="{{ request()->routeIs('admin.sales.admin-settlements.*') ? 'active' : '' }}" href="{{ route('admin.sales.admin-settlements.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-shield"/></svg><span>Admin Settlements</span></a>
-                        @endif
                     @endif
                     @if ($hasTenantModule('hrpayroll'))
                         @permission('hr.staff.view')

@@ -21,10 +21,3 @@ Route::post('/orders/{order}/payments', [SalesController::class, 'storePayment']
 Route::post('/orders/{order}/returns', [SalesController::class, 'storeReturn'])->name('orders.returns.store');
 Route::post('/coupons', [SalesController::class, 'storeCoupon'])->name('coupons.store');
 Route::get('/settlements', [SalesController::class, 'settlements'])->name('settlements.index');
-Route::get('/settlements/{settlement}', [SalesController::class, 'showSettlement'])->name('settlements.show');
-Route::get('/settlements/{settlement}/download', [SalesController::class, 'downloadSettlement'])->name('settlements.download');
-Route::get('/admin-settlements', [SalesController::class, 'adminSettlements'])->name('admin-settlements.index');
-Route::post('/admin-settlements', [SalesController::class, 'storeAdminSettlement'])->name('admin-settlements.store');
-Route::post('/admin-settlements/post', [SalesController::class, 'postAdminSettlements'])->name('admin-settlements.post');
-Route::post('/admin-settlements/cancel-preview', [SalesController::class, 'cancelAdminSettlementPreview'])->name('admin-settlements.cancel-preview');
-Route::get('/admin-settlements/{settlement}', [SalesController::class, 'showAdminSettlement'])->name('admin-settlements.show');

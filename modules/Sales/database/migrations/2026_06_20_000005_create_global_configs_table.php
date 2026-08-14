@@ -24,16 +24,6 @@ return new class extends Migration
         DB::table('global_configs')->insert([
             [
                 'tenant_id' => null,
-                'key' => 'ONLINE_STOREBOOT_CHARGE',
-                'value' => json_encode([
-                    'percentage_rate' => 1.5,
-                    'fixed_amount_minor' => 100000,
-                ], JSON_THROW_ON_ERROR),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'tenant_id' => null,
                 'key' => 'PAYMENT_GATEWAY_CHARGE',
                 'value' => json_encode([
                     'percentage_rate' => 1.5,

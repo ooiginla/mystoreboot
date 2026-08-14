@@ -147,13 +147,6 @@ final class RoutePermissionMap
             'admin.sales.orders.returns.store' => ['sales.refunds.issue', 'sales.refunds.request'],
             'admin.sales.coupons.store' => 'sales.discounts.override',
             'admin.sales.settlements.index' => 'settlements.view',
-            'admin.sales.settlements.show' => 'settlements.view',
-            'admin.sales.settlements.download' => 'settlements.view',
-            'admin.sales.admin-settlements.index' => 'settlements.manage',
-            'admin.sales.admin-settlements.store' => 'settlements.manage',
-            'admin.sales.admin-settlements.post' => 'settlements.manage',
-            'admin.sales.admin-settlements.cancel-preview' => 'settlements.manage',
-            'admin.sales.admin-settlements.show' => 'settlements.manage',
 
             // HR & Payroll
             'admin.hr-payroll.index' => 'hr.staff.view',

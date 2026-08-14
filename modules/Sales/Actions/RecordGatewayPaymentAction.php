@@ -12,9 +12,12 @@ use Modules\Business\Models\OnlineStore;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Sales\Enums\SalesPaymentStatus;
 use Modules\Sales\Models\OnlineCollectedPayment;
+use Modules\Sales\Enums\PayoutMode;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderPayment;
 use Modules\Sales\Support\Payments\GatewayPayment;
+use Modules\Sales\Support\PlatformFees;
+use Modules\Sales\Support\Wallet\WalletService;
 use Throwable;
 
 /**
@@ -132,9 +135,89 @@ final class RecordGatewayPaymentAction
 
         if ($newlyPaid) {
             $this->sendConfirmation($order);
+            $this->creditWalletIfCustodial($order);
+            $this->recognisePlatformSaleIncome($order, $payment);
         }
 
         return $newlyPaid;
+    }
+
+    /**
+     * Recognise Storeboot's cut of the sale (the gateway-charge markup, net of the gateway's
+     * real processing fee) as income in the platform tenant's own books — in every payout
+     * mode, so the platform GL captures what Storeboot actually earns. Posted at payment time
+     * on an accrual basis; idempotent per order.
+     */
+    private function recognisePlatformSaleIncome(SalesOrder $order, GatewayPayment $payment): void
+    {
+        $platformTenantId = app(PlatformFees::class)->platformTenantId();
+
+        if (! $platformTenantId || $platformTenantId === $order->tenant_id) {
+            return;
+        }
+
+        $collected = OnlineCollectedPayment::query()
+            ->where('tenant_id', $order->tenant_id)
+            ->where('provider', $payment->provider)
+            ->where('provider_reference', $payment->reference)
+            ->first();
+
+        if (! $collected) {
+            return;
+        }
+
+        $grossMinor = (int) $collected->gateway_charge_minor;   // what Storeboot charged (e.g. 3.5% + ₦100)
+        $feesMinor = (int) $collected->fees_minor;              // what the gateway actually took (e.g. 1.5% + ₦100)
+
+        if ($grossMinor <= 0 && $feesMinor <= 0) {
+            return;
+        }
+
+        // Revenue = gross gateway charge; cost = the gateway's processing fee; the remainder
+        // (storeboot_profit) is retained cash.
+        $netMinor = $grossMinor - $feesMinor;
+        $lines = [
+            ['account_code' => '4130', 'credit_minor' => $grossMinor],
+            ['account_code' => 'EXP-6350', 'debit_minor' => $feesMinor],
+        ];
+        $lines[] = $netMinor >= 0
+            ? ['account_code' => '1060', 'debit_minor' => $netMinor]
+            : ['account_code' => '1060', 'credit_minor' => -$netMinor];
+
+        app(PostJournalEntryAction::class)->execute(
+            $platformTenantId,
+            now()->toDateString(),
+            'Gateway charge income — '.$order->order_number,
+            $lines,
+            'sales_order',
+            $order->id,
+            'platform_sale_income',
+        );
+    }
+
+    /**
+     * In a custodial payout mode (WalletOnSettlement / WalletInstant), Storeboot collects the
+     * full payment and owes the merchant their share. Credit that share to the wallet as a
+     * PENDING balance; it becomes withdrawable once the gateway settles the funds to Storeboot.
+     */
+    private function creditWalletIfCustodial(SalesOrder $order): void
+    {
+        $tenant = $order->tenant;
+
+        if (! $tenant || ! PayoutMode::fromTenant($tenant)->isCustodial()) {
+            return;
+        }
+
+        // The merchant's net = the customer total (Storeboot keeps the gateway charge).
+        $merchantShareMinor = max(0,
+            (int) $order->subtotal_minor
+            + (int) $order->tax_minor
+            + (int) $order->shipping_minor
+            - (int) $order->coupon_discount_minor
+            - (int) $order->admin_discount_minor
+        );
+
+        app(WalletService::class)->creditPendingFromSale($order, $merchantShareMinor);
     }
 
     /**

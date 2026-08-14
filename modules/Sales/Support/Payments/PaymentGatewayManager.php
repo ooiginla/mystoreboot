@@ -20,6 +20,14 @@ final class PaymentGatewayManager
         };
     }
 
+    public function payout(string $provider): PayoutGateway
+    {
+        return match (strtolower(trim($provider))) {
+            'paystack' => new PaystackGateway,
+            default => throw new InvalidArgumentException("Unsupported payout gateway [{$provider}]."),
+        };
+    }
+
     /** The platform's default gateway (configurable, so a swap is a one-line config change). */
     public function default(): PaymentGateway
     {

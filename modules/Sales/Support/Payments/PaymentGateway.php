@@ -35,4 +35,12 @@ interface PaymentGateway
      * for amount/status, never the (spoofable) webhook body. Null when it cannot be verified.
      */
     public function fetchTransaction(string $reference, string $secretKey): ?GatewayPayment;
+
+    /**
+     * The transaction references belonging to a completed settlement batch — used to flip the
+     * matching wallet credits from Pending to Available once the funds reach Storeboot.
+     *
+     * @return list<string>
+     */
+    public function fetchSettlementReferences(string $settlementId, string $secretKey): array;
 }

@@ -40,8 +40,4 @@ final class OnlineCollectedPayment extends Model
         return $this->belongsTo(SalesOrderPayment::class, 'sales_order_payment_id');
     }
 
-    public function settlement(): BelongsTo
-    {
-        return $this->belongsTo(OnlinePaymentSettlement::class, 'online_payment_settlement_id');
-    }
 }

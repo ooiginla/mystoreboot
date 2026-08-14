@@ -10,8 +10,13 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use Modules\Business\Models\OnlineStore;
+use Modules\Sales\Actions\ProcessTransferOutcomeAction;
+use Modules\Sales\Actions\ReconcileWalletSettlementAction;
 use Modules\Sales\Actions\RecordGatewayPaymentAction;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\WalletWithdrawal;
+use Modules\Sales\Support\Payments\GatewayWebhookEvent;
+use Modules\Sales\Support\Payments\PaymentGateway;
 use Modules\Sales\Support\Payments\PaymentGatewayManager;
 
 /**
@@ -28,6 +33,7 @@ final class PaymentWebhookController extends Controller
         Request $request,
         PaymentGatewayManager $gateways,
         RecordGatewayPaymentAction $record,
+        ReconcileWalletSettlementAction $reconcile,
         string $provider = 'paystack',
     ): Response {
         try {
@@ -47,6 +53,16 @@ final class PaymentWebhookController extends Controller
         // Nothing actionable in this payload — acknowledge so the provider stops retrying.
         if (! $event) {
             return response('ok', 200);
+        }
+
+        // Settlement events are account-level (no single order) — reconcile the wallet.
+        if ($event->isSettlementSucceeded()) {
+            return $this->handleSettlement($request, $gateway, $provider, $event, $reconcile);
+        }
+
+        // Transfer (payout) events resolve a withdrawal, not an order.
+        if ($event->isTransferEvent()) {
+            return $this->handleTransfer($request, $gateway, $provider, $event, $payload);
         }
 
         $order = $event->orderId
@@ -97,6 +113,93 @@ final class PaymentWebhookController extends Controller
         }
 
         $record->execute($order, $payment);
+
+        return response('ok', 200);
+    }
+
+    /**
+     * Handle a settlement webhook: the gateway has paid a batch of transactions to the
+     * Storeboot platform account, so the matching wallet credits become Available. Settlements
+     * are account-level, so the signature is verified with the platform key.
+     */
+    private function handleSettlement(
+        Request $request,
+        PaymentGateway $gateway,
+        string $provider,
+        GatewayWebhookEvent $event,
+        ReconcileWalletSettlementAction $reconcile,
+    ): Response {
+        $secret = (string) config('services.paystack.secret_key', '');
+
+        if ($secret === '' || ! $gateway->verifyWebhookSignature($request, $secret)) {
+            Log::warning('Rejected settlement webhook: signature verification failed.', [
+                'provider' => $provider,
+                'settlement_id' => $event->settlementId,
+            ]);
+
+            return response('Invalid signature.', 401);
+        }
+
+        $references = $gateway->fetchSettlementReferences((string) $event->settlementId, $secret);
+        $flipped = $reconcile->execute($references, (string) $event->settlementId);
+
+        Log::info('Wallet settlement reconciled.', [
+            'provider' => $provider,
+            'settlement_id' => $event->settlementId,
+            'transactions' => count($references),
+            'made_available' => $flipped,
+        ]);
+
+        return response('ok', 200);
+    }
+
+    /**
+     * Handle a payout transfer webhook: mark the withdrawal completed (and book it) or, on
+     * failure/reversal, refund the reserved funds. Transfers are on the platform account, so
+     * the signature is verified with the platform key.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function handleTransfer(
+        Request $request,
+        PaymentGateway $gateway,
+        string $provider,
+        GatewayWebhookEvent $event,
+        array $payload,
+    ): Response {
+        $secret = (string) config('services.paystack.secret_key', '');
+
+        if ($secret === '' || ! $gateway->verifyWebhookSignature($request, $secret)) {
+            Log::warning('Rejected transfer webhook: signature verification failed.', [
+                'provider' => $provider,
+                'transfer_code' => $event->transferCode,
+                'reference' => $event->reference,
+            ]);
+
+            return response('Invalid signature.', 401);
+        }
+
+        $withdrawal = WalletWithdrawal::query()
+            ->when($event->transferCode, fn ($query) => $query->where('transfer_code', $event->transferCode))
+            ->when(! $event->transferCode && $event->reference !== '', fn ($query) => $query->where('reference', $event->reference))
+            ->first();
+
+        if (! $withdrawal) {
+            return response('ok', 200);
+        }
+
+        $outcome = match ($event->type) {
+            GatewayWebhookEvent::TRANSFER_SUCCEEDED => WalletWithdrawal::STATUS_COMPLETED,
+            GatewayWebhookEvent::TRANSFER_FAILED => WalletWithdrawal::STATUS_FAILED,
+            GatewayWebhookEvent::TRANSFER_REVERSED => WalletWithdrawal::STATUS_REVERSED,
+            default => null,
+        };
+
+        if ($outcome === null) {
+            return response('ok', 200);
+        }
+
+        app(ProcessTransferOutcomeAction::class)->execute($withdrawal, $outcome, (array) data_get($payload, 'data', []));
 
         return response('ok', 200);
     }
