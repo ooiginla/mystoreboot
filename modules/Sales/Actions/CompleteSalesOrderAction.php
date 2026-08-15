@@ -9,6 +9,7 @@ use Illuminate\Validation\ValidationException;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Inventory\Actions\AdjustInventoryReservationAction;
+use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Enums\StockCondition;
@@ -24,6 +25,7 @@ final class CompleteSalesOrderAction
         private readonly PostJournalEntryAction $postJournalEntry,
         private readonly PostInventoryMovementAction $postInventoryMovement,
         private readonly AdjustInventoryReservationAction $reservations,
+        private readonly EnsureInventoryLocationsAction $inventoryLocations,
         private readonly TenantModuleAccess $moduleAccess,
     ) {}
 
@@ -171,6 +173,11 @@ final class CompleteSalesOrderAction
             ->where('status', 'active')
             ->orderBy('id')
             ->first();
+
+        if (! $location) {
+            $branch = $order->branch()->where('tenant_id', $order->tenant_id)->first();
+            $location = $branch ? $this->inventoryLocations->forBranch($branch) : null;
+        }
 
         if (! $location) {
             throw ValidationException::withMessages([

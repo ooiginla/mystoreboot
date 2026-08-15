@@ -131,9 +131,11 @@
                 <a href="#{{ $dialogId }}-pricing" data-local-tab-target="{{ $dialogId }}-pricing">Extra Detail</a>
                 <a href="#{{ $dialogId }}-tags-attributes" data-local-tab-target="{{ $dialogId }}-tags-attributes">Tags, Badges & Attributes</a>
                 @if (! $isService)
-                    <a href="#{{ $dialogId }}-custom" data-local-tab-target="{{ $dialogId }}-custom">Custom</a>
                     <a href="#{{ $dialogId }}-personalization" data-local-tab-target="{{ $dialogId }}-personalization">Personalization</a>
                     <a href="#{{ $dialogId }}-variants" data-local-tab-target="{{ $dialogId }}-variants">Variants</a>
+                    @if ($product && ($inventoryEnabled ?? false))
+                        <a href="#{{ $dialogId }}-inventory" data-local-tab-target="{{ $dialogId }}-inventory">Inventory</a>
+                    @endif
                 @endif
             </div>
 
@@ -489,43 +491,44 @@
                             </details>
                         </div>
                     </div>
+                    @if (! $isService)
+                        <div class="field full">
+                            <div class="panel catalog-variant-editor" data-product-custom-assignments>
+                                <div class="panel-header"><div><h3 class="panel-title">Custom product choices</h3><p class="subtle">Assign keys from the Custom library to this product, then choose whether customers can select a value on the online store.</p></div></div>
+                                <div class="panel-body">
+                                    @forelse ($customDefinitions as $customIndex => $definition)
+                                        @php $selectedCustomField = $selectedCustomFields->get(strtolower($definition->name)); @endphp
+                                        <div class="variant-row-editor" data-product-custom-assignment>
+                                            <input type="hidden" name="custom_fields[{{ $customIndex }}][key]" value="{{ $definition->name }}">
+                                            <input type="hidden" name="custom_fields[{{ $customIndex }}][values]" value="{{ collect($definition->values)->implode(', ') }}">
+                                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+                                                <div>
+                                                    <strong>{{ $definition->name }}</strong>
+                                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+                                                        @foreach ($definition->values as $value)
+                                                            <span class="catalog-value-tag"><span>{{ $value }}</span></span>
+                                                        @endforeach
+                                                    </div>
+                                                </div>
+                                                <div style="display:grid; gap:8px;">
+                                                    <input type="hidden" name="custom_fields[{{ $customIndex }}][is_assigned]" value="0">
+                                                    <label class="inline-check"><input type="checkbox" name="custom_fields[{{ $customIndex }}][is_assigned]" value="1" data-custom-assigned @checked((bool) $selectedCustomField)> Assign to product</label>
+                                                    <input type="hidden" name="custom_fields[{{ $customIndex }}][is_customer_selectable]" value="0">
+                                                    <label class="inline-check"><input type="checkbox" name="custom_fields[{{ $customIndex }}][is_customer_selectable]" value="1" data-custom-customer-selectable @checked((bool) ($selectedCustomField['is_customer_selectable'] ?? $definition->is_customer_selectable))> Customer can select</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    @empty
+                                        <div class="empty">No custom keys exist yet. Create one from the Tags &amp; Attributes section first.</div>
+                                    @endforelse
+                                </div>
+                            </div>
+                        </div>
+                    @endif
                 </div>
             </section>
 
             @if (! $isService)
-                <section data-local-tab-panel id="{{ $dialogId }}-custom" hidden>
-                    <div class="panel catalog-variant-editor" data-product-custom-assignments>
-                        <div class="panel-header"><div><h3 class="panel-title">Custom product choices</h3><p class="subtle">Assign keys from the Custom library to this product, then choose whether customers can select a value on the online store.</p></div></div>
-                        <div class="panel-body">
-                            @forelse ($customDefinitions as $customIndex => $definition)
-                                @php($selectedCustomField = $selectedCustomFields->get(strtolower($definition->name)))
-                                <div class="variant-row-editor" data-product-custom-assignment>
-                                    <input type="hidden" name="custom_fields[{{ $customIndex }}][key]" value="{{ $definition->name }}">
-                                    <input type="hidden" name="custom_fields[{{ $customIndex }}][values]" value="{{ collect($definition->values)->implode(', ') }}">
-                                    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;">
-                                        <div>
-                                            <strong>{{ $definition->name }}</strong>
-                                            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
-                                                @foreach ($definition->values as $value)
-                                                    <span class="catalog-value-tag"><span>{{ $value }}</span></span>
-                                                @endforeach
-                                            </div>
-                                        </div>
-                                        <div style="display:grid; gap:8px;">
-                                            <input type="hidden" name="custom_fields[{{ $customIndex }}][is_assigned]" value="0">
-                                            <label class="inline-check"><input type="checkbox" name="custom_fields[{{ $customIndex }}][is_assigned]" value="1" data-custom-assigned @checked((bool) $selectedCustomField)> Assign to product</label>
-                                            <input type="hidden" name="custom_fields[{{ $customIndex }}][is_customer_selectable]" value="0">
-                                            <label class="inline-check"><input type="checkbox" name="custom_fields[{{ $customIndex }}][is_customer_selectable]" value="1" data-custom-customer-selectable @checked((bool) ($selectedCustomField['is_customer_selectable'] ?? $definition->is_customer_selectable))> Customer can select</label>
-                                        </div>
-                                    </div>
-                                </div>
-                            @empty
-                                <div class="empty">No custom keys exist yet. Create one from the main Custom tab first.</div>
-                            @endforelse
-                        </div>
-                    </div>
-                </section>
-
                 <section data-local-tab-panel id="{{ $dialogId }}-personalization" hidden>
                     <div class="panel catalog-variant-editor" data-product-personalization>
                         <div class="panel-header">
@@ -660,6 +663,80 @@
                 </section>
             @else
                 <input type="hidden" name="has_variants" value="0">
+            @endif
+
+            @if (! $isService && $product && ($inventoryEnabled ?? false))
+                <section data-local-tab-panel id="{{ $dialogId }}-inventory" hidden>
+                    <div class="panel catalog-variant-editor" data-inventory-tab
+                         data-tenant="{{ $tenant->id }}"
+                         data-adjust-url="{{ route('admin.catalog.products.stock.adjust', $product) }}"
+                         data-vendor-url="{{ route('admin.catalog.vendors.quick-store') }}">
+                        <div class="panel-header">
+                            <div>
+                                <h3 class="panel-title">Inventory</h3>
+                                <p class="subtle">Add or remove stock for this product — no need to leave this screen.</p>
+                            </div>
+                        </div>
+                        <div class="panel-body" style="display:grid; gap:16px;">
+                            @foreach ($product->variants as $invVariant)
+                                @php $onHand = (int) (($variantStock[$invVariant->id] ?? collect())->sum('quantity_on_hand')); @endphp
+                                <div class="variant-row-editor" data-inv-variant data-variant-id="{{ $invVariant->id }}">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                                        <strong>{{ $invVariant->variant_name ?: $product->name }}</strong>
+                                        <span class="badge">On hand: <span data-inv-onhand>{{ $onHand }}</span></span>
+                                    </div>
+                                    <div class="form-grid" style="margin-top:10px;">
+                                        <div class="field"><label>Action</label>
+                                            <select data-inv-mode>
+                                                <option value="add">➕ Add stock</option>
+                                                <option value="remove">➖ Remove stock</option>
+                                            </select>
+                                        </div>
+                                        <div class="field"><label>Quantity</label><input type="number" min="1" step="1" data-inv-qty placeholder="0"></div>
+                                        <div class="field" data-inv-add><label>Unit cost ({{ $tenant->currency_code }})</label><input type="text" inputmode="decimal" data-inv-cost placeholder="0.00"></div>
+                                        <div class="field" data-inv-add>
+                                            <label>Vendor (optional)</label>
+                                            <select data-inv-vendor>
+                                                <option value="">No vendor</option>
+                                                <option value="__new">➕ New vendor</option>
+                                                @foreach ($inventoryVendors as $invVendor)
+                                                    <option value="{{ $invVendor->id }}">{{ $invVendor->name }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div class="field" data-inv-remove hidden><label>Reason</label>
+                                            <select data-inv-reason>
+                                                <option value="adjustment">Adjustment</option>
+                                                <option value="damaged">Damaged</option>
+                                                <option value="lost">Lost</option>
+                                            </select>
+                                        </div>
+                                        <div class="field"><label>Location</label>
+                                            <select data-inv-location>
+                                                @foreach ($inventoryLocations as $loc)
+                                                    <option value="{{ $loc->id }}" @selected($loc->id === $defaultInventoryLocationId)>{{ $loc->name }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div class="field full"><label>Note (optional)</label><input type="text" data-inv-note maxlength="255"></div>
+                                    </div>
+                                    <div class="variant-row-editor" data-inv-newvendor hidden style="margin-top:10px;">
+                                        <div class="form-grid">
+                                            <div class="field"><label>Vendor name *</label><input type="text" data-nv-name></div>
+                                            <div class="field"><label>Phone (optional)</label><input type="text" data-nv-phone></div>
+                                            <div class="field"><label>Email (optional)</label><input type="email" data-nv-email></div>
+                                        </div>
+                                        <div class="button-row"><button type="button" class="btn secondary" data-nv-create>Save vendor</button></div>
+                                    </div>
+                                    <div class="button-row" style="margin-top:10px; align-items:center; gap:12px;">
+                                        <button type="button" class="btn primary" data-inv-apply>Apply</button>
+                                        <span class="subtle" data-inv-status></span>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                </section>
             @endif
 
             <div class="button-row">

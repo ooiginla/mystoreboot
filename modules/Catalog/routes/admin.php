@@ -12,6 +12,8 @@ Route::post('/products/import-sheet', [CatalogController::class, 'importProducts
 Route::post('/products/ai-content', [CatalogController::class, 'generateProductContent'])->name('products.ai-content');
 Route::post('/products/{product}/generate-image', [CatalogController::class, 'generateProductImage'])->name('products.generate-image');
 Route::put('/products/{product}', [CatalogController::class, 'updateProduct'])->name('products.update');
+Route::post('/products/{product}/stock', [CatalogController::class, 'adjustStock'])->name('products.stock.adjust');
+Route::post('/vendors/quick', [CatalogController::class, 'quickStoreVendor'])->name('vendors.quick-store');
 Route::patch('/products/{product}/status', [CatalogController::class, 'updateProductStatus'])->name('products.status.update');
 Route::delete('/products/{product}', [CatalogController::class, 'destroyProduct'])->name('products.destroy');
 Route::post('/custom-definitions', [CatalogController::class, 'storeCustomDefinition'])->name('custom-definitions.store');

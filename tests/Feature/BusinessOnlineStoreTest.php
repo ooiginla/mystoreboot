@@ -9,11 +9,13 @@ use Illuminate\Support\Facades\Storage;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\Role;
 use Modules\Access\Models\TenantMembership;
+use Modules\Business\Actions\SaveBusinessProfileAction;
 use Modules\Business\Models\Branch;
 use Modules\Business\Models\OnlineStore;
 use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Finance\Models\FinanceAccount;
+use Modules\Inventory\Models\InventoryLocation;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Module;
 use Modules\Subscriptions\Models\Plan;
@@ -26,6 +28,31 @@ use Tests\TestCase;
 class BusinessOnlineStoreTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_creating_a_business_creates_its_head_office_inventory_location(): void
+    {
+        $tenant = app(SaveBusinessProfileAction::class)->execute([
+            'name' => 'New Retail Business',
+            'slug' => null,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+            'default_tax_rate' => '0',
+        ]);
+        $headOffice = Branch::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('is_primary', true)
+            ->firstOrFail();
+
+        $this->assertSame('Head Office', $headOffice->name);
+        $this->assertDatabaseHas(InventoryLocation::class, [
+            'tenant_id' => $tenant->id,
+            'branch_id' => $headOffice->id,
+            'name' => 'Head Office',
+            'status' => 'active',
+        ]);
+    }
 
     public function test_business_setup_shows_tenant_switcher_for_user_with_multiple_organizations(): void
     {
@@ -748,6 +775,12 @@ class BusinessOnlineStoreTest extends TestCase
             'role_id' => $staffRole->id,
             'status' => MembershipStatus::Active,
         ]);
+        $existingBranch = Branch::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Existing Branch',
+            'code' => 'EXISTING',
+            'status' => 'active',
+        ]);
 
         $this->actingAs($superadmin)
             ->get(route('admin.business.index', ['tenant' => $tenant->id]).'#subscriptions')
@@ -791,6 +824,25 @@ class BusinessOnlineStoreTest extends TestCase
             route('admin.business.subscriptions.modules.update', [$subscription, $sales]),
             $response->getContent(),
         );
+
+        $this->assertFalse(InventoryLocation::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('branch_id', $existingBranch->id)
+            ->exists());
+
+        $this->actingAs($superadmin)
+            ->put(route('admin.business.subscriptions.modules.update', [$subscription, $inventory]), [
+                'tenant_id' => $tenant->id,
+                'enabled' => true,
+            ])
+            ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#subscriptions');
+
+        $this->assertDatabaseHas(InventoryLocation::class, [
+            'tenant_id' => $tenant->id,
+            'branch_id' => $existingBranch->id,
+            'name' => 'Existing Branch',
+            'status' => 'active',
+        ]);
 
         $this->actingAs($tenantAdmin)
             ->put(route('admin.business.subscriptions.modules.update', [$subscription, $sales]), [

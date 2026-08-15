@@ -250,7 +250,7 @@
                 <div class="panel-body">
                     <div class="report-grid">
                         @foreach ($stockLevels->groupBy('inventory_location_id') as $locationStock)
-                            @php($location = $locationStock->first()->location)
+                            @php $location = $locationStock->first()->location; @endphp
                             <div class="report-card">
                                 <h3 class="panel-title">{{ $location->name }}</h3>
                                 <p class="subtle">{{ number_format($locationStock->sum('quantity_on_hand')) }} on hand · {{ $tenant->currency_code }} {{ $money($locationStock->sum(fn ($level) => $level->stock_value_minor)) }} value</p>

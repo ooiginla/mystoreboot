@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Mail;
 use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
 use Modules\Finance\Models\FinanceExpenseCategory;
+use Modules\Inventory\Models\InventoryLocation;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Plan;
 use Modules\Subscriptions\Models\TenantSubscription;
@@ -120,6 +121,14 @@ class TenantSignupTest extends TestCase
             'status' => 'active',
         ]);
         $this->assertSame(1, Branch::query()->where('tenant_id', $tenant->id)->count());
+        $headOffice = Branch::query()->where('tenant_id', $tenant->id)->where('code', 'HO')->firstOrFail();
+        $this->assertDatabaseHas(InventoryLocation::class, [
+            'tenant_id' => $tenant->id,
+            'branch_id' => $headOffice->id,
+            'name' => 'Head Office',
+            'code' => 'HO',
+            'status' => 'active',
+        ]);
         $this->assertSame(SubscriptionStatus::Trialing, $subscription->status);
         $this->assertSame('starter', $subscription->plan->slug);
         $this->assertEqualsCanonicalizing(

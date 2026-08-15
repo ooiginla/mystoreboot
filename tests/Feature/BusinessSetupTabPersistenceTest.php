@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Business\Models\Branch;
 use Modules\Business\Models\Department;
+use Modules\Inventory\Models\InventoryLocation;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 use Tests\TestCase;
@@ -39,6 +40,13 @@ final class BusinessSetupTabPersistenceTest extends TestCase
             ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#branches');
 
         $branch = Branch::query()->where('tenant_id', $tenant->id)->where('code', 'CITY')->firstOrFail();
+        $this->assertDatabaseHas(InventoryLocation::class, [
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'name' => 'City Store',
+            'code' => 'CITY',
+            'status' => 'active',
+        ]);
 
         $this->post(route('admin.business.departments.store'), [
             'tenant_id' => $tenant->id,

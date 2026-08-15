@@ -15,6 +15,7 @@ use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\ProductVariant;
+use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
 use Modules\Inventory\Enums\InventoryLocationType;
 use Modules\Inventory\Enums\InventoryMovementType;
@@ -30,7 +31,7 @@ use Modules\Tenancy\Models\Tenant;
 
 final class InventoryController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, EnsureInventoryLocationsAction $inventoryLocations): View
     {
         /** @var User $user */
         $user = $request->user();
@@ -39,7 +40,7 @@ final class InventoryController extends Controller
 
         abort_if(! $tenant, 403);
 
-        $this->ensureBranchLocations($tenant);
+        $inventoryLocations->forTenant($tenant);
 
         $locations = InventoryLocation::query()
             ->with('branch')
@@ -211,24 +212,6 @@ final class InventoryController extends Controller
         return redirect()
             ->to(route('admin.inventory.index', ['tenant' => $request->string('tenant_id')->toString()]).'#reorder')
             ->with('status', 'Reorder settings saved.');
-    }
-
-    private function ensureBranchLocations(Tenant $tenant): void
-    {
-        Branch::query()
-            ->where('tenant_id', $tenant->id)
-            ->where('status', 'active')
-            ->each(function (Branch $branch) use ($tenant): void {
-                InventoryLocation::query()->firstOrCreate([
-                    'tenant_id' => $tenant->id,
-                    'branch_id' => $branch->id,
-                ], [
-                    'name' => $branch->name,
-                    'code' => $branch->code,
-                    'location_type' => InventoryLocationType::Branch->value,
-                    'status' => 'active',
-                ]);
-            });
     }
 
     /**

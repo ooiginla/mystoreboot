@@ -198,6 +198,7 @@ final class PostInventoryMovementAction
             'inventory_location_id' => $data['inventory_location_id'],
             'destination_inventory_location_id' => $data['destination_inventory_location_id'] ?? null,
             'product_variant_id' => $data['product_variant_id'],
+            'vendor_id' => $data['vendor_id'] ?? null,
             'movement_type' => $type->value,
             'stock_condition' => $data['stock_condition'] ?? StockCondition::Sellable->value,
             'quantity' => $delta,

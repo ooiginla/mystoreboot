@@ -48,7 +48,7 @@ final class CatalogCustomFieldsTest extends TestCase
             ->assertSee('data-tab-target="tags-attributes"', false)
             ->assertSee('data-catalog-management-accordion="custom"', false)
             ->assertSee('data-accordion-icon="custom"', false)
-            ->assertSee('href="#product-dialog-custom"', false)
+            ->assertDontSee('href="#product-dialog-custom"', false)
             ->assertSee('Custom product choices')
             ->assertSee('data-dialog-open="custom-definition-dialog"', false)
             ->assertSee('data-custom-definition-tag-input', false)
@@ -124,7 +124,8 @@ final class CatalogCustomFieldsTest extends TestCase
 
         $this->get(route('admin.catalog.index', ['tenant' => $tenant->id]))
             ->assertOk()
-            ->assertSee('href="#edit-product-'.$product->id.'-custom"', false)
+            ->assertDontSee('href="#edit-product-'.$product->id.'-custom"', false)
+            ->assertSee('href="#edit-product-'.$product->id.'-tags-attributes"', false)
             ->assertSee('href="#edit-product-'.$product->id.'-personalization"', false)
             ->assertSee('Assign to product')
             ->assertSee('Lagos Island');

@@ -2296,4 +2296,90 @@
             });
         });
     </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
+            const stripMoney = (v) => (v || '').toString().replace(/,/g, '').trim();
+
+            document.addEventListener('change', (event) => {
+                const modeSel = event.target.closest('[data-inv-mode]');
+                if (modeSel) {
+                    const block = modeSel.closest('[data-inv-variant]');
+                    const add = modeSel.value === 'add';
+                    block.querySelectorAll('[data-inv-add]').forEach((el) => { el.hidden = ! add; });
+                    block.querySelectorAll('[data-inv-remove]').forEach((el) => { el.hidden = add; });
+                    return;
+                }
+                const vendorSel = event.target.closest('[data-inv-vendor]');
+                if (vendorSel) {
+                    const block = vendorSel.closest('[data-inv-variant]');
+                    block.querySelector('[data-inv-newvendor]').hidden = vendorSel.value !== '__new';
+                }
+            });
+
+            document.addEventListener('click', async (event) => {
+                const createBtn = event.target.closest('[data-nv-create]');
+                if (createBtn) {
+                    const tab = createBtn.closest('[data-inventory-tab]');
+                    const block = createBtn.closest('[data-inv-variant]');
+                    const name = block.querySelector('[data-nv-name]').value.trim();
+                    if (! name) { alert('Enter a vendor name.'); return; }
+                    createBtn.disabled = true;
+                    try {
+                        const body = new URLSearchParams();
+                        body.append('_token', csrf);
+                        body.append('tenant_id', tab.dataset.tenant);
+                        body.append('name', name);
+                        body.append('phone', block.querySelector('[data-nv-phone]').value.trim());
+                        body.append('email', block.querySelector('[data-nv-email]').value.trim());
+                        const res = await fetch(tab.dataset.vendorUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body });
+                        const d = await res.json();
+                        if (! res.ok) throw new Error(d.message || 'Could not create vendor.');
+                        tab.querySelectorAll('[data-inv-vendor]').forEach((sel) => {
+                            const opt = document.createElement('option'); opt.value = d.id; opt.textContent = d.name; sel.appendChild(opt);
+                        });
+                        const sel = block.querySelector('[data-inv-vendor]'); sel.value = d.id;
+                        block.querySelector('[data-inv-newvendor]').hidden = true;
+                        ['[data-nv-name]', '[data-nv-phone]', '[data-nv-email]'].forEach((s) => { block.querySelector(s).value = ''; });
+                    } catch (err) { alert(err.message); }
+                    createBtn.disabled = false;
+                    return;
+                }
+
+                const applyBtn = event.target.closest('[data-inv-apply]');
+                if (! applyBtn) return;
+                const tab = applyBtn.closest('[data-inventory-tab]');
+                const block = applyBtn.closest('[data-inv-variant]');
+                const status = block.querySelector('[data-inv-status]');
+                const mode = block.querySelector('[data-inv-mode]').value;
+                const qty = block.querySelector('[data-inv-qty]').value;
+                if (! qty || parseInt(qty, 10) <= 0) { status.textContent = 'Enter a quantity.'; status.style.color = 'var(--danger,#b91c1c)'; return; }
+                const body = new URLSearchParams();
+                body.append('_token', csrf);
+                body.append('direction', mode);
+                body.append('product_variant_id', block.dataset.variantId);
+                body.append('inventory_location_id', block.querySelector('[data-inv-location]').value);
+                body.append('quantity', qty);
+                if (mode === 'add') {
+                    body.append('unit_cost', stripMoney(block.querySelector('[data-inv-cost]').value));
+                    const vend = block.querySelector('[data-inv-vendor]').value;
+                    if (vend && vend !== '__new') body.append('vendor_id', vend);
+                } else {
+                    body.append('reason', block.querySelector('[data-inv-reason]').value);
+                }
+                body.append('note', block.querySelector('[data-inv-note]').value);
+                applyBtn.disabled = true; status.textContent = 'Saving…'; status.style.color = 'var(--muted,#64748b)';
+                try {
+                    const res = await fetch(tab.dataset.adjustUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body });
+                    const d = await res.json();
+                    if (! res.ok) throw new Error(d.message || 'Could not update stock.');
+                    block.querySelector('[data-inv-onhand]').textContent = d.total_on_hand;
+                    status.textContent = '✓ ' + d.message; status.style.color = 'var(--brand-strong,#067647)';
+                    block.querySelector('[data-inv-qty]').value = ''; block.querySelector('[data-inv-note]').value = '';
+                } catch (err) { status.textContent = err.message; status.style.color = 'var(--danger,#b91c1c)'; }
+                applyBtn.disabled = false;
+            });
+        });
+    </script>
 </x-layouts.admin>

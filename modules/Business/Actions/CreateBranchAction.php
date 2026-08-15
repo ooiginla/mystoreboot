@@ -6,9 +6,14 @@ namespace Modules\Business\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Modules\Business\Models\Branch;
+use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 
 final class CreateBranchAction
 {
+    public function __construct(
+        private readonly EnsureInventoryLocationsAction $inventoryLocations,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $data
      */
@@ -45,7 +50,10 @@ final class CreateBranchAction
                 return $branch->refresh();
             }
 
-            return Branch::query()->create($values);
+            $createdBranch = Branch::query()->create($values);
+            $this->inventoryLocations->forBranch($createdBranch);
+
+            return $createdBranch;
         });
     }
 

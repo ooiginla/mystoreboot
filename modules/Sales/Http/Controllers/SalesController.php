@@ -29,6 +29,7 @@ use Modules\Customers\Models\Customer;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Inventory\Actions\AdjustInventoryReservationAction;
+use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Sales\Actions\CompleteSalesOrderAction;
 use Modules\Sales\Actions\CreateSalesOrderAction;
@@ -60,6 +61,7 @@ final class SalesController extends Controller
         Request $request,
         ActiveBranchManager $branchManager,
         TenantModuleAccess $moduleAccess,
+        EnsureInventoryLocationsAction $inventoryLocations,
     ): View {
         /** @var User $user */
         $user = $request->user();
@@ -68,6 +70,9 @@ final class SalesController extends Controller
 
         abort_if(! $tenant, 403);
         $inventoryEnabled = $moduleAccess->allows($tenant, 'inventory');
+        if ($inventoryEnabled) {
+            $inventoryLocations->forTenant($tenant);
+        }
 
         $walkInCustomer = $this->walkInCustomer($tenant);
         $orderSearch = trim($request->string('order_search')->toString());
@@ -83,7 +88,7 @@ final class SalesController extends Controller
         $requestedOrderPaymentStatus = $request->string('order_payment_status')->toString();
         $orderPaymentStatus = in_array($requestedOrderPaymentStatus, SalesPaymentStatus::values(), true) ? $requestedOrderPaymentStatus : '';
         $recordSaleBranch = $branchManager->stateForRequest($request, $user)['activeBranch'] ?? $branches->first();
-        $locations = InventoryLocation::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
+        $locations = InventoryLocation::query()->where('tenant_id', $tenant->id)->where('status', 'active')->orderBy('name')->get();
         $activeTill = SalesTillSession::query()
             ->with(['branch', 'user', 'cashLocation.financeAccount', 'vaultCashLocation.financeAccount', 'movements.user', 'payments.order.customer'])
             ->where('tenant_id', $tenant->id)
@@ -176,8 +181,11 @@ final class SalesController extends Controller
             ->with($completionDialogKey, $order->id);
     }
 
-    public function retailPos(Request $request): View
-    {
+    public function retailPos(
+        Request $request,
+        TenantModuleAccess $moduleAccess,
+        EnsureInventoryLocationsAction $inventoryLocations,
+    ): View {
         /** @var User $user */
         $user = $request->user();
         $tenants = $this->visibleTenantsFor($user);
@@ -185,9 +193,13 @@ final class SalesController extends Controller
 
         abort_if(! $tenant, 403);
 
+        if ($moduleAccess->allows($tenant, 'inventory')) {
+            $inventoryLocations->forTenant($tenant);
+        }
+
         $walkInCustomer = $this->walkInCustomer($tenant);
         $branches = Branch::query()->where('tenant_id', $tenant->id)->orderByDesc('is_primary')->orderBy('name')->get();
-        $locations = InventoryLocation::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
+        $locations = InventoryLocation::query()->where('tenant_id', $tenant->id)->where('status', 'active')->orderBy('name')->get();
         $activeTill = SalesTillSession::query()
             ->with(['branch', 'user', 'cashLocation.financeAccount', 'vaultCashLocation.financeAccount', 'movements.user', 'payments.order.customer'])
             ->where('tenant_id', $tenant->id)

@@ -27,6 +27,7 @@ use Modules\Sales\Models\SalesOrder;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Module;
 use Modules\Subscriptions\Models\Plan;
+use Modules\Subscriptions\Models\TenantModuleEntitlement;
 use Modules\Subscriptions\Models\TenantSubscription;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
@@ -245,6 +246,41 @@ class SalesOrderStatusUpdateTest extends TestCase
             ->where('reference_id', $order->id)
             ->count());
         $this->assertSame(110000, $order->customer->refresh()->account_balance_minor);
+    }
+
+    public function test_completing_an_order_repairs_a_missing_branch_inventory_location(): void
+    {
+        [$user, $order] = $this->fixture(inventoryEnabled: false);
+        $order->items()->firstOrFail()->variant->product->update([
+            'product_type' => ProductType::Service->value,
+        ]);
+        $inventoryModule = Module::query()->where('slug', 'inventory')->firstOrFail();
+        TenantModuleEntitlement::query()->create([
+            'tenant_id' => $order->tenant_id,
+            'module_id' => $inventoryModule->id,
+            'is_enabled' => true,
+        ]);
+
+        $this->assertFalse(InventoryLocation::query()
+            ->where('tenant_id', $order->tenant_id)
+            ->where('branch_id', $order->branch_id)
+            ->exists());
+
+        $this->actingAs($user)
+            ->post(route('admin.sales.orders.status.update', $order), [
+                'order_status' => SalesOrderStatus::Completed->value,
+            ])
+            ->assertRedirect(route('admin.sales.orders.index', ['tenant' => $order->tenant_id]).'#orders')
+            ->assertSessionHasNoErrors();
+
+        $location = InventoryLocation::query()
+            ->where('tenant_id', $order->tenant_id)
+            ->where('branch_id', $order->branch_id)
+            ->firstOrFail();
+
+        $this->assertSame('active', $location->status);
+        $this->assertSame($location->id, $order->refresh()->inventory_location_id);
+        $this->assertSame(SalesOrderStatus::Completed, $order->order_status);
     }
 
     public function test_completing_order_without_inventory_subscription_skips_stock_and_uses_optional_estimated_cogs(): void

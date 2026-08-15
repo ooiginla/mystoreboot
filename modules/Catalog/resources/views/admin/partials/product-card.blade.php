@@ -20,6 +20,13 @@
     $canManageItem = $catalogUser?->is_platform_admin
         || ! app(\Modules\Access\Support\PermissionService::class)->enforcementEnabled($tenant)
         || $catalogUser?->hasPermission($tenant, 'catalog.update');
+
+    // Total stock available across all variants and locations (products only).
+    $totalOnHand = null;
+    if (($inventoryEnabled ?? false) && $item->product_type === \Modules\Catalog\Enums\ProductType::Product) {
+        $variantStockMap = $variantStock ?? collect();
+        $totalOnHand = (int) $item->variants->sum(fn ($cardVariant) => (int) (($variantStockMap[$cardVariant->id] ?? collect())->sum('quantity_on_hand')));
+    }
 @endphp
 
 <article
@@ -44,9 +51,14 @@
     </div>
 
     <div>
-        <button class="product-name-link" type="button" data-dialog-open="view-product-{{ $item->id }}">
-            {{ $item->name }}
-        </button>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <button class="product-name-link" type="button" data-dialog-open="view-product-{{ $item->id }}">
+                {{ $item->name }}
+            </button>
+            @if (! is_null($totalOnHand))
+                <span class="badge {{ $totalOnHand > 0 ? 'success' : 'neutral' }}" title="Total available stock across all locations">{{ number_format($totalOnHand) }} in stock</span>
+            @endif
+        </div>
         <div class="product-meta">
             @if ($item->brand)
                 <span>Brand: <strong>{{ $item->brand }}</strong></span>

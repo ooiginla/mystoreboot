@@ -39,6 +39,7 @@ use Modules\Business\Support\SafeRichText;
 use Modules\Catalog\Actions\EnsureDefaultProductCategoryAction;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Finance\Models\FinanceAccount;
+use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 use Modules\Sales\Enums\PayoutMode;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Module;
@@ -739,35 +740,54 @@ final class BusinessSetupController extends Controller
             ->all();
     }
 
-    public function storeSubscription(Request $request): RedirectResponse
-    {
+    public function storeSubscription(
+        Request $request,
+        TenantModuleAccess $moduleAccess,
+        EnsureInventoryLocationsAction $inventoryLocations,
+    ): RedirectResponse {
         abort_unless($request->user()?->is_platform_admin, 403);
 
         $data = $this->validatedSubscriptionData($request);
 
         TenantSubscription::query()->create($data);
+        $tenant = Tenant::query()->findOrFail($data['tenant_id']);
+        if ($moduleAccess->allows($tenant, 'inventory')) {
+            $inventoryLocations->forTenant($tenant);
+        }
 
         return redirect()
             ->to(route('admin.business.index', ['tenant' => $data['tenant_id']]).'#subscriptions')
             ->with('status', 'Tenant subscription created.');
     }
 
-    public function updateSubscription(Request $request, TenantSubscription $subscription): RedirectResponse
-    {
+    public function updateSubscription(
+        Request $request,
+        TenantSubscription $subscription,
+        TenantModuleAccess $moduleAccess,
+        EnsureInventoryLocationsAction $inventoryLocations,
+    ): RedirectResponse {
         abort_unless($request->user()?->is_platform_admin, 403);
 
         $data = $this->validatedSubscriptionData($request);
         abort_unless($data['tenant_id'] === $subscription->tenant_id, 403);
 
         $subscription->update($data);
+        $tenant = Tenant::query()->findOrFail($subscription->tenant_id);
+        if ($moduleAccess->allows($tenant, 'inventory')) {
+            $inventoryLocations->forTenant($tenant);
+        }
 
         return redirect()
             ->to(route('admin.business.index', ['tenant' => $subscription->tenant_id]).'#subscriptions')
             ->with('status', 'Tenant subscription updated.');
     }
 
-    public function updateSubscriptionModule(Request $request, TenantSubscription $subscription, Module $module): RedirectResponse
-    {
+    public function updateSubscriptionModule(
+        Request $request,
+        TenantSubscription $subscription,
+        Module $module,
+        EnsureInventoryLocationsAction $inventoryLocations,
+    ): RedirectResponse {
         /** @var User|null $user */
         $user = $request->user();
         abort_unless($user && $this->canManageSubscriptionModules($user, $subscription->tenant_id), 403);
@@ -787,6 +807,10 @@ final class BusinessSetupController extends Controller
             ],
             ['is_enabled' => (bool) $data['enabled']],
         );
+
+        if ((bool) $data['enabled'] && $module->slug === 'inventory') {
+            $inventoryLocations->forTenant($subscription->tenant_id);
+        }
 
         return redirect()
             ->to(route('admin.business.index', ['tenant' => $subscription->tenant_id]).'#subscriptions')

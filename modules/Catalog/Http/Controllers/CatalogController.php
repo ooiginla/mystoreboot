@@ -12,8 +12,10 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Illuminate\Validation\ValidationException;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
+use Modules\Business\Models\Branch;
 use Modules\Catalog\Actions\CreateCategoryAction;
 use Modules\Catalog\Actions\GenerateProductContentAction;
 use Modules\Catalog\Actions\GenerateProductImageAction;
@@ -43,6 +45,12 @@ use Modules\Catalog\Models\ProductCategory;
 use Modules\Catalog\Models\ProductCollection;
 use Modules\Catalog\Models\ProductCustomDefinition;
 use Modules\Catalog\Models\ProductTag;
+use Modules\Inventory\Actions\PostInventoryMovementAction;
+use Modules\Inventory\Enums\InventoryMovementType;
+use Modules\Inventory\Models\InventoryLocation;
+use Modules\Inventory\Models\InventoryStockLevel;
+use Modules\Procurement\Models\Vendor;
+use Modules\Subscriptions\Support\TenantModuleAccess;
 use Modules\Catalog\Models\ProductTax;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Sales\Enums\DiscountType;
@@ -102,10 +110,17 @@ final class CatalogController extends Controller
             ->orderBy('name')
             ->get();
 
+        $inventory = $this->inventoryViewData($tenant);
+
         return view('catalog::admin.index', [
             'tenant' => $tenant,
             'tenants' => $tenants,
             'isPlatformAdmin' => $user->is_platform_admin,
+            'inventoryEnabled' => $inventory['enabled'],
+            'inventoryLocations' => $inventory['locations'],
+            'inventoryVendors' => $inventory['vendors'],
+            'variantStock' => $inventory['variantStock'],
+            'defaultInventoryLocationId' => $inventory['defaultLocationId'],
             'products' => $visibleProducts,
             'productItems' => $productItems,
             'serviceItems' => $serviceItems,
@@ -281,6 +296,137 @@ final class CatalogController extends Controller
         return redirect()
             ->route('admin.catalog.index', ['tenant' => $updatedProduct->tenant_id])
             ->with('status', "{$updatedProduct->name} updated.");
+    }
+
+    /**
+     * Add or remove stock for one of a product's variants — the friendly face of a stock
+     * movement, driven from the product's Inventory tab.
+     */
+    public function adjustStock(Request $request, Product $product, PostInventoryMovementAction $post): JsonResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $product->tenant_id);
+
+        $data = $request->validate([
+            'direction' => ['required', Rule::in(['add', 'remove'])],
+            'product_variant_id' => ['required', 'integer', Rule::exists('product_variants', 'id')->where('tenant_id', $product->tenant_id)->where('product_id', $product->id)],
+            'inventory_location_id' => ['required', 'integer', Rule::exists('inventory_locations', 'id')->where('tenant_id', $product->tenant_id)],
+            'quantity' => ['required', 'integer', 'min:1'],
+            'unit_cost' => ['nullable', 'numeric', 'min:0'],
+            'vendor_id' => ['nullable', 'integer', Rule::exists('vendors', 'id')->where('tenant_id', $product->tenant_id)],
+            'reason' => ['nullable', Rule::in(['adjustment', 'damaged', 'lost'])],
+            'note' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        if ($data['direction'] === 'add') {
+            $existing = InventoryStockLevel::query()
+                ->where('tenant_id', $product->tenant_id)
+                ->where('inventory_location_id', $data['inventory_location_id'])
+                ->where('product_variant_id', $data['product_variant_id'])
+                ->first();
+            // First stock at this location is "opening stock" (needs a unit cost); after that
+            // it's a normal stock-in.
+            $movementType = (! $existing || (int) $existing->quantity_on_hand <= 0)
+                ? InventoryMovementType::OpeningStock
+                : InventoryMovementType::StockIn;
+            $condition = 'sellable';
+        } else {
+            $reason = $data['reason'] ?? 'adjustment';
+            $movementType = $reason === 'damaged' ? InventoryMovementType::Damaged : InventoryMovementType::AdjustmentOut;
+            $condition = $reason === 'damaged' ? 'damaged' : 'sellable';
+        }
+
+        try {
+            $post->execute([
+                'tenant_id' => $product->tenant_id,
+                'inventory_location_id' => $data['inventory_location_id'],
+                'product_variant_id' => $data['product_variant_id'],
+                'movement_type' => $movementType->value,
+                'quantity' => $data['quantity'],
+                'unit_cost' => $data['direction'] === 'add' ? ($data['unit_cost'] ?? 0) : 0,
+                'stock_condition' => $condition,
+                'vendor_id' => $data['direction'] === 'add' ? ($data['vendor_id'] ?? null) : null,
+                'notes' => $data['note'] ?? null,
+            ]);
+        } catch (ValidationException $exception) {
+            return response()->json(['message' => collect($exception->errors())->flatten()->first()], 422);
+        }
+
+        $level = InventoryStockLevel::query()
+            ->where('tenant_id', $product->tenant_id)
+            ->where('inventory_location_id', $data['inventory_location_id'])
+            ->where('product_variant_id', $data['product_variant_id'])
+            ->first();
+        $totalOnHand = (int) InventoryStockLevel::query()
+            ->where('tenant_id', $product->tenant_id)
+            ->where('product_variant_id', $data['product_variant_id'])
+            ->sum('quantity_on_hand');
+
+        return response()->json([
+            'message' => 'Stock updated.',
+            'variant_id' => (int) $data['product_variant_id'],
+            'location_id' => (int) $data['inventory_location_id'],
+            'location_on_hand' => $level ? (int) $level->quantity_on_hand : 0,
+            'total_on_hand' => $totalOnHand,
+        ]);
+    }
+
+    /**
+     * Inline quick-create of a vendor (name only required) so stock can be sourced without
+     * leaving the product editor.
+     */
+    public function quickStoreVendor(Request $request): JsonResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
+
+        $data = $request->validate([
+            'tenant_id' => ['required', 'uuid'],
+            'name' => ['required', 'string', 'max:180'],
+            'phone' => ['nullable', 'string', 'max:60'],
+            'email' => ['nullable', 'email', 'max:160'],
+        ]);
+
+        $vendor = Vendor::query()->create([
+            'tenant_id' => $data['tenant_id'],
+            'name' => $data['name'],
+            'phone' => $data['phone'] ?? null,
+            'email' => $data['email'] ?? null,
+            'status' => 'active',
+        ]);
+
+        return response()->json(['id' => $vendor->id, 'name' => $vendor->name]);
+    }
+
+    /**
+     * @return array{enabled: bool, locations: mixed, vendors: mixed, variantStock: mixed, defaultLocationId: ?int}
+     */
+    private function inventoryViewData(Tenant $tenant): array
+    {
+        if (! app(TenantModuleAccess::class)->allows($tenant, 'inventory')) {
+            return ['enabled' => false, 'locations' => collect(), 'vendors' => collect(), 'variantStock' => collect(), 'defaultLocationId' => null];
+        }
+
+        // Guarantee at least one inventory location so the Inventory tab always works.
+        app(\Modules\Inventory\Actions\EnsureInventoryLocationsAction::class)->forTenant($tenant);
+
+        $locations = InventoryLocation::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get(['id', 'name', 'branch_id']);
+        $primaryBranchId = Branch::query()->where('tenant_id', $tenant->id)->orderByDesc('is_primary')->orderBy('id')->value('id');
+        $defaultLocationId = optional($locations->firstWhere('branch_id', $primaryBranchId))->id ?? optional($locations->first())->id;
+
+        return [
+            'enabled' => true,
+            'locations' => $locations,
+            'vendors' => Vendor::query()->where('tenant_id', $tenant->id)->orderBy('name')->get(['id', 'name']),
+            'variantStock' => InventoryStockLevel::query()
+                ->where('tenant_id', $tenant->id)
+                ->with('location:id,name')
+                ->get()
+                ->groupBy('product_variant_id'),
+            'defaultLocationId' => $defaultLocationId,
+        ];
     }
 
     public function updateProductStatus(

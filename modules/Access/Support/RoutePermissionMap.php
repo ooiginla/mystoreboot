@@ -83,6 +83,8 @@ final class RoutePermissionMap
             'admin.catalog.products.ai-content' => 'catalog.update',
             'admin.catalog.products.generate-image' => 'catalog.update',
             'admin.catalog.products.update' => 'catalog.update',
+            'admin.catalog.products.stock.adjust' => 'inventory.manage',
+            'admin.catalog.vendors.quick-store' => 'catalog.update',
             'admin.catalog.products.status.update' => 'catalog.update',
             'admin.catalog.products.destroy' => 'catalog.delete',
             'admin.catalog.custom-definitions.store' => 'catalog.update',

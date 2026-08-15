@@ -16,11 +16,10 @@ use Modules\Access\Models\ApprovalRequest;
 use Modules\Access\Models\TenantMembership;
 use Modules\Access\Support\ApprovalService;
 use Modules\Access\Support\PermissionService;
-use Modules\Business\Models\Branch;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Finance\Support\PaymentSourceAccounts;
-use Modules\Inventory\Enums\InventoryLocationType;
+use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Procurement\Actions\ApprovePurchaseOrderAction;
 use Modules\Procurement\Actions\ReceivePurchaseOrderAction;
@@ -39,15 +38,19 @@ use Modules\Tenancy\Models\Tenant;
 
 final class ProcurementController extends Controller
 {
-    public function index(Request $request, ApprovalService $approvals, PermissionService $permissions): View
-    {
+    public function index(
+        Request $request,
+        ApprovalService $approvals,
+        PermissionService $permissions,
+        EnsureInventoryLocationsAction $inventoryLocations,
+    ): View {
         /** @var User $user */
         $user = $request->user();
         $tenants = $this->visibleTenantsFor($user);
         $tenant = $this->resolveTenant($request, $tenants);
 
         abort_if(! $tenant, 403);
-        $this->ensureBranchLocations($tenant);
+        $inventoryLocations->forTenant($tenant);
 
         $vendorSearch = trim($request->string('vendor_search')->toString());
         $poFilters = [
@@ -254,21 +257,6 @@ final class ProcurementController extends Controller
         $payment = $action->execute($data);
 
         return redirect()->to(route('admin.procurement.index', ['tenant' => $payment->tenant_id]).'#payments')->with('status', 'Vendor payment recorded.');
-    }
-
-    private function ensureBranchLocations(Tenant $tenant): void
-    {
-        Branch::query()->where('tenant_id', $tenant->id)->where('status', 'active')->each(function (Branch $branch) use ($tenant): void {
-            InventoryLocation::query()->firstOrCreate([
-                'tenant_id' => $tenant->id,
-                'branch_id' => $branch->id,
-            ], [
-                'name' => $branch->name,
-                'code' => $branch->code,
-                'location_type' => InventoryLocationType::Branch->value,
-                'status' => 'active',
-            ]);
-        });
     }
 
     private function pendingPurchaseOrderApproval(PurchaseOrder $purchaseOrder): ?ApprovalRequest

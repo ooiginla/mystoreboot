@@ -10,14 +10,22 @@ use Illuminate\Support\Str;
 use Modules\Access\Models\Role;
 use Modules\Finance\Actions\EnsureDefaultChartOfAccountsAction;
 use Modules\Finance\Models\FinanceAccount;
+use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Plan;
 use Modules\Subscriptions\Models\TenantSubscription;
+use Modules\Subscriptions\Support\TenantModuleAccess;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 
 final class SaveBusinessProfileAction
 {
+    public function __construct(
+        private readonly CreateBranchAction $createBranch,
+        private readonly EnsureInventoryLocationsAction $inventoryLocations,
+        private readonly TenantModuleAccess $moduleAccess,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $data
      */
@@ -28,6 +36,7 @@ final class SaveBusinessProfileAction
                 'slug' => $this->uniqueSlug((string) ($data['slug'] ?? $data['name'])),
                 'status' => TenantStatus::Trialing,
             ]);
+            $isNewTenant = ! $tenant->exists;
 
             $logoPath = $tenant->logo_path;
 
@@ -93,8 +102,24 @@ final class SaveBusinessProfileAction
                 $this->createDefaultRoles($tenant);
             }
 
+            if ($isNewTenant && ! $tenant->branches()->exists()) {
+                $this->createBranch->execute([
+                    'tenant_id' => $tenant->id,
+                    'name' => 'Head Office',
+                    'code' => 'HO',
+                    'timezone' => $tenant->timezone,
+                    'currency_code' => $tenant->currency_code,
+                    'is_primary' => true,
+                    'status' => 'active',
+                ]);
+            }
+
             if (isset($data['plan_id'])) {
                 $this->syncSubscription($tenant, (int) $data['plan_id']);
+
+                if ($this->moduleAccess->allows($tenant, 'inventory')) {
+                    $this->inventoryLocations->forTenant($tenant);
+                }
             }
 
             return $tenant->refresh();
