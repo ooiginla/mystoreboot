@@ -1288,7 +1288,19 @@
 
                     if (importOverlayTitle) importOverlayTitle.textContent = 'Import complete';
                     if (importOverlayNote) importOverlayNote.textContent = `${imported} draft product(s) created. Opening your catalog…`;
-                    window.location.assign(redirectUrl || `${window.location.pathname}${window.location.search}#products`);
+                    const target = redirectUrl || `${window.location.pathname}${window.location.search}#products`;
+                    const targetPath = target.replace(window.location.origin, '').split('#')[0];
+                    const currentPath = window.location.pathname + window.location.search;
+                    if (targetPath && targetPath !== currentPath) {
+                        window.location.assign(target);
+                    } else {
+                        // Same page — only the #products hash differs, and assign() won't reload
+                        // for a hash-only change, so force a full reload to reveal the new drafts.
+                        if (window.location.hash !== '#products') {
+                            window.history.replaceState(null, '', target);
+                        }
+                        window.location.reload();
+                    }
                 } catch (error) {
                     resetPhotoImportUi();
                     showPhotoImportError(error?.message || 'The photo import stopped. Check your connection and try again. Photos completed before the error were saved.');
