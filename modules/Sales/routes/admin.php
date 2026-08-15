@@ -22,6 +22,7 @@ Route::post('/orders/{order}/returns', [SalesController::class, 'storeReturn'])-
 Route::post('/coupons', [SalesController::class, 'storeCoupon'])->name('coupons.store');
 Route::get('/settlements', [SalesController::class, 'settlements'])->name('settlements.index');
 Route::get('/settlements/statement', [SalesController::class, 'settlementsStatement'])->name('settlements.statement');
+Route::post('/settlements/payments/{payment}/status', [SalesController::class, 'updateCollectedPaymentStatus'])->name('settlements.payment-status');
 Route::post('/settlements/payout-mode', [SalesController::class, 'updatePayoutMode'])->name('settlements.payout-mode');
 Route::get('/wallet', [SalesController::class, 'wallet'])->name('wallet.index');
 Route::get('/wallet/statement', [SalesController::class, 'walletStatement'])->name('wallet.statement');

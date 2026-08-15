@@ -126,10 +126,16 @@
                                     <td>{{ $money((int) $payment->gateway_charge_minor) }}</td>
                                     <td>{{ $money((int) $payment->fees_minor) }}</td>
                                     <td>
-                                        @if ($payment->is_settled)
-                                            <span class="badge success">Settled</span>
+                                        @if ($isPlatformAdmin)
+                                            <form method="POST" action="{{ route('admin.sales.settlements.payment-status', $payment) }}" style="display:inline;">
+                                                @csrf
+                                                <input type="hidden" name="settled" value="{{ $payment->is_settled ? 0 : 1 }}">
+                                                <button type="submit" class="badge {{ $payment->is_settled ? 'success' : 'neutral' }}" style="border:0; font:inherit; cursor:pointer;" title="{{ $payment->is_settled ? 'Click to mark pending' : 'Click to mark settled' }}">
+                                                    {{ $payment->is_settled ? 'Settled' : 'Pending' }}
+                                                </button>
+                                            </form>
                                         @else
-                                            <span class="badge neutral">Pending</span>
+                                            <span class="badge {{ $payment->is_settled ? 'success' : 'neutral' }}">{{ $payment->is_settled ? 'Settled' : 'Pending' }}</span>
                                         @endif
                                     </td>
                                 </tr>

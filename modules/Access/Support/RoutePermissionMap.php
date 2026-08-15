@@ -150,6 +150,7 @@ final class RoutePermissionMap
             'admin.sales.coupons.store' => 'sales.discounts.override',
             'admin.sales.settlements.index' => 'settlements.view',
             'admin.sales.settlements.statement' => 'settlements.view',
+            'admin.sales.settlements.payment-status' => 'settlements.manage',
             'admin.sales.settlements.payout-mode' => 'settlements.manage',
             'admin.sales.wallet.index' => 'settlements.view',
             'admin.sales.wallet.statement' => 'settlements.view',

@@ -508,6 +508,23 @@ final class SalesController extends Controller
     }
 
     /**
+     * Platform admin can flip an online collection's settlement status straight from the
+     * report (e.g. mark a lingering Pending as Settled, or revert).
+     */
+    public function updateCollectedPaymentStatus(Request $request, OnlineCollectedPayment $payment): RedirectResponse
+    {
+        abort_unless($request->user()?->is_platform_admin, 403);
+
+        $settled = $request->boolean('settled');
+        $payment->forceFill([
+            'is_settled' => $settled,
+            'settled_at' => $settled ? ($payment->settled_at ?: now()) : null,
+        ])->save();
+
+        return back()->with('status', 'Payment '.$payment->provider_reference.' marked '.($settled ? 'settled' : 'pending').'.');
+    }
+
+    /**
      * @return array<string, string>
      */
     private function settlementReportFilters(Request $request): array
