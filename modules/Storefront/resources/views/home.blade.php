@@ -79,7 +79,7 @@
             </div>
         </section>
     @else
-        @if (! $selectedCollection && $selectedCategory === '')
+        @if (! $selectedCollection && $selectedCategory === '' && $search === '')
             <section class="store-hero relative min-h-[520px] overflow-hidden" data-store-hero-slider>
                 @foreach ($heroSlides as $index => $slide)
                     <div class="store-hero-slide {{ $index === 0 ? 'is-active' : '' }}" data-store-hero-slide>
@@ -117,7 +117,7 @@
             </section>
         @endif
 
-        @if ($selectedCategory === '' && ! $selectedCollection)
+        @if ($selectedCategory === '' && ! $selectedCollection && $search === '')
             @foreach ($productCollections as $collection)
                 <section id="collection-{{ $collection->slug ?: $collection->id }}" class="store-shell py-12">
                     <div>
@@ -148,9 +148,9 @@
         <section id="products" class="store-shell py-14">
             <div class="flex flex-col justify-between gap-4 md:flex-row md:items-end">
                 <div>
-                    <h2 class="sf-headline-lg text-[var(--store-primary)]">{{ $selectedCollection?->name ?? $selectedCategoryName ?? 'Our Products' }}</h2>
+                    <h2 class="sf-headline-lg text-[var(--store-primary)]">{{ $search !== '' ? 'Search results for “'.$search.'”' : ($selectedCollection?->name ?? $selectedCategoryName ?? 'Our Products') }}</h2>
                     <p class="sf-body-md mt-2 text-[var(--store-muted)]">
-                        {{ $selectedCollection ? 'Browse all products in this collection.' : ($selectedCategoryName ? 'Browse all products in this category.' : 'Browse items available from '.$store->store_name.'.') }}
+                        {{ $search !== '' ? $products->total().' '.Str::plural('product', $products->total()).' found.' : ($selectedCollection ? 'Browse all products in this collection.' : ($selectedCategoryName ? 'Browse all products in this category.' : 'Browse items available from '.$store->store_name.'.')) }}
                     </p>
                 </div>
                 @if ($productCategories->isNotEmpty())
@@ -168,8 +168,8 @@
                     @include('storefront::partials.product-card', ['product' => $product, 'detailRouteName' => 'products.show'])
                 @empty
                     <div class="store-card col-span-full p-10 text-center">
-                        <h3 class="sf-headline-lg-mobile">No products available yet</h3>
-                        <p class="sf-body-md mt-2 text-[var(--store-muted)]">Please check back soon for new arrivals.</p>
+                        <h3 class="sf-headline-lg-mobile">{{ $search !== '' ? 'No products found' : 'No products available yet' }}</h3>
+                        <p class="sf-body-md mt-2 text-[var(--store-muted)]">{{ $search !== '' ? 'Try another product name, category, tag, SKU, or barcode.' : 'Please check back soon for new arrivals.' }}</p>
                     </div>
                 @endforelse
             </div>

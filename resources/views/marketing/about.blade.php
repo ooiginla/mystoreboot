@@ -104,9 +104,9 @@
                 <div class="pointer-events-none absolute -right-10 -top-10 h-64 w-64 rounded-full bg-accent-400/25 blur-3xl"></div>
                 <div class="relative mx-auto max-w-2xl">
                     <h2 class="font-display text-3xl font-bold leading-tight tracking-tight text-white sm:text-5xl">Let's grow your business together.</h2>
-                    <p class="mx-auto mt-5 max-w-xl text-lg text-white/85">Join the businesses running on Storeboot. Free for 14 days — no card required.</p>
+                    <p class="mx-auto mt-5 max-w-xl text-lg text-white/85">Join the businesses running on Storeboot. Free forever on Basic — no card required.</p>
                     <div class="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                        <a href="{{ route('register') }}" class="sb-btn w-full bg-white px-7 py-3.5 text-base text-ink-950 hover:-translate-y-0.5 hover:bg-zinc-100 sm:w-auto">Start your free trial</a>
+                        <a href="{{ route('register') }}" class="sb-btn w-full bg-white px-7 py-3.5 text-base text-ink-950 hover:-translate-y-0.5 hover:bg-zinc-100 sm:w-auto">Start for free</a>
                         <a href="{{ route('contact') }}" class="sb-btn w-full border border-white/25 px-7 py-3.5 text-base text-white hover:bg-white/10 sm:w-auto">Contact us</a>
                     </div>
                 </div>

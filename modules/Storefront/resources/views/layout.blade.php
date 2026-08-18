@@ -173,6 +173,12 @@
         .store-product-card-action { min-height: 44px; margin-top: auto; }
         .store-input { width: 100%; border: 1px solid var(--store-line); border-radius: 8px; background: #fff; padding: 12px 14px; outline: none; transition: border-color .16s ease, box-shadow .16s ease; }
         .store-input:focus { border-color: var(--store-primary); box-shadow: 0 0 0 4px color-mix(in srgb, var(--store-primary) 15%, transparent); }
+        .store-search { display: grid; grid-template-columns: minmax(0, 1fr) 56px; overflow: hidden; border: 1px solid var(--store-line); border-radius: 12px; background: #fff; transition: border-color .16s ease, box-shadow .16s ease; }
+        .store-search:focus-within { border-color: var(--store-primary); box-shadow: 0 0 0 4px color-mix(in srgb, var(--store-primary) 12%, transparent); }
+        .store-search-input { min-width: 0; height: 52px; border: 0; background: transparent; padding: 0 18px; color: var(--store-ink); outline: none; }
+        .store-search-input::placeholder { color: #8b8d94; opacity: 1; }
+        .store-search-button { display: grid; margin: 5px; place-items: center; border: 0; border-radius: 9px; background: var(--store-soft); color: var(--store-muted); transition: background .16s ease, color .16s ease; }
+        .store-search-button:hover { background: color-mix(in srgb, var(--store-primary) 10%, white); color: var(--store-primary); }
         .drawer-open { overflow: hidden; }
         .store-announcement { animation: storeBlink 1.1s ease-in-out infinite; }
         .store-whatsapp-float::before,
@@ -290,6 +296,25 @@
                     </div>
                 </details>
             </nav>
+        </div>
+        <div class="border-t border-[var(--store-line)] bg-[var(--store-soft)]/70 py-3">
+            <form action="{{ $storefrontRoute($store) }}" method="GET" role="search" class="store-shell" data-store-search>
+                <label for="store-product-search" class="sr-only">Find products</label>
+                <div class="store-search mx-auto max-w-5xl">
+                    <input
+                        id="store-product-search"
+                        name="search"
+                        type="search"
+                        value="{{ request()->routeIs('storefront.*.home') ? request()->string('search')->toString() : '' }}"
+                        placeholder="Find Products"
+                        maxlength="100"
+                        class="store-search-input sf-body-md"
+                    >
+                    <button type="submit" class="store-search-button" aria-label="Search products">
+                        @include('storefront::partials.icon', ['name' => 'search', 'class' => 'h-6 w-6'])
+                    </button>
+                </div>
+            </form>
         </div>
     </header>
 

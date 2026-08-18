@@ -50,12 +50,27 @@ final class StorefrontController extends Controller
     {
         $store = $this->preparedStore($store);
         $selectedCategorySlug = $request->string('category')->toString();
+        $search = Str::limit(trim($request->string('search')->toString()), 100, '');
         $selectedCategory = $store->categories
             ->first(fn ($category): bool => $category->slug === $selectedCategorySlug);
 
         $products = $this->productsFor($store, ProductType::Product)
             ->when($selectedCategorySlug !== '', function ($query) use ($selectedCategorySlug): void {
                 $query->whereHas('category', fn ($category) => $category->where('slug', $selectedCategorySlug));
+            })
+            ->when($search !== '', function ($query) use ($search): void {
+                $query->where(function ($searchQuery) use ($search): void {
+                    $searchQuery
+                        ->whereLike('name', '%'.$search.'%')
+                        ->orWhereLike('description', '%'.$search.'%')
+                        ->orWhereHas('category', fn ($categoryQuery) => $categoryQuery->whereLike('name', '%'.$search.'%'))
+                        ->orWhereHas('tags', fn ($tagQuery) => $tagQuery->whereLike('name', '%'.$search.'%'))
+                        ->orWhereHas('variants', fn ($variantQuery) => $variantQuery
+                            ->where('status', ProductStatus::Active->value)
+                            ->where(fn ($variantSearch) => $variantSearch
+                                ->whereLike('sku', '%'.$search.'%')
+                                ->orWhereLike('barcode', '%'.$search.'%')));
+                });
             })
             ->latest()
             ->paginate(16)
@@ -107,11 +122,13 @@ final class StorefrontController extends Controller
             'selectedCategory' => $selectedCategorySlug,
             'selectedCategoryName' => $selectedCategory?->name,
             'selectedCollection' => null,
+            'search' => $search,
             'metaDescription' => $selectedCategory
                 ? "Shop {$selectedCategory->name} from {$store->store_name}. Browse available products and order online."
                 : $seo['description'],
             'metaKeywords' => $seo['keywords'],
             'canonical' => $canonical,
+            'robots' => $search !== '' ? 'noindex, follow' : null,
         ]);
     }
 
@@ -141,6 +158,7 @@ final class StorefrontController extends Controller
             'selectedCategory' => $category->slug,
             'selectedCategoryName' => $category->name,
             'selectedCollection' => null,
+            'search' => '',
             'metaDescription' => "Shop {$category->name} from {$store->store_name}. Browse available products and order online.",
             'canonical' => $canonical,
             'robots' => $products->isEmpty() ? 'noindex, follow' : null,
@@ -171,6 +189,7 @@ final class StorefrontController extends Controller
             'selectedCategory' => '',
             'selectedCategoryName' => null,
             'selectedCollection' => $collection,
+            'search' => '',
             'metaDescription' => trim(strip_tags((string) $collection->description))
                 ?: "Shop the {$collection->name} collection from {$store->store_name}.",
             'canonical' => $canonical,

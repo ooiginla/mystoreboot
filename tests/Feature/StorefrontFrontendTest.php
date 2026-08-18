@@ -234,6 +234,49 @@ class StorefrontFrontendTest extends TestCase
             ->assertDontSee('<div class="relative mt-8" data-collection-carousel>', false);
     }
 
+    public function test_storefront_search_filters_visible_products_and_preserves_the_query(): void
+    {
+        [$tenant, $store] = $this->storeFixture();
+        $category = ProductCategory::query()->create([
+            'tenant_id' => $tenant->id,
+            'category_type' => CategoryType::Product->value,
+            'name' => 'Footwear',
+            'slug' => 'footwear',
+            'status' => 'active',
+        ]);
+        $store->categories()->attach($category->id);
+
+        Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'category_id' => $category->id,
+            'name' => 'City Runner',
+            'slug' => 'city-runner',
+            'description' => 'Lightweight everyday trainers',
+            'status' => ProductStatus::Active->value,
+            'base_price_minor' => 250000,
+        ]);
+        Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'category_id' => $category->id,
+            'name' => 'Leather Brogue',
+            'slug' => 'leather-brogue',
+            'status' => ProductStatus::Active->value,
+            'base_price_minor' => 320000,
+        ]);
+
+        $this->get(route('storefront.storefront.store.home', [$store, 'search' => 'runner']))
+            ->assertOk()
+            ->assertSee('data-store-search', false)
+            ->assertSee('placeholder="Find Products"', false)
+            ->assertSee('value="runner"', false)
+            ->assertSee('Search results for “runner”')
+            ->assertSee('1 product found.')
+            ->assertSee('City Runner')
+            ->assertDontSee('Leather Brogue')
+            ->assertDontSee('<section class="store-hero', false)
+            ->assertSee('<meta name="robots" content="noindex, follow">', false);
+    }
+
     public function test_variant_products_show_from_price_and_expose_live_detail_pricing(): void
     {
         [$tenant, $store] = $this->storeFixture();

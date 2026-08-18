@@ -375,7 +375,7 @@
             <div class="sb-reveal mx-auto max-w-2xl text-center">
                 <span class="sb-eyebrow">Simple pricing</span>
                 <h2 class="sb-h2 mt-5">Plans that grow with you.</h2>
-                <p class="sb-lead mt-5">Start free for 14 days. No card required. Only pay for the modules you switch on.</p>
+                <p class="sb-lead mt-5">Start completely free — no card required. Upgrade to Enterprise when you need branches, POS, payroll and full accounting.</p>
 
                 <div class="mt-8 inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white p-1 dark:border-white/10 dark:bg-white/5">
                     <button type="button" data-billing="monthly" class="sb-bill-btn rounded-full px-5 py-2 text-sm font-semibold transition">Monthly</button>
@@ -385,7 +385,7 @@
                 </div>
             </div>
 
-            <div class="mt-14 grid items-stretch gap-6 lg:grid-cols-3">
+            <div class="mt-14 grid items-stretch gap-6 sm:mx-auto sm:max-w-3xl lg:grid-cols-2">
                 @foreach ($plans as $plan)
                     <div class="sb-reveal relative flex flex-col rounded-3xl border p-7 {{ $plan['featured'] ? 'border-brand-500 bg-white shadow-2xl shadow-brand-600/10 dark:bg-ink-800 lg:-mt-4 lg:mb-4' : 'border-zinc-200/80 bg-white dark:border-white/10 dark:bg-white/[0.03]' }}">
                         @if ($plan['featured'])
@@ -451,11 +451,11 @@
                         Your business deserves to be <span class="font-serif italic font-normal">seen clearly.</span>
                     </h2>
                     <p class="mx-auto mt-5 max-w-xl text-lg text-white/85">
-                        Join the businesses moving from guesswork to clarity. Set up Storeboot in minutes — free for 14 days.
+                        Join the businesses moving from guesswork to clarity. Set up Storeboot in minutes — free forever on Basic, no card required.
                     </p>
                     <div class="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
                         <a href="{{ route('register') }}" class="sb-btn w-full bg-white px-7 py-3.5 text-base text-ink-950 hover:-translate-y-0.5 hover:bg-zinc-100 sm:w-auto">
-                            Start your free trial
+                            Start for free
                             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0-6-6m6 6-6 6"/></svg>
                         </a>
                         <a href="{{ route('login') }}" class="sb-btn w-full border border-white/25 px-7 py-3.5 text-base text-white hover:bg-white/10 sm:w-auto">Sign in</a>
