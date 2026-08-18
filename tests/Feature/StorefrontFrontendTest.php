@@ -267,6 +267,7 @@ class StorefrontFrontendTest extends TestCase
         $this->get(route('storefront.storefront.store.home', [$store, 'search' => 'runner']))
             ->assertOk()
             ->assertSee('data-store-search', false)
+            ->assertSee('class="store-visually-hidden">Find products</label>', false)
             ->assertSee('placeholder="Find Products"', false)
             ->assertSee('value="runner"', false)
             ->assertSee('Search results for “runner”')

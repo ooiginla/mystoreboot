@@ -26,6 +26,16 @@ final class OnlineStore extends Model
             if (! filled($store->subdomain)) {
                 $store->subdomain = Str::slug((string) $store->username);
             }
+
+            // Default fulfilment to the business's primary branch so online orders reserve
+            // and deduct stock from day one. The merchant can change it in store settings.
+            if (! $store->fulfilment_branch_id) {
+                $store->fulfilment_branch_id = Branch::query()
+                    ->where('tenant_id', $store->tenant_id)
+                    ->orderByDesc('is_primary')
+                    ->orderBy('id')
+                    ->value('id');
+            }
         });
 
         self::created(function (OnlineStore $store): void {
