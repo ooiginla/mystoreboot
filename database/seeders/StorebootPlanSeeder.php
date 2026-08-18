@@ -61,7 +61,7 @@ final class StorebootPlanSeeder extends Seeder
                 'monthly_price_minor' => 0,
                 'yearly_price_minor' => 0,
                 'limits' => ['branches' => 1, 'users' => 2, 'products' => 100, 'invoices_per_month' => 100],
-                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'retail-pos', 'finance'],
+                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'retail-pos', 'finance', 'storefront', 'customers', 'analytics'],
             ],
             [
                 'name' => 'Growth',

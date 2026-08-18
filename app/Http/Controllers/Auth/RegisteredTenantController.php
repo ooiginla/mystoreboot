@@ -285,6 +285,9 @@ final class RegisteredTenantController extends Controller
                     'sales',
                     'retail-pos',
                     'finance',
+                    'storefront',
+                    'customers',
+                    'analytics',
                 ])
                 ->pluck('id');
 
