@@ -170,10 +170,55 @@ final class PaystackDirectory
             ? Http::withToken($this->secret())->acceptJson()->put($this->baseUrl().'/subaccount/'.$existing, $payload)
             : Http::withToken($this->secret())->acceptJson()->post($this->baseUrl().'/subaccount', $payload);
 
-        if ($response->ok() && (bool) $response->json('status')) {
+        // Paystack returns 201 Created on POST and 200 on PUT — use successful() (any 2xx),
+        // not ok() (which is 200 only), or first-time creations get discarded.
+        if ($response->successful() && (bool) $response->json('status')) {
             return ['ok' => true, 'subaccount_code' => (string) ($response->json('data.subaccount_code') ?: $existing)];
         }
 
         return ['ok' => false, 'message' => (string) $response->json('message', '') ?: 'Could not set up the settlement subaccount.'];
+    }
+
+    /**
+     * List every subaccount on the platform account (paged), normalised to
+     * [account_number, bank_code, subaccount_code, business_name]. Used to backfill codes
+     * that were lost before the create-response bug was fixed.
+     *
+     * @return list<array{account_number: string, bank_code: string, subaccount_code: string, business_name: string}>
+     */
+    public function listSubaccounts(): array
+    {
+        if (! $this->configured()) {
+            return [];
+        }
+
+        $subaccounts = [];
+        $page = 1;
+
+        do {
+            $response = Http::withToken($this->secret())
+                ->acceptJson()
+                ->get($this->baseUrl().'/subaccount', ['perPage' => 200, 'page' => $page]);
+
+            if (! $response->successful() || ! (bool) $response->json('status')) {
+                break;
+            }
+
+            $rows = (array) $response->json('data', []);
+
+            foreach ($rows as $row) {
+                $subaccounts[] = [
+                    'account_number' => (string) ($row['account_number'] ?? ''),
+                    'bank_code' => (string) ($row['settlement_bank'] ?? ''),
+                    'subaccount_code' => (string) ($row['subaccount_code'] ?? ''),
+                    'business_name' => (string) ($row['business_name'] ?? ''),
+                ];
+            }
+
+            $pageCount = (int) $response->json('meta.pageCount', 1);
+            $page++;
+        } while ($page <= $pageCount && $rows !== []);
+
+        return $subaccounts;
     }
 }

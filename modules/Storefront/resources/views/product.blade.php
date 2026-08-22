@@ -57,6 +57,7 @@
     $payload = [
         'id' => 'product-'.$product->id.($variant ? '-variant-'.$variant->id : ''),
         'productVariantId' => $variant?->id,
+        'productType' => $isService ? 'service' : 'product',
         'name' => $product->name.($variant && $product->has_variants ? ' - '.$variant->variant_name : ''),
         'priceMinor' => $priceMinor,
         'image' => $selectedImage,
@@ -77,6 +78,7 @@
             'cart' => [
                 'id' => 'product-'.$product->id.'-variant-'.$row->id,
                 'productVariantId' => (int) $row->id,
+                'productType' => $product->product_type->value,
                 'name' => $product->name.' - '.$row->variant_name,
                 'priceMinor' => (int) $row->selling_price_minor,
                 'image' => $image,

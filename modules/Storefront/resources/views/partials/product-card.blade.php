@@ -27,6 +27,7 @@
     $payload = [
         'id' => 'product-'.$product->id.($variant ? '-variant-'.$variant->id : ''),
         'productVariantId' => $variant?->id,
+        'productType' => $product->product_type->value,
         'name' => $product->name.($variant && $product->has_variants ? ' - '.$variant->variant_name : ''),
         'priceMinor' => $priceMinor,
         'image' => $image,

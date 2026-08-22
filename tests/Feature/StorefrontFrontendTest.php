@@ -75,6 +75,9 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('data-mobile-nav-toggle', false)
             ->assertSee('data-mobile-menu-label>Menu</span>', false)
             ->assertSee('id="store-mobile-nav"', false)
+            ->assertSee('data-cart-toast', false)
+            ->assertSee('role="status" aria-live="polite"', false)
+            ->assertSee('showCartToast(product);', false)
             ->assertSee('data-continue-shopping', false)
             ->assertSee('href="'.route('storefront.storefront.store.home', $store).'"', false)
             ->assertSee('Your order has been placed successfully and your cart has been cleared.')
@@ -84,9 +87,14 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('data-store-hero-next', false)
             ->assertSee('Our Products')
             ->assertSee('City Runner')
+            ->assertSee('Powered by storeboot.com')
+            ->assertSee('href="https://storeboot.com"', false)
             ->assertSee('Lagos (3-5 days)')
+            ->assertSee('data-checkout-customer-step-label', false)
+            ->assertSee('data-checkout-customer-heading', false)
+            ->assertSee("needsShipping ? 'Shipping Information' : 'Customer Information'", false)
             ->assertSee('Save this address for future use')
-            ->assertSee("if (saveAddressCheckbox?.checked) requiredFields.push('checkout_address_label');", false)
+            ->assertSee("if (requiresShipping() && saveAddressCheckbox?.checked) requiredFields.push('checkout_address_label');", false)
             ->assertSee("name.startsWith('customer.') || name === 'shipping_option'", false)
             ->assertSee('placeholder="Recipient Full name"', false)
             ->assertSee('placeholder="Recipient Phone Number(s)"', false)
@@ -371,33 +379,61 @@ class StorefrontFrontendTest extends TestCase
 
     public function test_services_are_moved_to_services_menu_and_excluded_from_product_listing(): void
     {
-        [$tenant, $store] = $this->storeFixture();
-        $category = ProductCategory::query()->create([
+        [$tenant, $store] = $this->storeFixture([
+            'address' => '12 Admiralty Way',
+            'city' => 'Lekki',
+            'state' => 'Lagos',
+            'country' => 'Nigeria',
+            'site_email' => 'bookings@example.com',
+        ]);
+        $tenant->update([
+            'opening_hours' => collect(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])
+                ->mapWithKeys(fn (string $day): array => [$day => ['is_open' => true, 'opens_at' => '09:00', 'closes_at' => '17:00']])
+                ->all(),
+        ]);
+        $productCategory = ProductCategory::query()->create([
             'tenant_id' => $tenant->id,
             'category_type' => CategoryType::Product->value,
             'name' => 'Catalog',
             'slug' => 'catalog',
             'status' => 'active',
         ]);
-        $store->categories()->attach($category->id);
+        $serviceCategory = ProductCategory::query()->create([
+            'tenant_id' => $tenant->id,
+            'category_type' => CategoryType::Service->value,
+            'name' => 'Installation',
+            'slug' => 'installation',
+            'status' => 'active',
+        ]);
+        $store->categories()->attach([$productCategory->id, $serviceCategory->id]);
 
         Product::query()->create([
             'tenant_id' => $tenant->id,
-            'category_id' => $category->id,
+            'category_id' => $productCategory->id,
             'name' => 'Physical Product',
             'slug' => 'physical-product',
             'product_type' => ProductType::Product->value,
             'status' => ProductStatus::Active->value,
             'base_price_minor' => 150000,
         ]);
-        Product::query()->create([
+        $service = Product::query()->create([
             'tenant_id' => $tenant->id,
-            'category_id' => $category->id,
+            'category_id' => $serviceCategory->id,
             'name' => 'Installation Service',
             'slug' => 'installation-service',
             'product_type' => ProductType::Service->value,
+            'description' => 'Professional setup and installation at your location.',
             'status' => ProductStatus::Active->value,
             'base_price_minor' => 250000,
+        ]);
+        $serviceVariant = ProductVariant::query()->create([
+            'tenant_id' => $tenant->id,
+            'product_id' => $service->id,
+            'variant_name' => 'Installation Service',
+            'sku' => 'SERVICE-INSTALL',
+            'selling_price_minor' => 250000,
+            'cost_price_minor' => 0,
+            'status' => ProductStatus::Active->value,
         ]);
 
         $this->get(route('storefront.storefront.store.home', $store))
@@ -408,8 +444,25 @@ class StorefrontFrontendTest extends TestCase
 
         $this->get(route('storefront.storefront.store.services', $store))
             ->assertOk()
+            ->assertSee('data-services-heading', false)
             ->assertSee('Our Services')
+            ->assertSee('Installation')
             ->assertSee('Installation Service')
+            ->assertSee('Professional setup and installation at your location.')
+            ->assertSee('data-service-category', false)
+            ->assertSee('data-service-row', false)
+            ->assertSee('data-service-details', false)
+            ->assertSee('data-service-add-to-cart', false)
+            ->assertSee('Add to cart')
+            ->assertSee('aria-label="Add Installation Service to cart"', false)
+            ->assertSee('"productVariantId":'.$serviceVariant->id, false)
+            ->assertSee('data-service-profile', false)
+            ->assertSee('>Book</a>', false)
+            ->assertSee('data-service-hours', false)
+            ->assertSee('9:00 AM – 5:00 PM')
+            ->assertSee('12 Admiralty Way, Lekki, Lagos, Nigeria')
+            ->assertSee('data-service-contact', false)
+            ->assertSee('bookings@example.com')
             ->assertDontSee('Physical Product');
 
         $this->get(route('storefront.storefront.store.services.show', [$store, 'installation-service']))
@@ -419,6 +472,29 @@ class StorefrontFrontendTest extends TestCase
 
         $this->get(route('storefront.storefront.store.products.show', [$store, 'installation-service']))
             ->assertNotFound();
+
+        Mail::fake();
+        $response = $this->postJson(route('storefront.storefront.store.checkout', $store), [
+            'customer' => [
+                'name' => 'Service Customer',
+                'email' => 'service@example.com',
+                'phone' => '08030000000',
+            ],
+            'payment_method' => 'place_order',
+            'items' => [
+                [
+                    'product_variant_id' => $serviceVariant->id,
+                    'quantity' => 1,
+                ],
+            ],
+        ]);
+
+        $response->assertOk()->assertJsonStructure(['order_id', 'order_reference']);
+        $order = SalesOrder::query()->findOrFail($response->json('order_id'));
+        $this->assertSame(0, $order->shipping_minor);
+        $this->assertSame('service', $order->delivery_method);
+        $this->assertNull($order->delivery_address);
+        $this->assertNull($order->delivery_city);
     }
 
     public function test_storefront_maintenance_mode_shows_be_back_message(): void

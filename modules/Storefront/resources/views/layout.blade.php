@@ -180,6 +180,16 @@
         .store-search-button { display: grid; margin: 5px; place-items: center; border: 0; border-radius: 9px; background: var(--store-soft); color: var(--store-muted); transition: background .16s ease, color .16s ease; }
         .store-search-button:hover { background: color-mix(in srgb, var(--store-primary) 10%, white); color: var(--store-primary); }
         .store-visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
+        .store-cart-toast { position: fixed; z-index: 120; top: 20px; left: 50%; display: flex; width: max-content; max-width: calc(100vw - 32px); align-items: center; gap: 10px; border: 1px solid color-mix(in srgb, var(--store-secondary) 35%, white); border-radius: 10px; background: #fff; padding: 12px 16px; color: var(--store-ink); box-shadow: 0 18px 44px rgba(15, 23, 42, .2); opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, -12px); transition: opacity .2s ease, transform .2s ease, visibility .2s ease; }
+        .store-cart-toast.is-visible { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+        .store-cart-toast-icon { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border-radius: 999px; background: var(--store-secondary); color: #fff; }
+        @media (min-width: 640px) {
+            .store-cart-toast { right: 24px; left: auto; transform: translateY(-12px); }
+            .store-cart-toast.is-visible { transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .store-cart-toast { transition: none; }
+        }
         .drawer-open { overflow: hidden; }
         .store-announcement { animation: storeBlink 1.1s ease-in-out infinite; }
         .store-whatsapp-float::before,
@@ -319,6 +329,11 @@
         </div>
     </header>
 
+    <div class="store-cart-toast" data-cart-toast role="status" aria-live="polite" aria-atomic="true">
+        <span class="store-cart-toast-icon">@include('storefront::partials.icon', ['name' => 'check', 'class' => 'h-4 w-4'])</span>
+        <span class="sf-body-md font-semibold" data-cart-toast-message>Item added to cart.</span>
+    </div>
+
     @if (session('status') || session('payment_error'))
         <div class="store-shell pt-4">
             <div class="sf-body-md rounded-lg border p-4 font-semibold {{ session('payment_error') ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-800' }}">
@@ -384,6 +399,11 @@
                 </div>
             </div>
         </div>
+        <div class="store-shell pb-6 text-center">
+            <a href="https://storeboot.com" class="sf-body-md text-zinc-300 transition hover:text-white hover:underline hover:underline-offset-4" target="_blank" rel="noopener noreferrer">
+                Powered by storeboot.com
+            </a>
+        </div>
     </footer>
 
     @if ($whatsapp)
@@ -410,11 +430,14 @@
             const mobileMenuOpenIcon = document.querySelector('[data-mobile-menu-open]');
             const mobileMenuCloseIcon = document.querySelector('[data-mobile-menu-close]');
             const count = document.querySelector('[data-cart-count]');
+            const cartToast = document.querySelector('[data-cart-toast]');
+            const cartToastMessage = document.querySelector('[data-cart-toast-message]');
             const formatter = new Intl.NumberFormat('en-NG', { style: 'currency', currency: @json($currency), currencyDisplay: 'narrowSymbol' });
             let cart = JSON.parse(localStorage.getItem(cartKey) || '[]');
             let step = 'cart';
             let checkoutOrder = null;
             let gatewayChargeMinor = 0;
+            let cartToastTimer = null;
             const paystackMethods = ['storeboot_paystack', 'self_hosted_paystack'];
             const checkoutSteps = ['cart', 'shipping', 'additional', 'payment', 'confirm'];
             const paystackInitializeUrl = @json($storefrontRoute($store, 'checkout.paystack.initialize', ['order' => '__ORDER_ID__']));
@@ -441,9 +464,18 @@
                 '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;',
             })[character]);
             const save = () => localStorage.setItem(cartKey, JSON.stringify(cart));
+            const showCartToast = (product) => {
+                if (!cartToast || !cartToastMessage) return;
+                window.clearTimeout(cartToastTimer);
+                cartToastMessage.textContent = `${product.name} added to cart.`;
+                cartToast.classList.add('is-visible');
+                cartToastTimer = window.setTimeout(() => cartToast.classList.remove('is-visible'), 2800);
+            };
             const subtotal = () => cart.reduce((sum, item) => sum + (item.priceMinor * item.quantity), 0);
+            const serviceOnlyCart = () => cart.length > 0 && cart.every((item) => item.productType === 'service');
+            const requiresShipping = () => !serviceOnlyCart();
             const selectedShipping = () => document.querySelector('input[name="shipping_option"]:checked');
-            const shippingMinor = () => cart.length > 0 && selectedShipping() ? Number(selectedShipping().dataset.priceMinor || 0) : 0;
+            const shippingMinor = () => requiresShipping() && cart.length > 0 && selectedShipping() ? Number(selectedShipping().dataset.priceMinor || 0) : 0;
             const field = (name) => document.querySelector(`[name="${name}"]`);
             const alertNode = () => document.querySelector('[data-drawer-alert]');
             const setAlert = (message) => alertNode().textContent = message || '';
@@ -456,12 +488,12 @@
                     name: field('checkout_name')?.value.trim() || '',
                     phone: field('checkout_phone')?.value.trim() || '',
                     email: field('checkout_email')?.value.trim() || '',
-                    address: field('checkout_address')?.value.trim() || '',
-                    city: field('checkout_city')?.value.trim() || '',
-                    save_address: field('checkout_save_address')?.checked || false,
-                    address_label: field('checkout_address_label')?.value.trim() || null,
+                    address: requiresShipping() ? field('checkout_address')?.value.trim() || '' : null,
+                    city: requiresShipping() ? field('checkout_city')?.value.trim() || '' : null,
+                    save_address: requiresShipping() && (field('checkout_save_address')?.checked || false),
+                    address_label: requiresShipping() ? field('checkout_address_label')?.value.trim() || null : null,
                 },
-                shipping_option: selectedShipping()?.value || '',
+                shipping_option: requiresShipping() ? selectedShipping()?.value || '' : null,
                 payment_method: document.querySelector('input[name="payment_method"]:checked')?.value || null,
                 notes: field('checkout_notes')?.value.trim() || null,
                 items: cart.map((item) => ({
@@ -518,8 +550,30 @@
             const saveAddressCheckbox = field('checkout_save_address');
             const addressLabelWrapper = document.querySelector('[data-address-label]');
             const addressLabelInput = field('checkout_address_label');
+            const customerStepLabel = document.querySelector('[data-checkout-customer-step-label]');
+            const customerHeading = document.querySelector('[data-checkout-customer-heading]');
+            const shippingOnlyNodes = document.querySelectorAll('[data-shipping-only]');
+            const shippingTotalRow = document.querySelector('[data-shipping-total-row]');
             let customerAddresses = [];
             let addressWasAutofilled = false;
+
+            const syncCheckoutFulfilment = () => {
+                const needsShipping = requiresShipping();
+                if (customerStepLabel) customerStepLabel.textContent = needsShipping ? 'Shipping' : 'Customer';
+                if (customerHeading) customerHeading.textContent = needsShipping ? 'Shipping Information' : 'Customer Information';
+                shippingOnlyNodes.forEach((node) => node.hidden = !needsShipping);
+                if (shippingTotalRow) shippingTotalRow.hidden = !needsShipping;
+
+                const nameInput = field('checkout_name');
+                const phoneInput = field('checkout_phone');
+                if (nameInput) nameInput.placeholder = needsShipping ? 'Recipient Full name' : 'Full name';
+                if (phoneInput) phoneInput.placeholder = needsShipping ? 'Recipient Phone Number(s)' : 'Phone number';
+                ['checkout_address', 'checkout_city'].forEach((name) => {
+                    const input = field(name);
+                    if (input) input.required = needsShipping;
+                });
+                if (!needsShipping && saveAddressCheckbox) saveAddressCheckbox.checked = false;
+            };
 
             const syncSaveAddressFields = (showSaveOption) => {
                 if (saveAddressControl) {
@@ -619,19 +673,22 @@
             };
 
             const validateShippingStep = () => {
-                const requiredFields = ['checkout_name', 'checkout_phone', 'checkout_email', 'checkout_address', 'checkout_city'];
-                if (saveAddressCheckbox?.checked) requiredFields.push('checkout_address_label');
+                const requiredFields = ['checkout_name', 'checkout_phone', 'checkout_email'];
+                if (requiresShipping()) requiredFields.push('checkout_address', 'checkout_city');
+                if (requiresShipping() && saveAddressCheckbox?.checked) requiredFields.push('checkout_address_label');
                 const invalid = requiredFields.map(field).find((input) => !input?.checkValidity());
 
                 if (invalid) {
                     invalid.reportValidity();
                     setAlert(invalid === addressLabelInput
                         ? 'Enter a name for this saved address, such as Home or Office.'
-                        : 'Enter the recipient name, email, phone, delivery address, and city to continue.');
+                        : requiresShipping()
+                            ? 'Enter the recipient name, email, phone, delivery address, and city to continue.'
+                            : 'Enter your name, email, and phone number to continue.');
                     return false;
                 }
 
-                if (!selectedShipping()) {
+                if (requiresShipping() && !selectedShipping()) {
                     setAlert('Select a shipping option to continue.');
                     return false;
                 }
@@ -845,6 +902,7 @@
             };
 
             const render = () => {
+                syncCheckoutFulfilment();
                 const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
                 count.textContent = totalItems;
                 count.classList.toggle('hidden', totalItems === 0);
@@ -908,6 +966,7 @@
                     existing ? existing.quantity += requestedQuantity : cart.push({ ...product, quantity: requestedQuantity });
                     resetPendingCheckout();
                     save();
+                    showCartToast(product);
                     showStep('cart');
                     openDrawer();
                 }

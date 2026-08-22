@@ -14,7 +14,7 @@
             @foreach (['cart' => 'Cart', 'shipping' => 'Shipping', 'additional' => 'Notes', 'payment' => 'Payment'] as $key => $label)
                 <button type="button" data-progress-step="{{ $key }}" data-progress-target="{{ $key }}" class="disabled:cursor-default disabled:opacity-60 [&[data-active=true]_.dot]:bg-[var(--store-primary)] [&[data-active=true]_.dot]:text-white [&[data-active=true]_.label]:text-[var(--store-primary)]">
                     <span class="dot mx-auto flex h-7 w-7 items-center justify-center rounded-full bg-[var(--store-soft)] text-[var(--store-muted)]">{{ $loop->iteration }}</span>
-                    <span class="label mt-1 block text-[var(--store-muted)]">{{ $label }}</span>
+                    <span class="label mt-1 block text-[var(--store-muted)]" @if ($key === 'shipping') data-checkout-customer-step-label @endif>{{ $label }}</span>
                 </button>
             @endforeach
         </div>
@@ -27,51 +27,55 @@
         </section>
 
         <section data-checkout-step="shipping" hidden>
-            <h3 class="sf-headline-md">Shipping information</h3>
+            <h3 class="sf-headline-md" data-checkout-customer-heading>Shipping Information</h3>
             <div class="mt-4 grid gap-3">
                 <input class="store-input" name="checkout_email" type="email" placeholder="Email address" autocomplete="email" required>
                 <p class="sf-body-sm -mt-1 text-[var(--store-muted)]" data-customer-lookup-status aria-live="polite"></p>
                 <input class="store-input" name="checkout_name" placeholder="Recipient Full name" autocomplete="name" required>
                 <input class="store-input" name="checkout_phone" placeholder="Recipient Phone Number(s)" autocomplete="tel" required>
-                <div data-saved-addresses hidden>
-                    <label class="sf-body-sm mb-1 block font-bold" for="checkout-saved-address">Saved delivery address</label>
-                    <select class="store-input" id="checkout-saved-address" data-saved-address-select></select>
-                </div>
-                <textarea class="store-input min-h-24" name="checkout_address" placeholder="Recipient Delivery Address" autocomplete="street-address" required></textarea>
-                <input class="store-input" name="checkout_city" placeholder="Recipient City" autocomplete="address-level2" required>
-                <label class="sf-body-sm flex cursor-pointer items-center gap-2" data-save-address-control>
-                    <input type="checkbox" name="checkout_save_address" value="1">
-                    <span>Save this address for future use</span>
-                </label>
-                <div data-address-label hidden>
-                    <label class="sf-body-sm mb-1 block font-bold" for="checkout-address-label">What should we call this address?</label>
-                    <input class="store-input" id="checkout-address-label" name="checkout_address_label" maxlength="80" placeholder="For example: Home or Office">
+                <div class="grid gap-3" data-shipping-only>
+                    <div data-saved-addresses hidden>
+                        <label class="sf-body-sm mb-1 block font-bold" for="checkout-saved-address">Saved delivery address</label>
+                        <select class="store-input" id="checkout-saved-address" data-saved-address-select></select>
+                    </div>
+                    <textarea class="store-input min-h-24" name="checkout_address" placeholder="Recipient Delivery Address" autocomplete="street-address" required></textarea>
+                    <input class="store-input" name="checkout_city" placeholder="Recipient City" autocomplete="address-level2" required>
+                    <label class="sf-body-sm flex cursor-pointer items-center gap-2" data-save-address-control>
+                        <input type="checkbox" name="checkout_save_address" value="1">
+                        <span>Save this address for future use</span>
+                    </label>
+                    <div data-address-label hidden>
+                        <label class="sf-body-sm mb-1 block font-bold" for="checkout-address-label">What should we call this address?</label>
+                        <input class="store-input" id="checkout-address-label" name="checkout_address_label" maxlength="80" placeholder="For example: Home or Office">
+                    </div>
                 </div>
             </div>
-            <h4 class="sf-body-md mt-5 font-bold">Shipping option</h4>
-            <div class="mt-3 grid gap-2">
-                @forelse ((array) $store->shipping_options as $option)
-                    @php
-                        $priceMinor = (int) round(((float) ($option['price'] ?? 0)) * 100);
-                        $shippingLocation = $option['location'] ?? 'Shipping';
-                        $shippingDescription = trim((string) ($option['description'] ?? ''));
-                    @endphp
-                    <label class="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--store-line)] p-3 hover:bg-[var(--store-soft)]">
-                        <span class="flex items-center gap-3">
-                            <input type="radio" name="shipping_option" data-price-minor="{{ $priceMinor }}" value="{{ $option['location'] ?? '' }}">
-                            <span class="sf-body-md font-semibold">{{ $shippingLocation }}@if ($shippingDescription !== '') ({{ $shippingDescription }})@endif</span>
-                        </span>
-                        <span class="sf-body-md font-bold">{{ $currencySymbol }}{{ number_format(((float) ($option['price'] ?? 0)), 2) }}</span>
-                    </label>
-                @empty
-                    <label class="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--store-line)] p-3">
-                        <span class="flex items-center gap-3">
-                            <input type="radio" name="shipping_option" data-price-minor="0" value="default" checked>
-                            <span class="sf-body-md font-semibold">Standard shipping</span>
-                        </span>
-                        <span class="sf-body-md font-bold">Free</span>
-                    </label>
-                @endforelse
+            <div data-shipping-only>
+                <h4 class="sf-body-md mt-5 font-bold">Shipping option</h4>
+                <div class="mt-3 grid gap-2">
+                    @forelse ((array) $store->shipping_options as $option)
+                        @php
+                            $priceMinor = (int) round(((float) ($option['price'] ?? 0)) * 100);
+                            $shippingLocation = $option['location'] ?? 'Shipping';
+                            $shippingDescription = trim((string) ($option['description'] ?? ''));
+                        @endphp
+                        <label class="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--store-line)] p-3 hover:bg-[var(--store-soft)]">
+                            <span class="flex items-center gap-3">
+                                <input type="radio" name="shipping_option" data-price-minor="{{ $priceMinor }}" value="{{ $option['location'] ?? '' }}">
+                                <span class="sf-body-md font-semibold">{{ $shippingLocation }}@if ($shippingDescription !== '') ({{ $shippingDescription }})@endif</span>
+                            </span>
+                            <span class="sf-body-md font-bold">{{ $currencySymbol }}{{ number_format(((float) ($option['price'] ?? 0)), 2) }}</span>
+                        </label>
+                    @empty
+                        <label class="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--store-line)] p-3">
+                            <span class="flex items-center gap-3">
+                                <input type="radio" name="shipping_option" data-price-minor="0" value="default" checked>
+                                <span class="sf-body-md font-semibold">Standard shipping</span>
+                            </span>
+                            <span class="sf-body-md font-bold">Free</span>
+                        </label>
+                    @endforelse
+                </div>
             </div>
         </section>
 
@@ -135,7 +139,7 @@
     <div class="border-t border-[var(--store-line)] p-5">
         <div class="sf-body-md space-y-2">
             <div class="flex justify-between"><span>Subtotal</span><strong data-subtotal>{{ $currencySymbol }}0.00</strong></div>
-            <div class="flex justify-between"><span>Shipping</span><strong data-shipping-total>{{ $currencySymbol }}0.00</strong></div>
+            <div class="flex justify-between" data-shipping-total-row><span>Shipping</span><strong data-shipping-total>{{ $currencySymbol }}0.00</strong></div>
             <div class="hidden flex justify-between" data-gateway-charge-row><span>Online payment charge</span><strong data-gateway-charge>{{ $currencySymbol }}0.00</strong></div>
             <div class="sf-body-lg flex justify-between text-[var(--store-primary)]"><span class="font-bold">Total</span><strong data-grand-total>{{ $currencySymbol }}0.00</strong></div>
         </div>

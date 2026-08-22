@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Modules\Business\Models\OnlineStore;
 use Modules\Catalog\Enums\ProductStatus;
@@ -201,17 +202,22 @@ final class StorefrontController extends Controller
         $store = $this->preparedStore($store);
 
         $services = $this->productsFor($store, ProductType::Service)
-            ->latest()
-            ->paginate(16)
-            ->withQueryString();
+            ->orderBy('name')
+            ->get();
+        $serviceGroups = $services
+            ->groupBy(fn (Product $service): string => $service->category_id ? (string) $service->category_id : 'uncategorized')
+            ->map(fn ($items): array => [
+                'category' => $items->first()?->category,
+                'services' => $items->values(),
+            ])
+            ->sortBy(fn (array $group): string => $group['category']?->name ?? 'zzzzzz Other services')
+            ->values();
         $canonical = StorefrontUrl::route($store, 'services');
-        if ($services->currentPage() > 1) {
-            $canonical .= '?page='.$services->currentPage();
-        }
 
         return view('storefront::services', [
             'store' => $store,
             'services' => $services,
+            'serviceGroups' => $serviceGroups,
             'metaDescription' => "Browse services available from {$store->store_name} and make an enquiry online.",
             'canonical' => $canonical,
         ]);
@@ -437,15 +443,26 @@ final class StorefrontController extends Controller
             ]);
         }
 
+        $requestedVariantIds = collect((array) $request->input('items', []))
+            ->pluck('product_variant_id')
+            ->filter(fn (mixed $id): bool => is_numeric($id))
+            ->map(fn (mixed $id): int => (int) $id)
+            ->unique();
+        $requiresShipping = $requestedVariantIds->isEmpty() || ProductVariant::query()
+            ->where('tenant_id', $store->tenant_id)
+            ->whereIn('id', $requestedVariantIds->all())
+            ->whereHas('product', fn ($query) => $query->where('product_type', ProductType::Product->value))
+            ->exists();
+
         $data = $request->validate([
             'customer.name' => ['required', 'string', 'max:160'],
             'customer.email' => ['required', 'email:rfc', 'max:160'],
             'customer.phone' => ['required', 'string', 'max:60'],
-            'customer.address' => ['required', 'string', 'max:1000'],
-            'customer.city' => ['required', 'string', 'max:120'],
+            'customer.address' => [Rule::requiredIf($requiresShipping), 'nullable', 'string', 'max:1000'],
+            'customer.city' => [Rule::requiredIf($requiresShipping), 'nullable', 'string', 'max:120'],
             'customer.save_address' => ['sometimes', 'boolean'],
-            'customer.address_label' => ['nullable', 'required_if:customer.save_address,true', 'string', 'max:80'],
-            'shipping_option' => ['required', 'string', 'max:120'],
+            'customer.address_label' => [Rule::requiredIf($requiresShipping && $request->boolean('customer.save_address')), 'nullable', 'string', 'max:80'],
+            'shipping_option' => [Rule::requiredIf($requiresShipping), 'nullable', 'string', 'max:120'],
             'payment_method' => ['nullable', 'string', 'max:80'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1', 'max:100'],
@@ -468,7 +485,7 @@ final class StorefrontController extends Controller
         }
 
         try {
-            $order = DB::transaction(function () use ($store, $data): SalesOrder {
+            $order = DB::transaction(function () use ($store, $data, $requiresShipping): SalesOrder {
                 $customerData = $data['customer'];
                 $nameParts = preg_split('/\s+/', trim($customerData['name']), 2) ?: [];
                 $email = Str::lower(trim($customerData['email']));
@@ -483,17 +500,19 @@ final class StorefrontController extends Controller
                     'last_name' => $nameParts[1] ?? $customer->last_name,
                     'email' => $email,
                     'phone' => $customerData['phone'],
-                    'address' => $customerData['address'],
-                    'city' => $customerData['city'],
+                    'address' => $requiresShipping ? $customerData['address'] : $customer->address,
+                    'city' => $requiresShipping ? $customerData['city'] : $customer->city,
                     'status' => CustomerStatus::Active->value,
                 ])->save();
 
-                $matchingAddress = $customer->addresses()
-                    ->where('address', $customerData['address'])
-                    ->where('city', $customerData['city'])
-                    ->first();
+                $matchingAddress = $requiresShipping
+                    ? $customer->addresses()
+                        ->where('address', $customerData['address'])
+                        ->where('city', $customerData['city'])
+                        ->first()
+                    : null;
 
-                if ((bool) ($customerData['save_address'] ?? false)) {
+                if ($requiresShipping && (bool) ($customerData['save_address'] ?? false)) {
                     $label = trim((string) $customerData['address_label']);
                     $addressWithLabel = $customer->addresses()->where('label', $label)->first();
                     $savedAddress = $customer->addresses()->updateOrCreate(
@@ -573,7 +592,7 @@ final class StorefrontController extends Controller
                     ];
                 })->values();
 
-                $shippingMinor = $this->shippingMinor($store, (string) $data['shipping_option']);
+                $shippingMinor = $requiresShipping ? $this->shippingMinor($store, (string) $data['shipping_option']) : 0;
                 $subtotalMinor = (int) $items->sum('line_subtotal_minor');
                 $taxMinor = (int) $items->sum('tax_minor');
                 $totalMinor = $subtotalMinor + $taxMinor + $shippingMinor;
@@ -639,10 +658,10 @@ final class StorefrontController extends Controller
                     'paid_minor' => 0,
                     'change_due_minor' => 0,
                     'payment_method' => $data['payment_method'] ?? null,
-                    'delivery_method' => $data['shipping_option'],
+                    'delivery_method' => $requiresShipping ? $data['shipping_option'] : 'service',
                     'delivery_status' => 'pending',
-                    'delivery_address' => $customerData['address'],
-                    'delivery_city' => $customerData['city'],
+                    'delivery_address' => $requiresShipping ? $customerData['address'] : null,
+                    'delivery_city' => $requiresShipping ? $customerData['city'] : null,
                     'notes' => $data['notes'] ?? null,
                 ]);
 
