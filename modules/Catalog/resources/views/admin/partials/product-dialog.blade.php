@@ -54,6 +54,10 @@
     ]);
     $personalizationEnabled = filter_var($personalizationSettings['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $personalizationFields = (array) ($personalizationSettings['fields'] ?? []);
+    $stockOnHand = $product
+        ? (int) $product->variants->sum(fn ($stockVariant): int => (int) (($variantStock[$stockVariant->id] ?? collect())->sum('quantity_on_hand')))
+        : 0;
+    $defaultInventoryLocation = ($inventoryLocations ?? collect())->firstWhere('id', $defaultInventoryLocationId ?? null);
 
     if (! is_array($optionRows)) {
         $optionRows = $product?->options
@@ -193,6 +197,81 @@
                     </div>
                 </div>
                 <div class="form-grid catalog-basic-supporting">
+                    @unless ($isService)
+                        @php $tracks = (bool) old('track_inventory', $product?->track_inventory ?? true); @endphp
+                        <div class="field full" data-fulfilment-field>
+                            <div class="catalog-fulfilment-control">
+                                <div class="catalog-fulfilment-main">
+                                    <div class="catalog-fulfilment-choice">
+                                        <h3>Stock handling</h3>
+                                        <div class="catalog-fulfilment-toggle" role="radiogroup" aria-label="Stock handling">
+                                            <label class="catalog-fulfilment-option">
+                                                <input type="radio" name="track_inventory" value="1" data-fulfilment @checked($tracks)>
+                                                <span>
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4.3 7.6 7.7 4.3 7.7-4.3M12 12v9"/></svg>
+                                                    I keep stock
+                                                </span>
+                                            </label>
+                                            <label class="catalog-fulfilment-option">
+                                                <input type="radio" name="track_inventory" value="0" data-fulfilment @checked(! $tracks)>
+                                                <span>
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M11 7v4l3 2M18.5 17.5 21 20M19 13v3h3"/></svg>
+                                                    Made to order
+                                                </span>
+                                            </label>
+                                        </div>
+                                        <p>Choose how you manage this product.</p>
+                                    </div>
+                                    <div class="catalog-stock-on-hand" data-stock-on-hand @if (! $tracks) hidden @endif>
+                                        <span>Stock on hand</span>
+                                        <div><strong data-stock-on-hand-count data-count="{{ $stockOnHand }}">{{ number_format($stockOnHand) }}</strong> <small data-stock-on-hand-unit>{{ Str::plural('unit', $stockOnHand) }}</small></div>
+                                        <span class="catalog-stock-on-hand-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4.3 7.6 7.7 4.3 7.7-4.3M12 12v9"/></svg>
+                                        </span>
+                                    </div>
+                                </div>
+                                @if ($product && ($inventoryEnabled ?? false) && $defaultInventoryLocation)
+                                    <div class="catalog-quick-stock" data-quick-stock data-adjust-url="{{ route('admin.catalog.products.stock.adjust', $product) }}" data-location-id="{{ $defaultInventoryLocation->id }}" @if (! $tracks) hidden @endif>
+                                        <div @class(['catalog-quick-stock-controls', 'has-variants' => $product->variants->count() > 1])>
+                                            @if ($product->variants->count() > 1)
+                                                <div class="field">
+                                                    <label>Variant</label>
+                                                    <select data-quick-stock-variant>
+                                                        @foreach ($product->variants as $stockVariant)
+                                                            @php $variantOnHand = (int) (($variantStock[$stockVariant->id] ?? collect())->sum('quantity_on_hand')); @endphp
+                                                            <option value="{{ $stockVariant->id }}" data-on-hand="{{ $variantOnHand }}" data-label="{{ $stockVariant->variant_name ?: $product->name }}">{{ $stockVariant->variant_name ?: $product->name }} · {{ number_format($variantOnHand) }} on hand</option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                            @else
+                                                @php $onlyVariant = $product->variants->first(); @endphp
+                                                <input type="hidden" data-quick-stock-variant value="{{ $onlyVariant?->id }}" data-on-hand="{{ $stockOnHand }}">
+                                            @endif
+                                            <div class="field catalog-quick-stock-quantity">
+                                                <label>Quantity <span class="catalog-required">*</span></label>
+                                                <input type="number" min="1" step="1" inputmode="numeric" data-quick-stock-quantity placeholder="0">
+                                            </div>
+                                            <button class="btn accent catalog-stock-action" type="button" data-quick-stock-action="add">
+                                                <span class="catalog-stock-action-icon" data-catalog-button-icon="add" aria-hidden="true">+</span>
+                                                <span>Add Stock</span>
+                                            </button>
+                                            <button class="btn catalog-stock-action catalog-stock-action-remove" type="button" data-quick-stock-action="remove">
+                                                <span class="catalog-stock-action-icon" data-catalog-button-icon="remove" aria-hidden="true">−</span>
+                                                <span>Remove Stock</span>
+                                            </button>
+                                        </div>
+                                        <p class="catalog-quick-stock-status" data-quick-stock-status aria-live="polite"></p>
+                                    </div>
+                                @elseif (! $product && ($inventoryEnabled ?? false))
+                                    <p class="catalog-quick-stock-save-note" data-quick-stock-save-note @if (! $tracks) hidden @endif>Save this product first, then reopen it to add its starting stock here.</p>
+                                @endif
+                            </div>
+                        </div>
+                        <div class="field" data-lead-time-field @if ($tracks) hidden @endif>
+                            <label>Lead time <span class="subtle">(optional)</span></label>
+                            <input name="lead_time" value="{{ old('lead_time', $product?->lead_time) }}" placeholder="e.g. Ready in 3–5 days">
+                        </div>
+                    @endunless
                     <div class="field full">
                         <label>Description <button type="button" class="catalog-ai-generate-btn" data-product-ai-generate data-product-ai-field="description">✨ Generate with AI</button></label>
                         <textarea name="description">{{ old('description', $product?->description) }}</textarea>
@@ -203,31 +282,6 @@
                             <textarea name="specifications" rows="6" placeholder="e.g. Material: 100% cotton&#10;Fit: Regular&#10;Care: Machine wash cold">{{ old('specifications', $product?->specifications) }}</textarea>
                         </div>
                     @endif
-                    <div class="field full">
-                        <div class="catalog-image-uploader" data-product-image-uploader>
-                            <div class="catalog-image-uploader-header">
-                                <h3>Additional Product Images</h3>
-                                <p>To upload a product image, please use the option below to select and upload the relevant file.</p>
-                            </div>
-                            <label class="catalog-drop-zone" data-product-image-drop-zone>
-                                <input name="images[]" type="file" accept="image/*" multiple data-product-image-input data-max-files="5">
-                                <span class="catalog-upload-icon">⇧</span>
-                                <strong>Drop files here or click to upload.</strong>
-                                <span>You can upload up to 5 images at a time.</span>
-                                <span class="catalog-browse-button">Browse Images</span>
-                            </label>
-                            @if ($product?->images?->isNotEmpty())
-                                <div class="catalog-current-images">
-                                    @foreach ($product->images as $image)
-                                        @if ($imageUrl($image->image_path))
-                                            <img src="{{ $imageUrl($image->image_path) }}" alt="{{ $product->name }} gallery image">
-                                        @endif
-                                    @endforeach
-                                </div>
-                            @endif
-                            <div class="catalog-selected-images" data-product-image-list hidden></div>
-                        </div>
-                    </div>
                 </div>
             </section>
 
@@ -286,6 +340,31 @@
                                     <span class="subtle">No taxes created yet. Add taxes from the Taxes section.</span>
                                 @endforelse
                             </div>
+                        </div>
+                    </div>
+                    <div class="field full">
+                        <div class="catalog-image-uploader" data-product-image-uploader>
+                            <div class="catalog-image-uploader-header">
+                                <h3>Additional Product Images</h3>
+                                <p>To upload a product image, please use the option below to select and upload the relevant file.</p>
+                            </div>
+                            <label class="catalog-drop-zone" data-product-image-drop-zone>
+                                <input name="images[]" type="file" accept="image/*" multiple data-product-image-input data-max-files="5">
+                                <span class="catalog-upload-icon">⇧</span>
+                                <strong>Drop files here or click to upload.</strong>
+                                <span>You can upload up to 5 images at a time.</span>
+                                <span class="catalog-browse-button">Browse Images</span>
+                            </label>
+                            @if ($product?->images?->isNotEmpty())
+                                <div class="catalog-current-images">
+                                    @foreach ($product->images as $image)
+                                        @if ($imageUrl($image->image_path))
+                                            <img src="{{ $imageUrl($image->image_path) }}" alt="{{ $product->name }} gallery image">
+                                        @endif
+                                    @endforeach
+                                </div>
+                            @endif
+                            <div class="catalog-selected-images" data-product-image-list hidden></div>
                         </div>
                     </div>
                 </div>
@@ -678,6 +757,9 @@
                             </div>
                         </div>
                         <div class="panel-body" style="display:grid; gap:16px;">
+                            @unless ($product->track_inventory)
+                                <div class="alert">This product is <strong>made to order</strong> — Storeboot doesn't track its stock, so there's nothing to add or remove here. Switch stock handling to “I keep stock” under <strong>Basic</strong> to manage counts.</div>
+                            @else
                             @foreach ($product->variants as $invVariant)
                                 @php $onHand = (int) (($variantStock[$invVariant->id] ?? collect())->sum('quantity_on_hand')); @endphp
                                 <div class="variant-row-editor" data-inv-variant data-variant-id="{{ $invVariant->id }}">
@@ -734,6 +816,7 @@
                                     </div>
                                 </div>
                             @endforeach
+                            @endunless
                         </div>
                     </div>
                 </section>

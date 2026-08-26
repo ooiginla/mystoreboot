@@ -10,12 +10,13 @@
 
 <x-layouts.admin title="Product & Services">
     <style>
-        .catalog-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; margin-bottom: 16px; }
+        .catalog-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(145px, 175px) auto; gap: 10px; margin-bottom: 16px; }
         .catalog-search { position: relative; }
         .catalog-search input { height: 46px; padding-left: 42px; padding-right: 72px; border-width: 2px; box-shadow: 0 1px 3px rgba(16,24,40,.08); }
         .catalog-search .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #667085; font-size: 20px; }
         .catalog-search kbd { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); border: 1px solid #d0d5dd; border-radius: 7px; padding: 3px 8px; background: #f8fafc; color: #344054; font-weight: 700; }
-        .catalog-filter-row { display: none; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+        .catalog-toolbar-status { height: 46px; min-width: 0; }
+        .catalog-filter-row { display: none; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
         .catalog-filter-row.visible { display: grid; }
         .product-card-list { display: grid; gap: 12px; }
         .product-card { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 14px; display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; gap: 16px; align-items: center; box-shadow: 0 1px 3px rgba(16,24,40,.05); }
@@ -150,6 +151,49 @@
         .catalog-value-tag button:hover { background: #d1fadf; }
         .catalog-new-attribute-grid { align-items: start; }
         .catalog-radio-row { display: flex; gap: 16px; flex-wrap: wrap; }
+        .catalog-fulfilment-control { display: grid; gap: 18px; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 18px; box-shadow: 0 1px 3px rgba(16,24,40,.04); }
+        .catalog-fulfilment-main { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, .8fr); align-items: stretch; gap: 24px; }
+        .catalog-fulfilment-choice { min-width: 0; display: grid; align-content: start; gap: 10px; }
+        .catalog-fulfilment-choice h3 { margin: 0; color: #101828; font-size: 16px; font-weight: 850; }
+        .catalog-fulfilment-choice > p { margin: 0; color: #667085; font-size: 13px; }
+        .catalog-fulfilment-toggle { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: hidden; border: 1px solid #d0d5dd; border-radius: 10px; background: #f2f4f7; }
+        .catalog-fulfilment-option { position: relative; min-width: 0; cursor: pointer; }
+        .catalog-fulfilment-option input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; pointer-events: none; }
+        .catalog-fulfilment-option + .catalog-fulfilment-option { border-left: 1px solid #d0d5dd; }
+        .catalog-fulfilment-option span { min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 9px; color: #475467; padding: 8px 14px; text-align: center; font-size: 14px; font-weight: 800; transition: background .15s, color .15s, box-shadow .15s; }
+        .catalog-fulfilment-option span svg { width: 20px; height: 20px; flex: 0 0 20px; }
+        .catalog-fulfilment-option input:checked + span { background: linear-gradient(135deg, var(--brand), #05944f); color: #fff; box-shadow: 0 3px 9px rgba(6,193,104,.24); }
+        .catalog-fulfilment-option input:focus-visible + span { outline: 3px solid var(--brand-ring); outline-offset: -3px; }
+        .catalog-stock-on-hand { position: relative; min-height: 100px; display: grid; align-content: center; gap: 4px; overflow: hidden; border: 1.5px solid var(--brand); border-radius: 10px; background: linear-gradient(135deg, #f3fff8, var(--brand-050)); padding: 12px 66px 12px 18px; color: var(--brand-strong); box-shadow: 0 4px 12px -8px rgba(6,193,104,.4); }
+        .catalog-stock-on-hand > span:not(.catalog-stock-on-hand-icon) { font-size: 11px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+        .catalog-stock-on-hand strong { color: #05944f; font-size: 32px; line-height: 1; font-weight: 900; }
+        .catalog-stock-on-hand small { font-size: 14px; font-style: normal; font-weight: 850; }
+        .catalog-stock-on-hand-icon { position: absolute; top: 50%; right: 16px; width: 44px; height: 44px; display: grid; place-items: center; transform: translateY(-50%); border-radius: 999px; background: #d1fadf; color: #079455; }
+        .catalog-stock-on-hand-icon svg { width: 25px; height: 25px; }
+        .catalog-quick-stock { width: 100%; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 18px; }
+        .catalog-quick-stock-controls { display: grid; grid-template-columns: minmax(110px, 150px) auto auto; gap: 14px; align-items: end; justify-content: start; }
+        .catalog-quick-stock-controls.has-variants { width: 100%; grid-template-columns: minmax(150px, 1fr) minmax(90px, 120px) auto auto; }
+        .catalog-quick-stock-controls > .field { margin: 0; }
+        .catalog-quick-stock-controls .field > label { margin-bottom: 7px; color: #101828; font-size: 13px; font-weight: 800; }
+        .catalog-quick-stock-controls input, .catalog-quick-stock-controls select { min-height: 48px; }
+        .catalog-quick-stock-controls .btn { min-height: 48px; padding-inline: 20px; white-space: nowrap; }
+        .catalog-stock-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+        .catalog-stock-action-icon { width: 17px; flex: 0 0 17px; font-size: 20px; font-weight: 500; line-height: 1; text-align: center; }
+        .btn.catalog-stock-action-remove { border-color: #dc2626; background: #dc2626; color: #fff; box-shadow: 0 4px 12px -3px rgba(220,38,38,.35); }
+        .btn.catalog-stock-action-remove:hover { border-color: #b91c1c; background: #b91c1c; color: #fff; }
+        .catalog-required { color: #f04438; }
+        .catalog-quick-stock-save-note, .catalog-quick-stock-status { margin: 0; font-size: 12px; }
+        .catalog-quick-stock-save-note { color: #667085; }
+        .catalog-quick-stock-status { min-height: 18px; font-weight: 750; }
+        @media (max-width: 900px) {
+            .catalog-fulfilment-main { grid-template-columns: 1fr; gap: 20px; }
+        }
+        @media (max-width: 760px) {
+            .catalog-fulfilment-control { padding: 18px; }
+            .catalog-fulfilment-option span { min-height: 52px; padding-inline: 10px; font-size: 13px; }
+            .catalog-quick-stock-controls { grid-template-columns: minmax(0, 1fr) minmax(90px, .45fr); }
+            .catalog-quick-stock-controls .btn { width: 100%; }
+        }
         .catalog-variant-editor { margin-top: 16px; }
         .catalog-attribute-panel { padding: 0; overflow: hidden; }
         .catalog-attribute-toggle { width: 100%; border: 0; background: var(--brand-050); color: #101828; padding: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; text-align: left; font-weight: 800; }
@@ -2313,8 +2357,50 @@
         document.addEventListener('DOMContentLoaded', () => {
             const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
             const stripMoney = (v) => (v || '').toString().replace(/,/g, '').trim();
+            const syncStockTotals = (dialog, variantId, nextVariantTotal) => {
+                const quickVariant = Array.from(dialog.querySelectorAll('[data-quick-stock-variant] option, input[data-quick-stock-variant]'))
+                    .find((item) => String(item.value) === String(variantId));
+                const inventoryOnHand = dialog.querySelector(`[data-inv-variant][data-variant-id="${variantId}"] [data-inv-onhand]`);
+                const previousVariantTotal = parseInt(
+                    quickVariant?.dataset.onHand || inventoryOnHand?.textContent?.replace(/,/g, '') || '0',
+                    10,
+                ) || 0;
+                const normalizedVariantTotal = Number(nextVariantTotal);
+
+                if (quickVariant) {
+                    quickVariant.dataset.onHand = String(normalizedVariantTotal);
+                    if (quickVariant.tagName === 'OPTION') {
+                        quickVariant.textContent = `${quickVariant.dataset.label} · ${normalizedVariantTotal.toLocaleString()} on hand`;
+                    }
+                }
+                if (inventoryOnHand) inventoryOnHand.textContent = normalizedVariantTotal.toLocaleString();
+
+                const productOnHand = dialog.querySelector('[data-stock-on-hand-count]');
+                if (! productOnHand) return;
+
+                const previousProductTotal = parseInt(productOnHand.dataset.count || '0', 10) || 0;
+                const nextProductTotal = previousProductTotal - previousVariantTotal + normalizedVariantTotal;
+                productOnHand.dataset.count = String(nextProductTotal);
+                productOnHand.textContent = nextProductTotal.toLocaleString();
+                const unit = dialog.querySelector('[data-stock-on-hand-unit]');
+                if (unit) unit.textContent = nextProductTotal === 1 ? 'unit' : 'units';
+            };
 
             document.addEventListener('change', (event) => {
+                const fulfilment = event.target.closest('[data-fulfilment]');
+                if (fulfilment) {
+                    const dialog = fulfilment.closest('dialog') || document;
+                    const keepsStock = dialog.querySelector('[data-fulfilment][value="1"]')?.checked;
+                    const leadField = dialog.querySelector('[data-lead-time-field]');
+                    const stockOnHand = dialog.querySelector('[data-stock-on-hand]');
+                    const quickStock = dialog.querySelector('[data-quick-stock]');
+                    const quickStockSaveNote = dialog.querySelector('[data-quick-stock-save-note]');
+                    if (leadField) leadField.hidden = !!keepsStock;
+                    if (stockOnHand) stockOnHand.hidden = !keepsStock;
+                    if (quickStock) quickStock.hidden = !keepsStock;
+                    if (quickStockSaveNote) quickStockSaveNote.hidden = !keepsStock;
+                    return;
+                }
                 const modeSel = event.target.closest('[data-inv-mode]');
                 if (modeSel) {
                     const block = modeSel.closest('[data-inv-variant]');
@@ -2331,6 +2417,65 @@
             });
 
             document.addEventListener('click', async (event) => {
+                const quickStockButton = event.target.closest('[data-quick-stock-action]');
+                if (quickStockButton) {
+                    const quickStock = quickStockButton.closest('[data-quick-stock]');
+                    const dialog = quickStock.closest('dialog');
+                    const quantityInput = quickStock.querySelector('[data-quick-stock-quantity]');
+                    const variantInput = quickStock.querySelector('[data-quick-stock-variant]');
+                    const status = quickStock.querySelector('[data-quick-stock-status]');
+                    const estimatedCostInput = dialog.querySelector('[name="base_cost_price"]');
+                    const quantity = parseInt(quantityInput.value, 10);
+                    const estimatedCost = parseFloat(stripMoney(estimatedCostInput?.value));
+
+                    if (! quantity || quantity <= 0) {
+                        alert('Enter the number of items you want to add or deduct.');
+                        quantityInput.focus();
+                        return;
+                    }
+                    if (! Number.isFinite(estimatedCost) || estimatedCost <= 0) {
+                        alert('Set the Estimated cost price to an amount greater than 0 before adjusting inventory.');
+                        estimatedCostInput?.focus();
+                        estimatedCostInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        return;
+                    }
+                    if (! variantInput?.value || ! quickStock.dataset.locationId) {
+                        alert('A product variant and default branch inventory location are required.');
+                        return;
+                    }
+
+                    const buttons = quickStock.querySelectorAll('[data-quick-stock-action]');
+                    buttons.forEach((button) => { button.disabled = true; });
+                    status.textContent = 'Updating stock…';
+                    status.style.color = 'var(--muted,#64748b)';
+
+                    const body = new URLSearchParams();
+                    body.append('_token', csrf);
+                    body.append('direction', quickStockButton.dataset.quickStockAction);
+                    body.append('product_variant_id', variantInput.value);
+                    body.append('inventory_location_id', quickStock.dataset.locationId);
+                    body.append('quantity', String(quantity));
+                    body.append('unit_cost', String(estimatedCost));
+                    if (quickStockButton.dataset.quickStockAction === 'remove') body.append('reason', 'adjustment');
+
+                    try {
+                        const res = await fetch(quickStock.dataset.adjustUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body });
+                        const data = await res.json();
+                        if (! res.ok) throw new Error(data.message || 'Could not update stock.');
+                        syncStockTotals(dialog, variantInput.value, data.total_on_hand);
+                        quantityInput.value = '';
+                        status.textContent = quickStockButton.dataset.quickStockAction === 'add'
+                            ? `✓ ${quantity.toLocaleString()} item${quantity === 1 ? '' : 's'} added.`
+                            : `✓ ${quantity.toLocaleString()} item${quantity === 1 ? '' : 's'} deducted.`;
+                        status.style.color = 'var(--brand-strong,#067647)';
+                    } catch (error) {
+                        status.textContent = error.message;
+                        status.style.color = 'var(--danger,#b91c1c)';
+                    }
+                    buttons.forEach((button) => { button.disabled = false; });
+                    return;
+                }
+
                 const createBtn = event.target.closest('[data-nv-create]');
                 if (createBtn) {
                     const tab = createBtn.closest('[data-inventory-tab]');
@@ -2386,7 +2531,8 @@
                     const res = await fetch(tab.dataset.adjustUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body });
                     const d = await res.json();
                     if (! res.ok) throw new Error(d.message || 'Could not update stock.');
-                    block.querySelector('[data-inv-onhand]').textContent = d.total_on_hand;
+                    const dialog = tab.closest('dialog');
+                    syncStockTotals(dialog, block.dataset.variantId, d.total_on_hand);
                     status.textContent = '✓ ' + d.message; status.style.color = 'var(--brand-strong,#067647)';
                     block.querySelector('[data-inv-qty]').value = ''; block.querySelector('[data-inv-note]').value = '';
                 } catch (err) { status.textContent = err.message; status.style.color = 'var(--danger,#b91c1c)'; }

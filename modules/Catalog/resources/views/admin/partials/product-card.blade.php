@@ -56,7 +56,11 @@
                 {{ $item->name }}
             </button>
             @if (! is_null($totalOnHand))
-                <span class="badge {{ $totalOnHand > 0 ? 'success' : 'neutral' }}" title="Total available stock across all locations">{{ number_format($totalOnHand) }} in stock</span>
+                @if (! $item->track_inventory)
+                    <span class="badge neutral" title="Made to order — stock isn't tracked">Made to order</span>
+                @else
+                    <span class="badge {{ $totalOnHand > 0 ? 'success' : 'neutral' }}" title="Total available stock across all locations">{{ number_format($totalOnHand) }} in stock</span>
+                @endif
             @endif
         </div>
         <div class="product-meta">

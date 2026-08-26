@@ -589,6 +589,8 @@ final class StorefrontController extends Controller
                             : 0,
                         'line_subtotal_minor' => $lineSubtotalMinor,
                         'tax_minor' => (int) round($lineSubtotalMinor * ($taxRate / 100)),
+                        'is_tracked' => $variant->product?->product_type === ProductType::Product
+                            && (bool) ($variant->product?->track_inventory ?? true),
                     ];
                 })->values();
 
@@ -612,7 +614,8 @@ final class StorefrontController extends Controller
 
                     if ($reservationLocationId) {
                         foreach ($items as $item) {
-                            if ($item['variant']->product?->product_type !== ProductType::Product) {
+                            // Made-to-order products (and services) are always sellable — never reserved.
+                            if (! $item['is_tracked']) {
                                 continue;
                             }
 
@@ -628,10 +631,12 @@ final class StorefrontController extends Controller
                                 (int) $item['quantity'],
                                 $itemName,
                             );
+                            $stockReserved = true;
                         }
 
-                        $reservedUntil = now()->addMinutes(max(1, (int) ($store->reservation_hold_minutes ?: 30)));
-                        $stockReserved = true;
+                        if ($stockReserved) {
+                            $reservedUntil = now()->addMinutes(max(1, (int) ($store->reservation_hold_minutes ?: 30)));
+                        }
                     }
                 }
 
@@ -686,6 +691,7 @@ final class StorefrontController extends Controller
                     $order->items()->create([
                         'tenant_id' => $store->tenant_id,
                         'product_variant_id' => $variant->id,
+                        'inventory_tracked' => $item['is_tracked'],
                         'item_name' => $variant->product?->name.' / '.$variant->variant_name,
                         'sku' => $variant->sku,
                         'custom_selections' => $item['custom_selections'],

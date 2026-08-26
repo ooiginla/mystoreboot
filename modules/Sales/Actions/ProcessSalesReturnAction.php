@@ -122,7 +122,9 @@ final class ProcessSalesReturnAction
                 ->where('branch_id', $order->branch_id)
                 ->value('id');
 
-            if (! $inventoryLocationId) {
+            // A location is only needed when at least one returned line restocks (tracked).
+            $needsRestock = collect($validItems)->contains(fn (array $pair): bool => (bool) ($pair[0]->inventory_tracked ?? true));
+            if ($needsRestock && ! $inventoryLocationId) {
                 throw ValidationException::withMessages([
                     'items' => 'No inventory location is linked to this order branch.',
                 ]);
@@ -142,18 +144,21 @@ final class ProcessSalesReturnAction
 
                 $orderItem->increment('quantity_returned', $quantity);
 
-                $this->postInventoryMovement->executeFromSource([
-                    'tenant_id' => $order->tenant_id,
-                    'inventory_location_id' => $inventoryLocationId,
-                    'product_variant_id' => $orderItem->product_variant_id,
-                    'movement_type' => InventoryMovementType::Returned->value,
-                    'stock_condition' => StockCondition::Returned->value,
-                    'quantity' => $quantity,
-                    'unit_cost' => $orderItem->unit_cost_minor / 100,
-                    'reference_number' => $salesReturn->return_number,
-                    'notes' => 'Sales return.',
-                    'occurred_at' => $data['return_date'],
-                ], 'sales_return', $salesReturn->id);
+                // Made-to-order lines refund but never restock (nothing was ever counted).
+                if ((bool) ($orderItem->inventory_tracked ?? true) && $inventoryLocationId) {
+                    $this->postInventoryMovement->executeFromSource([
+                        'tenant_id' => $order->tenant_id,
+                        'inventory_location_id' => $inventoryLocationId,
+                        'product_variant_id' => $orderItem->product_variant_id,
+                        'movement_type' => InventoryMovementType::Returned->value,
+                        'stock_condition' => StockCondition::Returned->value,
+                        'quantity' => $quantity,
+                        'unit_cost' => $orderItem->unit_cost_minor / 100,
+                        'reference_number' => $salesReturn->return_number,
+                        'notes' => 'Sales return.',
+                        'occurred_at' => $data['return_date'],
+                    ], 'sales_return', $salesReturn->id);
+                }
             }
 
             // Split the refund: the portion the customer still owed cancels their

@@ -46,6 +46,8 @@ final class SaveProductAction
                 'custom_fields' => $this->customFields($data),
                 'personalization_settings' => $this->personalizationSettings($data),
                 'has_variants' => (bool) ($data['has_variants'] ?? false),
+                'track_inventory' => (bool) ($data['track_inventory'] ?? true),
+                'lead_time' => $data['lead_time'] ?? null,
                 'base_price_minor' => $this->moneyToMinor($data['base_price'] ?? 0),
                 'base_cost_price_minor' => $this->moneyToMinor($data['base_cost_price'] ?? 0),
                 'compare_at_price_minor' => $this->optionalMoneyToMinor($data['compare_at_price'] ?? null),

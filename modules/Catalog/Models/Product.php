@@ -44,6 +44,7 @@ final class Product extends Model
             'status' => ProductStatus::class,
             'tax_behavior' => TaxBehavior::class,
             'has_variants' => 'boolean',
+            'track_inventory' => 'boolean',
             'custom_fields' => 'array',
             'personalization_settings' => 'array',
             'tax_rate' => 'decimal:2',

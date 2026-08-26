@@ -45,13 +45,7 @@ final class CreateSalesOrderAction
         return DB::transaction(function () use ($data, $userId): SalesOrder {
             $tenant = Tenant::query()->findOrFail($data['tenant_id']);
             $inventoryEnabled = $this->moduleAccess->allows($tenant, 'inventory');
-            $inventoryLocationId = $inventoryEnabled ? (int) ($data['inventory_location_id'] ?? 0) : null;
-
-            if ($inventoryEnabled && ! $inventoryLocationId) {
-                throw ValidationException::withMessages([
-                    'inventory_location_id' => 'Select an inventory location before recording this sale.',
-                ]);
-            }
+            $inventoryLocationId = $inventoryEnabled ? ((int) ($data['inventory_location_id'] ?? 0) ?: null) : null;
 
             $source = (string) ($data['source'] ?? 'in_store');
             $isCustomerOrder = $source === 'offline' && ($data['record_as'] ?? 'completed_sale') === 'customer_order';
@@ -108,8 +102,20 @@ final class CreateSalesOrderAction
                     'unit_cost_minor' => $unitCostMinor,
                     'line_subtotal_minor' => $lineSubtotalMinor,
                     'tax_minor' => (int) round($lineSubtotalMinor * ($taxRate / 100)),
+                    // Only stocked physical products are counted/reserved/deducted. Made-to-order
+                    // products (track_inventory = false) and services are always sellable.
+                    'is_tracked' => $variant->product?->product_type === ProductType::Product
+                        && (bool) ($variant->product?->track_inventory ?? true),
                 ];
             })->values();
+
+            // A stock location is only required when the order actually contains a stocked item.
+            $hasTrackedItem = $items->contains(fn (array $item): bool => $item['is_tracked']);
+            if ($inventoryEnabled && $hasTrackedItem && ! $inventoryLocationId) {
+                throw ValidationException::withMessages([
+                    'inventory_location_id' => 'Select an inventory location before recording this sale.',
+                ]);
+            }
 
             $subtotalMinor = $items->sum('line_subtotal_minor');
             $taxMinor = $items->sum('tax_minor');
@@ -136,7 +142,7 @@ final class CreateSalesOrderAction
                 'tenant_id' => $tenant->id,
                 'branch_id' => $data['branch_id'],
                 'inventory_location_id' => $inventoryLocationId,
-                'stock_reserved' => $isCustomerOrder && $inventoryEnabled,
+                'stock_reserved' => $isCustomerOrder && $inventoryEnabled && $hasTrackedItem,
                 'customer_id' => $customer->id,
                 'user_id' => $userId,
                 'sales_till_session_id' => $tillSession?->id,
@@ -171,6 +177,7 @@ final class CreateSalesOrderAction
                 $order->items()->create([
                     'tenant_id' => $tenant->id,
                     'product_variant_id' => $variant->id,
+                    'inventory_tracked' => $item['is_tracked'],
                     'item_name' => $variant->product?->name.' / '.$variant->variant_name,
                     'sku' => $variant->sku,
                     'quantity' => $item['quantity'],
@@ -180,7 +187,7 @@ final class CreateSalesOrderAction
                     'line_total_minor' => $item['line_subtotal_minor'] + $item['tax_minor'],
                 ]);
 
-                if (! $isCustomerOrder && $inventoryEnabled) {
+                if (! $isCustomerOrder && $inventoryEnabled && $item['is_tracked']) {
                     $this->postInventoryMovement->executeFromSource([
                         'tenant_id' => $tenant->id,
                         'inventory_location_id' => $inventoryLocationId,
@@ -193,7 +200,7 @@ final class CreateSalesOrderAction
                         'notes' => 'Sold through POS.',
                         'occurred_at' => $data['order_date'],
                     ], 'sales_order', $order->id);
-                } elseif ($isCustomerOrder && $inventoryEnabled && $variant->product?->product_type === ProductType::Product) {
+                } elseif ($isCustomerOrder && $inventoryEnabled && $item['is_tracked']) {
                     // Pending customer orders reserve stock so it cannot be oversold
                     // before completion. Stock is deducted when the order completes.
                     $this->reservations->reserve($tenant->id, (int) $inventoryLocationId, (int) $variant->id, (int) $item['quantity']);

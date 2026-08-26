@@ -60,7 +60,10 @@ final class CompleteSalesOrderAction
 
             foreach ($lockedOrder->items as $item) {
                 $variant = $item->variant;
-                $tracksInventory = $variant?->product?->product_type === ProductType::Product;
+                // Use the policy snapshotted on the line at order time. Old lines default to
+                // tracked, guarded by product type so services still skip inventory.
+                $tracksInventory = (bool) ($item->inventory_tracked ?? true)
+                    && $variant?->product?->product_type === ProductType::Product;
                 $unitCostMinor = (int) $item->unit_cost_minor;
 
                 if ($inventoryEnabled && $tracksInventory) {
