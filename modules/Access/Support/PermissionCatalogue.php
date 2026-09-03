@@ -278,7 +278,6 @@ final class PermissionCatalogue
                     'sales.view', 'sales.create', 'sales.payments.receive', 'sales.till.manage',
                     'sales.refunds.request',
                     'customers.view', 'customers.create',
-                    'catalog.view',
                 ],
                 'limits' => ['sales.discount.max_percent' => 5],
             ],

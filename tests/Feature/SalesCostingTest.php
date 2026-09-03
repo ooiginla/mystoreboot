@@ -427,7 +427,7 @@ class SalesCostingTest extends TestCase
                 'branch_id' => $branch->id,
                 'opening_float' => '100.00',
             ])
-            ->assertRedirect();
+            ->assertRedirect(route('admin.sales.retail-pos', ['tenant' => $tenant->id]));
 
         $tillSession = SalesTillSession::query()->where('tenant_id', $tenant->id)->firstOrFail();
 

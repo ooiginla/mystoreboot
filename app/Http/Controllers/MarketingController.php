@@ -132,7 +132,7 @@ final class MarketingController extends Controller
             ],
             [
                 'name' => 'Enterprise', 'tagline' => 'For in-house stores that need branches, POS and full back office.',
-                'monthly' => '₦20,000', 'yearly' => '₦16,000', 'unit' => '/month', 'cta' => 'Start free trial', 'featured' => false,
+                'monthly' => '₦5,000', 'yearly' => '₦4,000', 'unit' => '/month', 'cta' => 'Start free trial', 'featured' => false,
                 'features' => [
                     'Everything in Basic, plus:',
                     'Unlimited branches',
@@ -159,7 +159,7 @@ final class MarketingController extends Controller
             ['q' => 'Can AI help me set up my products and store?', 'a' => 'Yes. Upload your product photos and our AI drafts the names, descriptions, prices and categories for you. It can also generate product images, write your store pages, and auto-create SEO tags so customers find you on Google — everything stays editable before you publish.'],
             ['q' => 'Can I use the point of sale without internet?', 'a' => 'Yes. Our till is built offline-first — you can keep selling even when the network drops, and your data syncs safely to the cloud once you are back online.'],
             ['q' => 'Does it work for more than one branch?', 'a' => 'Absolutely. Manage every branch from one account, move stock between them, set roles for your staff, and see each branch or the whole business at a glance.'],
-            ['q' => 'What does it cost to get started?', 'a' => 'Getting started is completely free — the Basic plan is free forever with no card required. When you need branches, POS, payroll and full accounting, upgrade to Enterprise at ₦20,000/month.'],
+            ['q' => 'What does it cost to get started?', 'a' => 'Getting started is completely free — the Basic plan is free forever with no card required. When you need branches, POS, payroll and full accounting, upgrade to Enterprise at ₦5,000/month.'],
             ['q' => 'Is my business data safe?', 'a' => 'Your data is encrypted and backed up in the cloud, with role-based access so your team only sees what they should. You stay in full control of your business information.'],
             ['q' => 'Which currency and country does it support?', 'a' => 'Storeboot supports Naira and several other currencies, with the right timezone set automatically when you sign up. It is built for African businesses first.'],
         ];

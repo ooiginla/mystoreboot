@@ -6,6 +6,7 @@ namespace Modules\Business\Support;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 /**
  * Thin wrapper over Paystack's bank directory + account-resolution endpoints, used
@@ -121,7 +122,7 @@ final class PaystackDirectory
                 'bank_code' => $bankCode,
             ]);
 
-        $name = (string) $response->json('data.account_name', '');
+        $name = Str::upper(trim((string) $response->json('data.account_name', '')));
 
         if ($response->ok() && (bool) $response->json('status') && $name !== '') {
             return ['ok' => true, 'account_name' => $name];

@@ -761,7 +761,8 @@ final class SalesController extends Controller
             $vault->decrement('balance_minor', $openingFloatMinor);
         }
 
-        return redirect()->to(route('admin.sales.index', ['tenant' => $session->tenant_id]).'#till')->with('status', "Till {$session->session_number} opened.");
+        return redirect()->route('admin.sales.retail-pos', ['tenant' => $session->tenant_id])
+            ->with('status', "Till {$session->session_number} opened.");
     }
 
     public function storeTillMovement(TillMovementRequest $request, SalesTillSession $tillSession, PostJournalEntryAction $postJournalEntry): RedirectResponse

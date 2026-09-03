@@ -566,7 +566,49 @@
                         @if (! $tenant)
                             <div class="empty">Save the business profile first, then add payment accounts.</div>
                         @else
-                            <div class="setup-section">
+                            @if ($paymentAccounts->isEmpty())
+                                <div class="empty">No payment accounts yet. Add Union Bank, Moniepoint, Opay, Palmpay, FirstBank POS, or any branch receiving account.</div>
+                            @else
+                                <div class="table-scroll">
+                                    <table class="table">
+                                        <thead><tr><th>Account</th><th>Branch</th><th>GL</th><th>Supports</th><th>Status</th><th></th></tr></thead>
+                                        <tbody>
+                                            @foreach ($paymentAccounts as $account)
+                                                <tr>
+                                                    <td>
+                                                        <div class="cell-title">{{ $account->identifier }}</div>
+                                                        @php
+                                                            $accountMeta = array_values(array_filter([
+                                                                ucfirst($account->account_type),
+                                                                $account->provider_name.($account->bank_code ? ' ('.$account->bank_code.')' : ''),
+                                                                $account->account_number,
+                                                                $account->account_name,
+                                                            ]));
+                                                        @endphp
+                                                        <div class="cell-sub">{{ implode(' · ', $accountMeta) }}</div>
+                                                    </td>
+                                                    <td>{{ $account->branch?->name ?? 'All branches' }}</td>
+                                                    <td>{{ $account->financeAccount?->code ?? 'Pending' }}</td>
+                                                    <td>{{ collect($account->supported_payment_methods)->map(fn ($m) => strtoupper($m))->join(', ') }}</td>
+                                                    <td>{!! $statusPill(ucfirst($account->status)) !!}</td>
+                                                    <td>
+                                                        <div class="table-actions">
+                                                            <button class="btn secondary" type="button" data-dialog-open="payment-account-{{ $account->id }}">Edit</button>
+                                                            <form method="POST" action="{{ route('admin.business.payment-accounts.destroy', $account) }}" onsubmit="return confirm('Deactivate this payment account?');">
+                                                                @csrf
+                                                                @method('DELETE')
+                                                                <button class="btn danger" type="submit">Deactivate</button>
+                                                            </form>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
+
+                            <div class="setup-section" style="margin-top: 16px;">
                                 <h3 class="setup-section-title">Supported payment methods</h3>
                                 <form class="mini-form" method="POST" action="{{ route('admin.business.payment-methods.save') }}">
                                     @csrf
@@ -609,47 +651,6 @@
                                 </form>
                             </div>
 
-                            @if ($paymentAccounts->isEmpty())
-                                <div class="empty" style="margin-top: 16px;">No payment accounts yet. Add Union Bank, Moniepoint, Opay, Palmpay, FirstBank POS, or any branch receiving account.</div>
-                            @else
-                                <div class="table-scroll" style="margin-top: 16px;">
-                                    <table class="table">
-                                        <thead><tr><th>Account</th><th>Branch</th><th>GL</th><th>Supports</th><th>Status</th><th></th></tr></thead>
-                                        <tbody>
-                                            @foreach ($paymentAccounts as $account)
-                                                <tr>
-                                                    <td>
-                                                        <div class="cell-title">{{ $account->identifier }}</div>
-                                                        @php
-                                                            $accountMeta = array_values(array_filter([
-                                                                ucfirst($account->account_type),
-                                                                $account->provider_name.($account->bank_code ? ' ('.$account->bank_code.')' : ''),
-                                                                $account->account_number,
-                                                                $account->account_name,
-                                                            ]));
-                                                        @endphp
-                                                        <div class="cell-sub">{{ implode(' · ', $accountMeta) }}</div>
-                                                    </td>
-                                                    <td>{{ $account->branch?->name ?? 'All branches' }}</td>
-                                                    <td>{{ $account->financeAccount?->code ?? 'Pending' }}</td>
-                                                    <td>{{ collect($account->supported_payment_methods)->map(fn ($m) => strtoupper($m))->join(', ') }}</td>
-                                                    <td>{!! $statusPill(ucfirst($account->status)) !!}</td>
-                                                    <td>
-                                                        <div class="table-actions">
-                                                            <button class="btn secondary" type="button" data-dialog-open="payment-account-{{ $account->id }}">Edit</button>
-                                                            <form method="POST" action="{{ route('admin.business.payment-accounts.destroy', $account) }}" onsubmit="return confirm('Deactivate this payment account?');">
-                                                                @csrf
-                                                                @method('DELETE')
-                                                                <button class="btn danger" type="submit">Deactivate</button>
-                                                            </form>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            @endforeach
-                                        </tbody>
-                                    </table>
-                                </div>
-                            @endif
                         @endif
                     </div>
                 </section>
