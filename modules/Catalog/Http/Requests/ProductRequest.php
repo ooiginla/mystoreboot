@@ -128,6 +128,16 @@ final class ProductRequest extends FormRequest
             'specifications' => ['nullable', 'string', 'max:8000'],
             'has_variants' => ['boolean'],
             'track_inventory' => ['boolean'],
+            'unit_category_id' => [
+                'nullable', 'integer',
+                Rule::exists('unit_categories', 'id')->where('tenant_id', $this->string('tenant_id')->toString()),
+            ],
+            'prep_location_id' => [
+                'nullable', 'integer',
+                Rule::exists('inventory_locations', 'id')
+                    ->where('tenant_id', $this->string('tenant_id')->toString())
+                    ->where('is_prep_station', true),
+            ],
             'lead_time' => ['nullable', 'string', 'max:120'],
             'base_price' => ['required', 'numeric', 'min:0', 'max:999999999'],
             'base_cost_price' => ['nullable', 'numeric', 'min:0', 'max:999999999'],

@@ -53,7 +53,11 @@ final class InventoryMovementRequest extends FormRequest
             ],
             'movement_type' => ['required', Rule::in($movementTypes)],
             'stock_condition' => ['required', Rule::in(array_column(StockCondition::cases(), 'value'))],
-            'quantity' => ['required', 'integer', 'min:1', 'max:999999999'],
+            'quantity' => ['required', 'numeric', 'gt:0', 'max:999999999'],
+            'unit_id' => [
+                'nullable', 'integer',
+                Rule::exists('units_of_measure', 'id')->where('tenant_id', $tenantId),
+            ],
             'unit_cost' => [
                 Rule::requiredIf($requiresUnitCost),
                 'nullable',

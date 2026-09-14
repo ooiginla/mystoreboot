@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Business\Models\Branch;
 use Modules\Customers\Models\Customer;
 use Modules\Inventory\Models\InventoryLocation;
+use Modules\Sales\Enums\CheckStatus;
 use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Enums\SalesPaymentStatus;
 
@@ -63,7 +64,95 @@ final class SalesOrder extends Model
             'is_credit_sale' => 'boolean',
             'stock_reserved' => 'boolean',
             'reserved_until' => 'datetime',
+            'check_status' => CheckStatus::class,
+            'opened_at' => 'datetime',
+            'cover_count' => 'integer',
+            'service_charge_rate' => 'decimal:2',
+            'bill_printed_at' => 'datetime',
+            'settled_at' => 'datetime',
         ];
+    }
+
+    public function serviceArea(): BelongsTo
+    {
+        return $this->belongsTo(ServiceArea::class, 'service_area_id');
+    }
+
+    /** The check this one was split off from. */
+    public function parentCheck(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_sales_order_id');
+    }
+
+    /** Checks split off this one — they sit on the same table. */
+    public function splitChecks(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_sales_order_id');
+    }
+
+    /** Lines that count towards the bill: everything not voided. */
+    public function liveItems(): \Illuminate\Support\Collection
+    {
+        return $this->items->filter(fn (SalesOrderItem $item): bool => $item->voided_at === null)->values();
+    }
+
+    /**
+     * Any change after the bill was printed makes that bill wrong, so the check goes back
+     * to open and must be printed again before it can be paid.
+     */
+    public function reopenIfBilled(): void
+    {
+        if ($this->check_status === CheckStatus::BillPrinted) {
+            $this->update(['check_status' => CheckStatus::Open->value, 'bill_printed_at' => null]);
+        }
+    }
+
+    public function table(): BelongsTo
+    {
+        return $this->belongsTo(RestaurantTable::class, 'restaurant_table_id');
+    }
+
+    public function server(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'server_user_id');
+    }
+
+    public function tickets(): HasMany
+    {
+        return $this->hasMany(KitchenOrderTicket::class, 'sales_order_id');
+    }
+
+    /**
+     * A dine-in check rather than an ordinary retail sale. Everything downstream keys off
+     * this: a null service area means the order behaves exactly as it always has.
+     */
+    public function isCheck(): bool
+    {
+        return $this->service_area_id !== null;
+    }
+
+    /**
+     * Items sitting on the pad that have not been sent to the kitchen. These can still be
+     * changed or removed freely — nothing has been cooked.
+     */
+    public function unfiredItems(): \Illuminate\Support\Collection
+    {
+        return $this->items->filter(
+            fn (SalesOrderItem $item): bool => $item->fired_at === null && $item->voided_at === null,
+        )->values();
+    }
+
+    public function firedItems(): \Illuminate\Support\Collection
+    {
+        return $this->items->filter(
+            fn (SalesOrderItem $item): bool => $item->fired_at !== null && $item->voided_at === null,
+        )->values();
+    }
+
+    /** Minutes the table has been occupied, for the floor map. */
+    public function openMinutes(): int
+    {
+        return (int) ($this->opened_at?->diffInMinutes(now()) ?? 0);
     }
 
     public function branch(): BelongsTo

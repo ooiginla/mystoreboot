@@ -13,10 +13,12 @@ use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Customers\Models\Customer;
 use Modules\Inventory\Actions\AdjustInventoryReservationAction;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
+use Modules\Inventory\Actions\SaleRecipeDepletionAction;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Enums\StockCondition;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Finance\Models\FinanceAccount;
+use Modules\Inventory\Models\InventoryLocation;
 use Modules\Inventory\Models\InventoryStockLevel;
 use Modules\Sales\Enums\DiscountType;
 use Modules\Sales\Enums\SalesOrderStatus;
@@ -35,6 +37,7 @@ final class CreateSalesOrderAction
         private readonly PostJournalEntryAction $postJournalEntry,
         private readonly AdjustInventoryReservationAction $reservations,
         private readonly TenantModuleAccess $moduleAccess,
+        private readonly SaleRecipeDepletionAction $recipeDepletion,
     ) {}
 
     /**
@@ -86,10 +89,17 @@ final class CreateSalesOrderAction
 
             $items = collect((array) $data['items'])->map(function (array $item) use ($tenant, $inventoryEnabled, $inventoryLocationId): array {
                 $variant = ProductVariant::query()->with('product.taxes')->where('tenant_id', $tenant->id)->findOrFail($item['product_variant_id']);
-                $quantity = (int) $item['quantity'];
+
+                if ($variant->product?->product_type === ProductType::RawMaterial) {
+                    throw ValidationException::withMessages([
+                        'items' => 'Raw materials cannot be sold. Remove them from the order.',
+                    ]);
+                }
+
+                $quantity = \Modules\Inventory\Support\Quantity::round((float) $item['quantity']);
                 $unitPriceMinor = $this->moneyToMinor($item['unit_price']);
                 $unitCostMinor = $this->unitCostForSale($tenant, $inventoryLocationId, $variant, $inventoryEnabled);
-                $lineSubtotalMinor = $quantity * $unitPriceMinor;
+                $lineSubtotalMinor = (int) round($quantity * $unitPriceMinor);
                 $selectedTaxRate = $variant->product?->taxes?->sum(fn ($tax): float => (float) $tax->rate) ?? 0.0;
                 $taxRate = $variant->tax_behavior === TaxBehavior::Taxable
                     ? (float) ($selectedTaxRate > 0 ? $selectedTaxRate : ($variant->tax_rate ?? $variant->product?->tax_rate ?? $tenant->default_tax_rate ?? 0))
@@ -103,17 +113,33 @@ final class CreateSalesOrderAction
                     'line_subtotal_minor' => $lineSubtotalMinor,
                     'tax_minor' => (int) round($lineSubtotalMinor * ($taxRate / 100)),
                     // Only stocked physical products are counted/reserved/deducted. Made-to-order
-                    // products (track_inventory = false) and services are always sellable.
+                    // products (track_inventory = false), recipe-depleted items and services are
+                    // never deducted from own stock.
                     'is_tracked' => $variant->product?->product_type === ProductType::Product
-                        && (bool) ($variant->product?->track_inventory ?? true),
+                        && (bool) ($variant->product?->track_inventory ?? true)
+                        && ! (bool) ($variant->product?->usesRecipeDepletion() ?? false),
+                    'uses_recipe' => (bool) ($variant->product?->usesRecipeDepletion() ?? false),
                 ];
             })->values();
 
-            // A stock location is only required when the order actually contains a stocked item.
+            // A stock location is required when the order depletes stock — either a tracked
+            // item (own stock) or a recipe item (its ingredients).
             $hasTrackedItem = $items->contains(fn (array $item): bool => $item['is_tracked']);
-            if ($inventoryEnabled && $hasTrackedItem && ! $inventoryLocationId) {
+            $hasDepletingItem = $items->contains(fn (array $item): bool => $item['is_tracked'] || $item['uses_recipe']);
+            if ($inventoryEnabled && $hasDepletingItem && ! $inventoryLocationId) {
                 throw ValidationException::withMessages([
                     'inventory_location_id' => 'Select an inventory location before recording this sale.',
+                ]);
+            }
+
+            // Only sellable-point locations may be used as a POS point of sale.
+            if ($inventoryEnabled && $hasDepletingItem && $inventoryLocationId
+                && ! (bool) InventoryLocation::query()
+                    ->where('tenant_id', $tenant->id)
+                    ->whereKey($inventoryLocationId)
+                    ->value('is_sellable_point')) {
+                throw ValidationException::withMessages([
+                    'inventory_location_id' => 'This location is not set up as a point of sale. Enable “Can sell from here” on the location, or pick another.',
                 ]);
             }
 
@@ -172,8 +198,26 @@ final class CreateSalesOrderAction
                 'notes' => $data['notes'] ?? null,
             ]);
 
+            $cogsMinor = 0;
+
             foreach ($items as $item) {
                 $variant = $item['variant'];
+                $effectiveUnitCostMinor = (int) $item['unit_cost_minor'];
+
+                // À la carte recipe items on an immediate sale deplete their ingredients
+                // now; the per-unit cost becomes the ingredient cost.
+                if (! $isCustomerOrder && $inventoryEnabled && $item['uses_recipe']) {
+                    $recipeCostMinor = $this->recipeDepletion->deplete(
+                        $tenant->id,
+                        (int) $inventoryLocationId,
+                        $variant,
+                        (float) $item['quantity'],
+                        $order->order_number,
+                        $order->id,
+                    );
+                    $effectiveUnitCostMinor = (int) round($recipeCostMinor / max(0.0001, (float) $item['quantity']));
+                }
+
                 $order->items()->create([
                     'tenant_id' => $tenant->id,
                     'product_variant_id' => $variant->id,
@@ -182,10 +226,12 @@ final class CreateSalesOrderAction
                     'sku' => $variant->sku,
                     'quantity' => $item['quantity'],
                     'unit_price_minor' => $item['unit_price_minor'],
-                    'unit_cost_minor' => $item['unit_cost_minor'],
+                    'unit_cost_minor' => $effectiveUnitCostMinor,
                     'tax_minor' => $item['tax_minor'],
                     'line_total_minor' => $item['line_subtotal_minor'] + $item['tax_minor'],
                 ]);
+
+                $cogsMinor += (int) round((float) $item['quantity'] * $effectiveUnitCostMinor);
 
                 if (! $isCustomerOrder && $inventoryEnabled && $item['is_tracked']) {
                     $this->postInventoryMovement->executeFromSource([
@@ -195,7 +241,7 @@ final class CreateSalesOrderAction
                         'movement_type' => InventoryMovementType::StockOut->value,
                         'stock_condition' => StockCondition::Sellable->value,
                         'quantity' => $item['quantity'],
-                        'unit_cost' => $item['unit_cost_minor'] / 100,
+                        'unit_cost' => $effectiveUnitCostMinor / 100,
                         'reference_number' => $order->order_number,
                         'notes' => 'Sold through POS.',
                         'occurred_at' => $data['order_date'],
@@ -203,7 +249,7 @@ final class CreateSalesOrderAction
                 } elseif ($isCustomerOrder && $inventoryEnabled && $item['is_tracked']) {
                     // Pending customer orders reserve stock so it cannot be oversold
                     // before completion. Stock is deducted when the order completes.
-                    $this->reservations->reserve($tenant->id, (int) $inventoryLocationId, (int) $variant->id, (int) $item['quantity']);
+                    $this->reservations->reserve($tenant->id, (int) $inventoryLocationId, (int) $variant->id, (float) $item['quantity']);
                 }
             }
 
@@ -225,7 +271,6 @@ final class CreateSalesOrderAction
             if (! $isCustomerOrder) {
                 $this->syncCustomerBalance($customer, $order);
             }
-            $cogsMinor = (int) $items->sum(fn (array $item): int => $item['quantity'] * $item['unit_cost_minor']);
             $discountMinor = $couponDiscountMinor + $adminDiscountMinor;
 
             if (! $isCustomerOrder) {

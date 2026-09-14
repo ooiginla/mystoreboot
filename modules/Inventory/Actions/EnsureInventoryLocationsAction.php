@@ -23,6 +23,9 @@ final class EnsureInventoryLocationsAction
             $location->name = $branch->name;
             $location->code = $this->availableCode($branch);
             $location->location_type = InventoryLocationType::Branch->value;
+            // A branch's own location defaults to a point of sale (the POS sells from
+            // here). Only set on creation so a later manual toggle-off is respected.
+            $location->is_sellable_point = true;
         }
 
         // A branch location must be usable as soon as Inventory is enabled.

@@ -114,7 +114,7 @@ final class InventoryOpeningStockTest extends TestCase
             ->where('product_variant_id', $variant->id)
             ->firstOrFail();
 
-        $this->assertSame(12, $stockLevel->quantity_on_hand);
+        $this->assertSame(12, (int) $stockLevel->quantity_on_hand);
         $this->assertSame(25000, $stockLevel->average_cost_minor);
 
         $journal = FinanceJournalEntry::query()
@@ -199,7 +199,7 @@ final class InventoryOpeningStockTest extends TestCase
             ->where('movement_type', InventoryMovementType::AdjustmentIn->value)
             ->sole();
 
-        $this->assertSame(12, $stockLevel->quantity_on_hand);
+        $this->assertSame(12, (int) $stockLevel->quantity_on_hand);
         $this->assertSame(10000, $stockLevel->average_cost_minor);
         $this->assertSame(10000, $movement->unit_cost_minor);
     }
@@ -259,14 +259,126 @@ final class InventoryOpeningStockTest extends TestCase
                 && $line->branch_id === $sourceBranch->id
                 && $line->credit_minor === 40000,
         ));
-        $this->assertSame(6, InventoryStockLevel::query()->where('inventory_location_id', $sourceLocation->id)->sole()->quantity_on_hand);
-        $this->assertSame(4, InventoryStockLevel::query()->where('inventory_location_id', $destinationLocation->id)->sole()->quantity_on_hand);
+        $this->assertSame(6, (int) InventoryStockLevel::query()->where('inventory_location_id', $sourceLocation->id)->sole()->quantity_on_hand);
+        $this->assertSame(4, (int) InventoryStockLevel::query()->where('inventory_location_id', $destinationLocation->id)->sole()->quantity_on_hand);
         $this->assertSame(
             100000,
-            InventoryStockLevel::query()->get()->sum(
-                fn (InventoryStockLevel $level): int => $level->quantity_on_hand * $level->average_cost_minor,
-            ),
+            (int) round(InventoryStockLevel::query()->get()->sum(
+                fn (InventoryStockLevel $level): float => (float) $level->quantity_on_hand * (int) $level->average_cost_minor,
+            )),
         );
+    }
+
+    public function test_stock_visibility_can_be_filtered_by_location(): void
+    {
+        [$tenant, $mainLocation, $variant, $branch] = $this->inventoryContext();
+        app(\Modules\Inventory\Actions\EnsureDefaultUnitsAction::class)->forTenant($tenant);
+        $gram = \Modules\Inventory\Models\UnitOfMeasure::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('code', 'g')
+            ->firstOrFail();
+        $variant->update(['base_unit_id' => $gram->id]);
+        $storeRoom = InventoryLocation::query()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'name' => 'Back Store',
+            'code' => 'BACK',
+            'location_type' => InventoryLocationType::StoreRoom->value,
+            'status' => 'active',
+        ]);
+
+        foreach ([$mainLocation, $storeRoom] as $location) {
+            app(PostInventoryMovementAction::class)->execute([
+                'tenant_id' => $tenant->id,
+                'inventory_location_id' => $location->id,
+                'product_variant_id' => $variant->id,
+                'movement_type' => InventoryMovementType::OpeningStock->value,
+                'stock_condition' => StockCondition::Sellable->value,
+                'quantity' => 5,
+                'unit_cost' => 100,
+            ]);
+        }
+
+        $user = User::factory()->create(['is_platform_admin' => true]);
+
+        $this->actingAs($user)
+            ->get(route('admin.inventory.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('name="stock_location"', false)
+            ->assertSeeInOrder(['name="stock_product"', 'name="stock_location"'], false)
+            ->assertSee('All locations')
+            ->assertSeeInOrder(['<th>Location</th>', '<th>Unit</th>', '<th>On hand</th>'], false)
+            ->assertSee('<td>g</td>', false)
+            ->assertSee('data-stock-location-id="'.$mainLocation->id.'"', false)
+            ->assertSee('data-stock-location-id="'.$storeRoom->id.'"', false);
+
+        $this->actingAs($user)
+            ->get(route('admin.inventory.index', [
+                'tenant' => $tenant->id,
+                'stock_location' => $storeRoom->id,
+            ]))
+            ->assertOk()
+            ->assertSee('value="'.$storeRoom->id.'" selected', false)
+            ->assertSee('data-stock-location-id="'.$storeRoom->id.'"', false)
+            ->assertDontSee('data-stock-location-id="'.$mainLocation->id.'"', false);
+
+        $each = \Modules\Inventory\Models\UnitOfMeasure::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('code', 'ea')
+            ->firstOrFail();
+        $variant->update(['base_unit_id' => $each->id]);
+
+        $this->actingAs($user)
+            ->get(route('admin.inventory.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('<td>each</td>', false)
+            ->assertDontSee('<td>ea</td>', false);
+    }
+
+    public function test_stock_visibility_can_be_searched_by_product(): void
+    {
+        [$tenant, $location, $firstVariant] = $this->inventoryContext();
+        $secondProduct = Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Second Stock Product',
+            'slug' => 'second-stock-product',
+            'product_type' => ProductType::Product->value,
+            'status' => ProductStatus::Active->value,
+        ]);
+        $secondVariant = ProductVariant::query()->create([
+            'tenant_id' => $tenant->id,
+            'product_id' => $secondProduct->id,
+            'variant_name' => 'Large',
+            'sku' => 'SECOND-STOCK-001',
+            'barcode' => '987654321',
+            'status' => ProductStatus::Active->value,
+        ]);
+
+        foreach ([$firstVariant, $secondVariant] as $variant) {
+            app(PostInventoryMovementAction::class)->execute([
+                'tenant_id' => $tenant->id,
+                'inventory_location_id' => $location->id,
+                'product_variant_id' => $variant->id,
+                'movement_type' => InventoryMovementType::OpeningStock->value,
+                'stock_condition' => StockCondition::Sellable->value,
+                'quantity' => 5,
+                'unit_cost' => 100,
+            ]);
+        }
+
+        $user = User::factory()->create(['is_platform_admin' => true]);
+
+        $this->actingAs($user)
+            ->get(route('admin.inventory.index', [
+                'tenant' => $tenant->id,
+                'stock_product' => 'Second Stock Product / Large (SECOND-STOCK-001)',
+                'stock_location' => $location->id,
+            ]))
+            ->assertOk()
+            ->assertSee('name="stock_product" type="search" list="variant-options"', false)
+            ->assertSee('value="Second Stock Product / Large (SECOND-STOCK-001)"', false)
+            ->assertSee('data-stock-variant-id="'.$secondVariant->id.'"', false)
+            ->assertDontSee('data-stock-variant-id="'.$firstVariant->id.'"', false);
     }
 
     /**

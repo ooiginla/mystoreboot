@@ -78,7 +78,7 @@ final class ProcurementController extends Controller
         $variants = ProductVariant::query()
             ->with('product')
             ->where('tenant_id', $tenant->id)
-            ->whereHas('product', fn ($query) => $query->where('product_type', ProductType::Product->value))
+            ->whereHas('product', fn ($query) => $query->whereIn('product_type', array_map(fn (ProductType $t) => $t->value, ProductType::stockable())))
             ->orderBy('sku')
             ->get();
         $purchaseOrdersQuery = PurchaseOrder::query()

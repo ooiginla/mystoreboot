@@ -287,6 +287,30 @@
 
             <section data-local-tab-panel id="{{ $dialogId }}-pricing" hidden>
                 <div class="form-grid">
+                    @if (! $isService && ($unitCategories ?? collect())->isNotEmpty())
+                        <div class="field">
+                            <label>Measurement</label>
+                            <select name="unit_category_id">
+                                <option value="">Default (each) — plain count</option>
+                                @foreach ($unitCategories as $unitCategory)
+                                    <option value="{{ $unitCategory->id }}" @selected((int) old('unit_category_id', $product?->unit_category_id) === $unitCategory->id)>{{ $unitCategory->name }}</option>
+                                @endforeach
+                            </select>
+                            <small class="subtle">How this product is measured and stocked. Manage sets in Production → Units of measure.</small>
+                        </div>
+                    @endif
+                    @if (($prepStations ?? collect())->isNotEmpty())
+                        <div class="field">
+                            <label>Prep station</label>
+                            <select name="prep_location_id">
+                                <option value="">Not made in the kitchen</option>
+                                @foreach ($prepStations as $prepStation)
+                                    <option value="{{ $prepStation->id }}" @selected((int) old('prep_location_id', $product?->prep_location_id) === $prepStation->id)>{{ $prepStation->name }}</option>
+                                @endforeach
+                            </select>
+                            <small class="subtle">Which section of the kitchen makes this. Orders for it print to that station's kitchen screen.</small>
+                        </div>
+                    @endif
                     <div class="field">
                         <label>Brand</label>
                         <input name="brand" value="{{ old('brand', $product?->brand) }}">

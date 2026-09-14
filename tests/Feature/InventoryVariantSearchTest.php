@@ -54,7 +54,8 @@ final class InventoryVariantSearchTest extends TestCase
             ->assertSee('data-variant-search-options', false)
             ->assertSee('No matching product variants');
 
-        $this->assertSame(2, substr_count($response->getContent(), '<div class="variant-search-picker" data-variant-search-picker>'));
-        $this->assertSame(2, substr_count($response->getContent(), 'aria-label="Search product variants"'));
+        // Post movement, transfer stock, and the reorder-levels dialog.
+        $this->assertSame(3, substr_count($response->getContent(), '<div class="variant-search-picker" data-variant-search-picker>'));
+        $this->assertSame(3, substr_count($response->getContent(), 'aria-label="Search product variants"'));
     }
 }

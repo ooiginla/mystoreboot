@@ -19,6 +19,10 @@ final class InventoryStockLevel extends Model
     {
         return [
             'last_movement_at' => 'datetime',
+            'quantity_on_hand' => 'decimal:4',
+            'quantity_reserved' => 'decimal:4',
+            'reorder_level' => 'decimal:4',
+            'reorder_quantity' => 'decimal:4',
         ];
     }
 
@@ -32,14 +36,14 @@ final class InventoryStockLevel extends Model
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 
-    public function getQuantityAvailableAttribute(): int
+    public function getQuantityAvailableAttribute(): float
     {
-        return $this->quantity_on_hand - $this->quantity_reserved;
+        return (float) $this->quantity_on_hand - (float) $this->quantity_reserved;
     }
 
     public function getStockValueMinorAttribute(): int
     {
-        return max(0, $this->quantity_on_hand) * $this->average_cost_minor;
+        return (int) round(max(0, (float) $this->quantity_on_hand) * (int) $this->average_cost_minor);
     }
 
     public function getIsLowStockAttribute(): bool

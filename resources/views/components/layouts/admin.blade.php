@@ -79,6 +79,18 @@
             .nav a:hover { background: var(--sb-hover); color: #fff; }
             .nav a.active { background: linear-gradient(100deg, rgba(6,193,104,.20), rgba(6,193,104,.08)); color: #fff; box-shadow: inset 2px 0 0 var(--brand); font-weight: 600; }
             .nav a.active svg { opacity: 1; color: #4ade80; }
+            /* Collapsible groups: a module's screens fold under one heading. */
+            .nav-fold > summary { list-style: none; display: flex; align-items: center; gap: 11px; color: var(--sb-text); padding: 9px 11px; border-radius: 9px; font-size: 13.5px; font-weight: 500; cursor: pointer; user-select: none; transition: background .15s, color .15s; }
+            .nav-fold > summary::-webkit-details-marker { display: none; }
+            .nav-fold > summary:hover { background: var(--sb-hover); color: #fff; }
+            .nav-fold > summary svg { width: 18px; height: 18px; flex: 0 0 auto; opacity: .85; }
+            .nav-fold > summary .chev { margin-left: auto; width: 14px; height: 14px; transition: transform .15s; }
+            .nav-fold[open] > summary .chev { transform: rotate(90deg); }
+            .nav-fold.has-active > summary { color: #fff; font-weight: 600; }
+            .nav-fold.has-active > summary svg:first-child { color: #4ade80; opacity: 1; }
+            .nav-sub { display: grid; gap: 2px; margin: 2px 0 6px 20px; padding-left: 9px; border-left: 1px solid rgba(255,255,255,.12); }
+            .nav-sub a { padding: 7px 10px; font-size: 13px; }
+            .nav-sub a svg { width: 16px; height: 16px; }
             .sidebar-footer { margin-top: auto; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.08); display: grid; gap: 12px; }
             .sidebar-user { display: flex; align-items: center; gap: 10px; color: #dbe4df; font-size: 13px; overflow-wrap: anywhere; }
             .sidebar-avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(140deg, #22dd85, #009a53); color: #06231a; display: grid; place-items: center; font-weight: 800; flex: 0 0 auto; font-size: 13px; }
@@ -377,12 +389,16 @@
                 <g id="i-badge"><path d="M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1ZM9 9.5a2 2 0 1 0 0-.01M6.5 16a3 3 0 0 1 6 0M15 9h3M15 13h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
                 <g id="i-receipt"><path d="M5 3v18l2-1 2 1 2-1 2 1 2-1 2 1V3l-2 1-2-1-2 1-2-1-2 1-2-1ZM9 8h6M9 12h6M9 16h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
                 <g id="i-book"><path d="M6 3h13a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM9 3v18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+                <g id="i-utensils"><path d="M6 3v8a2 2 0 0 0 2 2v8M6 3v6M9 3v6M15 21v-7a4 4 0 0 1 4-4V3c-2 0-4 2-4 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+                <g id="i-clipboard"><path d="M9 4H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2M9 4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V4ZM9 12h6M9 16h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
                 <g id="i-chart"><path d="M3 3v18h18M7 15v3M12 9v9M17 5v13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
                 <g id="i-building"><path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16M15 21V9h3a2 2 0 0 1 2 2v10M2 21h20M8 7h3M8 11h3M8 15h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
                 <g id="i-logout"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
                 <g id="i-spark"><path d="M13 2 4.5 13H11l-1 9 8.5-11H12l1-9Z" fill="currentColor"/></g>
                 <g id="i-grid"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
                 <g id="i-pos"><path d="M4 5h16a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1ZM7 9h7M7 12h4M8 19h8M12 15v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+                <g id="i-bell"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+                <g id="i-sliders"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
             </defs>
         </svg>
 
@@ -427,7 +443,7 @@
                     @endif
                     @if ($hasTenantModule('catalog'))
                         @permission('catalog.view')
-                        <a class="{{ request()->routeIs('admin.catalog.*') ? 'active' : '' }}" href="{{ route('admin.catalog.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-package"/></svg><span>Product &amp; Services</span></a>
+                        <a class="{{ request()->routeIs('admin.catalog.*') && ! request()->routeIs('admin.catalog.raw-materials.*') ? 'active' : '' }}" href="{{ route('admin.catalog.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-package"/></svg><span>Product &amp; Services</span></a>
                         @endpermission
                     @endif
                     @if ($hasTenantModule('storefront'))
@@ -435,11 +451,69 @@
                         <a class="{{ request()->routeIs('admin.business.online-store.*') ? 'active' : '' }}" href="{{ route('admin.business.online-store.index', $activeTenantRouteParams) }}#online-store"><svg viewBox="0 0 24 24"><use href="#i-store"/></svg><span>Online Store</span></a>
                         @endpermission
                     @endif
-                    @if ($hasTenantModule('inventory'))
-                        @permission('inventory.view')
-                        <a class="{{ request()->routeIs('admin.inventory.*') ? 'active' : '' }}" href="{{ route('admin.inventory.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-layers"/></svg><span>Inventory &amp; Stock</span></a>
-                        @endpermission
-                    @endif
+                    @php
+                        // Every screen below stores, counts or moves stock, so each needs the
+                        // inventory module underneath the module that sells it.
+                        //  - Inventory: what any stock-keeping business needs — a supermarket
+                        //    counts stock and recalls lots; a hardware store sells by the metre.
+                        //  - F&B Production: turning ingredients into dishes and feeding them
+                        //    to departments — only businesses that make what they sell.
+                        $inventoryOn = $hasTenantModule('inventory');
+                        $fnbOn = $inventoryOn && $hasTenantModule('fnb');
+                        $restaurantOn = $inventoryOn && $hasTenantModule('restaurant');
+                        $allows = fn (string $permission): bool => \Illuminate\Support\Facades\Gate::allows($permission);
+                        $navFolds = [
+                            ['key' => 'inventory', 'label' => 'Inventory', 'icon' => 'i-layers', 'links' => [
+                                ['show' => $inventoryOn && $allows('inventory.view'), 'route' => 'admin.inventory.index', 'active' => request()->routeIs('admin.inventory.index'), 'icon' => 'i-layers', 'label' => 'Inventory & Stock'],
+                                ['show' => $inventoryOn && $allows('inventory.view'), 'route' => 'admin.inventory.stock-counts.index', 'active' => request()->routeIs('admin.inventory.stock-counts.*'), 'icon' => 'i-clipboard', 'label' => 'Stock Takes'],
+                                ['show' => $inventoryOn && $allows('inventory.view'), 'route' => 'admin.inventory.batches.index', 'active' => request()->routeIs('admin.inventory.batches.*'), 'icon' => 'i-package', 'label' => 'Lot Traceability'],
+                                ['show' => $inventoryOn && $allows('inventory.view'), 'route' => 'admin.inventory.reorder-levels.index', 'active' => request()->routeIs('admin.inventory.reorder-levels.*'), 'icon' => 'i-bell', 'label' => 'Reorder Levels'],
+                                ['show' => $inventoryOn && $allows('inventory.view'), 'route' => 'admin.inventory.units.index', 'active' => request()->routeIs('admin.inventory.units.*'), 'icon' => 'i-grid', 'label' => 'Units of Measure'],
+                            ]],
+                            ['key' => 'fnb-production', 'label' => 'F&B Production', 'icon' => 'i-package', 'links' => [
+                                ['show' => $fnbOn && $allows('catalog.view'), 'route' => 'admin.catalog.raw-materials.index', 'active' => request()->routeIs('admin.catalog.raw-materials.*'), 'icon' => 'i-package', 'label' => 'Raw Materials'],
+                                ['show' => $fnbOn && $allows('inventory.view'), 'route' => 'admin.inventory.production.index', 'active' => request()->routeIs('admin.inventory.production.*'), 'icon' => 'i-layers', 'label' => 'Production & Recipes'],
+                                ['show' => $fnbOn && $allows('inventory.view'), 'route' => 'admin.inventory.requisitions.index', 'active' => request()->routeIs('admin.inventory.requisitions.*'), 'icon' => 'i-truck', 'label' => 'Requisitions'],
+                            ]],
+                            ['key' => 'restaurant-pos', 'label' => 'Restaurant POS', 'icon' => 'i-utensils', 'links' => [
+                                ['show' => $restaurantOn && $allows('pos.restaurant.operate'), 'route' => 'admin.sales.restaurant.floor', 'active' => request()->routeIs('admin.sales.restaurant.*') && ! request()->routeIs('admin.sales.restaurant.modifiers.*'), 'icon' => 'i-utensils', 'label' => 'Restaurant Floor'],
+                                ['show' => $restaurantOn && $allows('pos.restaurant.modifiers.manage'), 'route' => 'admin.sales.restaurant.modifiers.index', 'active' => request()->routeIs('admin.sales.restaurant.modifiers.*'), 'icon' => 'i-sliders', 'label' => 'Menu Modifiers'],
+                                ['show' => $restaurantOn && $allows('kds.view'), 'route' => 'admin.sales.kds.index', 'active' => request()->routeIs('admin.sales.kds.*'), 'icon' => 'i-pos', 'label' => 'Kitchen Screens'],
+                            ]],
+                        ];
+                    @endphp
+                    @foreach ($navFolds as $fold)
+                        @php
+                            $foldLinks = array_values(array_filter($fold['links'], fn (array $link): bool => $link['show']));
+                            $foldActive = collect($foldLinks)->contains('active', true);
+                        @endphp
+                        @if ($foldLinks !== [])
+                            {{-- Opens itself on any of its own pages; otherwise remembers how it was left. --}}
+                            <details class="nav-fold {{ $foldActive ? 'has-active' : '' }}" data-nav-fold="{{ $fold['key'] }}" @if ($foldActive) open @endif>
+                                <summary>
+                                    <svg viewBox="0 0 24 24"><use href="#{{ $fold['icon'] }}"/></svg>
+                                    <span>{{ $fold['label'] }}</span>
+                                    <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                </summary>
+                                <div class="nav-sub">
+                                    @foreach ($foldLinks as $link)
+                                        <a class="{{ $link['active'] ? 'active' : '' }}" href="{{ route($link['route'], $activeTenantRouteParams) }}" @if ($link['active']) aria-current="page" @endif><svg viewBox="0 0 24 24"><use href="#{{ $link['icon'] }}"/></svg><span>{{ $link['label'] }}</span></a>
+                                    @endforeach
+                                </div>
+                            </details>
+                        @endif
+                    @endforeach
+                    <script>
+                        (function () {
+                            document.querySelectorAll('[data-nav-fold]').forEach(function (fold) {
+                                var key = 'storeboot.nav-fold.' + fold.dataset.navFold;
+                                try { if (!fold.open && localStorage.getItem(key) === 'open') fold.open = true; } catch (e) {}
+                                fold.addEventListener('toggle', function () {
+                                    try { localStorage.setItem(key, fold.open ? 'open' : 'closed'); } catch (e) {}
+                                });
+                            });
+                        })();
+                    </script>
                     @if ($hasTenantModule('procurement'))
                         @permission('procurement.view')
                         <a class="{{ request()->routeIs('admin.procurement.*') ? 'active' : '' }}" href="{{ route('admin.procurement.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-truck"/></svg><span>Purchasing &amp; Suppliers</span></a>
@@ -706,6 +780,23 @@
                 };
                 const selectedVariantOption = (search) => variantOptionsFor(search)
                     .find((option) => option.value === search?.value);
+
+                // A [data-datalist-type] <select> narrows a datalist's options to a product
+                // type, streamlining the combined product + raw-material pickers.
+                document.querySelectorAll('[data-datalist-type]').forEach((typeSelect) => {
+                    const datalist = document.getElementById(typeSelect.dataset.datalistType);
+                    if (!datalist) return;
+                    const allOptions = Array.from(datalist.options);
+                    const applyDatalistType = () => {
+                        const type = typeSelect.value;
+                        datalist.innerHTML = '';
+                        allOptions
+                            .filter((option) => !type || option.dataset.type === type)
+                            .forEach((option) => datalist.appendChild(option));
+                    };
+                    typeSelect.addEventListener('change', applyDatalistType);
+                    applyDatalistType();
+                });
 
                 document.querySelectorAll('[data-variant-search-picker]').forEach((searchPicker, pickerIndex) => {
                     const search = searchPicker.querySelector('[data-variant-search]');

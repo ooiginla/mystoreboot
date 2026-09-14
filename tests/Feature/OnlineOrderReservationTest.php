@@ -56,9 +56,9 @@ class OnlineOrderReservationTest extends TestCase
 
         $order = SalesOrder::query()->where('source', 'online')->firstOrFail();
         $this->assertTrue($order->stock_reserved);
-        $this->assertSame(2, $stock->refresh()->quantity_reserved);
-        $this->assertSame(5, $stock->quantity_on_hand);
-        $this->assertSame(3, $stock->quantity_available);
+        $this->assertSame(2, (int) $stock->refresh()->quantity_reserved);
+        $this->assertSame(5, (int) $stock->quantity_on_hand);
+        $this->assertSame(3, (int) $stock->quantity_available);
 
         // 2. Gateway surcharge is added and the shopper pays via Paystack.
         Http::fake([
@@ -105,8 +105,8 @@ class OnlineOrderReservationTest extends TestCase
         // Deposit credited at payment (659850) and debited at completion (659850)
         // nets the liability to zero; stock is now deducted and unreserved.
         $this->assertSame(SalesOrderStatus::Completed, $order->refresh()->order_status);
-        $this->assertSame(3, $stock->refresh()->quantity_on_hand);
-        $this->assertSame(0, $stock->quantity_reserved);
+        $this->assertSame(3, (int) $stock->refresh()->quantity_on_hand);
+        $this->assertSame(0, (int) $stock->quantity_reserved);
     }
 
     public function test_online_checkout_reserves_stock_and_prevents_overselling_the_last_unit(): void
@@ -120,8 +120,8 @@ class OnlineOrderReservationTest extends TestCase
         ];
 
         $this->postJson(route('storefront.storefront.store.checkout', $store), $payload())->assertOk();
-        $this->assertSame(1, $stock->refresh()->quantity_reserved);
-        $this->assertSame(0, $stock->quantity_available);
+        $this->assertSame(1, (int) $stock->refresh()->quantity_reserved);
+        $this->assertSame(0, (int) $stock->quantity_available);
 
         // The last unit is already reserved — a second shopper cannot buy it.
         $this->postJson(route('storefront.storefront.store.checkout', $store), $payload())
@@ -130,8 +130,8 @@ class OnlineOrderReservationTest extends TestCase
             ->assertJsonPath('errors.items.0', 'Sorry, “Reserve Product / Default” has just sold out. Please remove it from your cart to continue.');
 
         $this->assertSame(1, SalesOrder::query()->where('source', 'online')->count());
-        $this->assertSame(1, $stock->refresh()->quantity_reserved);
-        $this->assertSame(1, $stock->quantity_on_hand);
+        $this->assertSame(1, (int) $stock->refresh()->quantity_reserved);
+        $this->assertSame(1, (int) $stock->quantity_on_hand);
     }
 
     public function test_expired_unpaid_online_order_is_auto_cancelled_and_releases_its_reservation(): void
@@ -153,7 +153,7 @@ class OnlineOrderReservationTest extends TestCase
         $this->assertSame(SalesOrderStatus::Pending, $paid->refresh()->order_status);
 
         // Only the expired order's single reserved unit was released.
-        $this->assertSame(1, $stock->refresh()->quantity_reserved);
+        $this->assertSame(1, (int) $stock->refresh()->quantity_reserved);
     }
 
     public function test_admin_cancelling_an_unpaid_reserved_online_order_returns_the_stock(): void
@@ -169,8 +169,8 @@ class OnlineOrderReservationTest extends TestCase
         $this->assertSame(SalesOrderStatus::Cancelled, $order->refresh()->order_status);
         $this->assertFalse($order->stock_reserved);
         // Stock is returned to availability even though the scheduler never ran.
-        $this->assertSame(0, $stock->refresh()->quantity_reserved);
-        $this->assertSame(3, $stock->quantity_on_hand);
+        $this->assertSame(0, (int) $stock->refresh()->quantity_reserved);
+        $this->assertSame(3, (int) $stock->quantity_on_hand);
     }
 
     public function test_checkout_lazily_releases_an_expired_hold_so_the_last_unit_can_be_bought(): void
@@ -180,7 +180,7 @@ class OnlineOrderReservationTest extends TestCase
         // An abandoned unpaid order is holding the only unit, and its window has passed.
         $expired = $this->reservedOnlineOrder($store, $variant, reservedUntil: now()->subMinutes(45), paidMinor: 0);
         $stock->update(['quantity_reserved' => 1]);
-        $this->assertSame(0, $stock->refresh()->quantity_available);
+        $this->assertSame(0, (int) $stock->refresh()->quantity_available);
 
         // A new shopper checks out the same unit — the stale hold is swept first (no scheduler needed).
         $this->postJson(route('storefront.storefront.store.checkout', $store), [
@@ -191,7 +191,7 @@ class OnlineOrderReservationTest extends TestCase
 
         $this->assertSame(SalesOrderStatus::Cancelled, $expired->refresh()->order_status);
         // The expired hold was released and re-held by the new order (still 1 reserved, not 2).
-        $this->assertSame(1, $stock->refresh()->quantity_reserved);
+        $this->assertSame(1, (int) $stock->refresh()->quantity_reserved);
         $this->assertSame(2, SalesOrder::query()->where('source', 'online')->count());
     }
 

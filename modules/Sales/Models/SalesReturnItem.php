@@ -14,6 +14,13 @@ final class SalesReturnItem extends Model
 
     protected $guarded = [];
 
+    protected function casts(): array
+    {
+        return [
+            'quantity' => 'decimal:4',
+        ];
+    }
+
     public function salesReturn(): BelongsTo
     {
         return $this->belongsTo(SalesReturn::class);

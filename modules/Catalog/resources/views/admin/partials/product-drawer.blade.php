@@ -84,6 +84,9 @@
                         <th>SKU</th>
                         <th>Price</th>
                         <th>Status</th>
+                        @if (($canManageReorder ?? false) && isset($reorderUnits[$item->variants->first()?->id]))
+                            <th>Low-stock alert</th>
+                        @endif
                     </tr>
                 </thead>
                 <tbody>
@@ -98,6 +101,24 @@
                                 {{ $tenant->currency_code }} {{ $money($row->selling_price_minor) }}
                             </td>
                             <td>{{ $row->status->label() }}</td>
+                            @if (($canManageReorder ?? false) && isset($reorderUnits[$row->id]))
+                                @php
+                                    $watched = collect($reorderLevels[$row->id] ?? [])->filter(fn (array $l): bool => $l['level'] > 0);
+                                    $lowAt = $watched->filter(fn (array $l): bool => $l['available'] <= $l['level'])->count();
+                                @endphp
+                                <td>
+                                    <button class="btn ghost" type="button" style="padding:4px 10px;"
+                                        onclick="this.closest('dialog').close(); window.__reorderOpen && window.__reorderOpen({{ $row->id }}, @js($item->name.($row->variant_name !== 'Default' ? ' / '.$row->variant_name : '')))">
+                                        @if ($watched->isEmpty())
+                                            Set levels
+                                        @elseif ($lowAt > 0)
+                                            <span style="color:#b54708; font-weight:800;">Low at {{ $lowAt }} of {{ $watched->count() }}</span>
+                                        @else
+                                            <span style="color:#067647; font-weight:800;">OK · {{ $watched->count() }}</span>
+                                        @endif
+                                    </button>
+                                </td>
+                            @endif
                         </tr>
                     @endforeach
                 </tbody>

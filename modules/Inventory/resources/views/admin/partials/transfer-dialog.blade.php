@@ -30,10 +30,23 @@
                         @endforeach
                     </select>
                 </div>
+                <div class="field">
+                    <label>Type</label>
+                    <select data-datalist-type="variant-options">
+                        <option value="">All</option>
+                        <option value="product">Product</option>
+                        <option value="raw_material">Raw material</option>
+                    </select>
+                </div>
                 <x-variant-picker label="Product variant" class="full" enhanced />
+                <div class="field" data-measurement-field hidden>
+                    <label>Measurement unit</label>
+                    <select name="unit_id" data-movement-unit></select>
+                </div>
                 <div class="field">
                     <label>Quantity</label>
-                    <input name="quantity" type="number" min="1" step="1" required>
+                    <input name="quantity" type="number" min="0" step="any" required>
+                    <small class="subtle" data-measurement-hint hidden>In the selected unit — converted to the base unit automatically.</small>
                 </div>
                 <div class="field">
                     <label>Unit cost</label>

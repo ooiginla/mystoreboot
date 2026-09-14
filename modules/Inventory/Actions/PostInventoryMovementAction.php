@@ -12,12 +12,16 @@ use Modules\Inventory\Enums\StockCondition;
 use Modules\Inventory\Models\InventoryBatch;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\InventoryStockLevel;
+use Modules\Inventory\Support\Quantity;
 
 final class PostInventoryMovementAction
 {
-    private const SYSTEM_SOURCE_TYPES = ['goods_receipt', 'sales_order', 'sales_return'];
+    private const SYSTEM_SOURCE_TYPES = ['goods_receipt', 'sales_order', 'sales_return', 'production'];
 
-    public function __construct(private readonly PostJournalEntryAction $postJournalEntry) {}
+    public function __construct(
+        private readonly PostJournalEntryAction $postJournalEntry,
+        private readonly DepleteBatchesAction $depleteBatches,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $data
@@ -68,7 +72,7 @@ final class PostInventoryMovementAction
     {
         $source = $this->stockLevel($data['tenant_id'], (int) $data['inventory_location_id'], (int) $data['product_variant_id']);
         $destination = $this->stockLevel($data['tenant_id'], (int) $data['destination_inventory_location_id'], (int) $data['product_variant_id']);
-        $quantity = (int) $data['quantity'];
+        $quantity = Quantity::round((float) $data['quantity']);
 
         $this->assertEnoughStock($source, $quantity);
 
@@ -78,13 +82,22 @@ final class PostInventoryMovementAction
         $this->applyDelta($destination, $quantity, $unitCostMinor);
 
         $transferOut = $this->recordMovement($data, InventoryMovementType::TransferOut, $source, -$quantity, $unitCostMinor);
-        $this->recordMovement([
+        $transferIn = $this->recordMovement([
             ...$data,
             'inventory_location_id' => $data['destination_inventory_location_id'],
             'destination_inventory_location_id' => $data['inventory_location_id'],
         ], InventoryMovementType::TransferIn, $destination, $quantity, $unitCostMinor);
 
-        $valueMinor = $quantity * $unitCostMinor;
+        // Carry lot identity across the transfer: draw FEFO at the source, then recreate
+        // the same lots at the destination so expiry dates survive the move.
+        $allocations = $this->depleteBatches->execute($transferOut, $quantity);
+        $this->depleteBatches->mirrorToDestination(
+            $allocations,
+            (int) $data['destination_inventory_location_id'],
+            $transferIn,
+        );
+
+        $valueMinor = (int) round($quantity * $unitCostMinor);
 
         if ($valueMinor > 0) {
             $sourceBranchId = $source->loadMissing('location')->location?->branch_id;
@@ -111,7 +124,7 @@ final class PostInventoryMovementAction
     private function postSingleMovement(array $data, InventoryMovementType $type, bool $accountingHandledBySource): void
     {
         $stockLevel = $this->stockLevel($data['tenant_id'], (int) $data['inventory_location_id'], (int) $data['product_variant_id']);
-        $quantity = (int) $data['quantity'];
+        $quantity = Quantity::round((float) $data['quantity']);
         $delta = $quantity * $type->stockDeltaSign();
         $providedUnitCostMinor = array_key_exists('unit_cost_minor', $data)
             ? (int) $data['unit_cost_minor']
@@ -126,15 +139,26 @@ final class PostInventoryMovementAction
         $unitCostMinor = $providedUnitCostMinor ?: (int) $stockLevel->average_cost_minor;
         $movementValueMinor = array_key_exists('movement_value_minor', $data)
             ? (int) $data['movement_value_minor']
-            : abs($delta) * $unitCostMinor;
+            : (int) round(abs($delta) * $unitCostMinor);
 
-        if ($delta < 0) {
+        // A kitchen that has already started cooking cannot be un-cooked by refusing the
+        // movement. Callers that know this pass allow_negative, and the shortfall shows as
+        // negative stock — a loud signal the books are behind reality — instead of a block.
+        if ($delta < 0 && ! ($data['allow_negative'] ?? false)) {
             $this->assertEnoughStock($stockLevel, abs($delta));
         }
 
         $this->applyDelta($stockLevel, $delta, $unitCostMinor, $movementValueMinor);
         $movement = $this->recordMovement($data, $type, $stockLevel, $delta, $unitCostMinor, $movementValueMinor);
+
+        // Draw the outgoing quantity from existing lots *before* recording any new batch,
+        // so a damaged write-off cannot consume the quarantine batch it is about to create.
+        if ($delta < 0) {
+            $this->depleteBatches->execute($movement, $delta);
+        }
+
         $this->recordBatchIfApplicable($data, $type, $delta, $unitCostMinor);
+
         $this->postAccountingEntryIfApplicable(
             $data,
             $type,
@@ -162,21 +186,21 @@ final class PostInventoryMovementAction
 
     private function applyDelta(
         InventoryStockLevel $stockLevel,
-        int $delta,
+        float $delta,
         int $unitCostMinor,
         ?int $incomingValueMinor = null,
     ): void
     {
-        $currentQuantity = $stockLevel->quantity_on_hand;
+        $currentQuantity = (float) $stockLevel->quantity_on_hand;
 
         if ($delta > 0 && $unitCostMinor > 0) {
-            $currentValue = max(0, $currentQuantity) * $stockLevel->average_cost_minor;
+            $currentValue = max(0, $currentQuantity) * (int) $stockLevel->average_cost_minor;
             $incomingValue = $incomingValueMinor ?? ($delta * $unitCostMinor);
             $newQuantity = max(0, $currentQuantity) + $delta;
             $stockLevel->average_cost_minor = (int) round(($currentValue + $incomingValue) / max(1, $newQuantity));
         }
 
-        $stockLevel->quantity_on_hand = $currentQuantity + $delta;
+        $stockLevel->quantity_on_hand = Quantity::round($currentQuantity + $delta);
         $stockLevel->last_movement_at = now();
         $stockLevel->save();
     }
@@ -188,7 +212,7 @@ final class PostInventoryMovementAction
         array $data,
         InventoryMovementType $type,
         InventoryStockLevel $stockLevel,
-        int $delta,
+        float $delta,
         int $unitCostMinor,
         ?int $movementValueMinor = null,
     ): InventoryMovement
@@ -204,7 +228,7 @@ final class PostInventoryMovementAction
             'quantity' => $delta,
             'stock_after' => $stockLevel->quantity_on_hand,
             'unit_cost_minor' => $unitCostMinor,
-            'movement_value_minor' => $movementValueMinor ?? (abs($delta) * $unitCostMinor),
+            'movement_value_minor' => $movementValueMinor ?? (int) round(abs($delta) * $unitCostMinor),
             'batch_number' => $data['batch_number'] ?? null,
             'expiry_date' => $data['expiry_date'] ?? null,
             'reference_type' => $data['reference_type'] ?? null,
@@ -218,7 +242,7 @@ final class PostInventoryMovementAction
     /**
      * @param  array<string, mixed>  $data
      */
-    private function recordBatchIfApplicable(array $data, InventoryMovementType $type, int $delta, int $unitCostMinor): void
+    private function recordBatchIfApplicable(array $data, InventoryMovementType $type, float $delta, int $unitCostMinor): void
     {
         $condition = StockCondition::from($data['stock_condition'] ?? StockCondition::Sellable->value);
 
@@ -240,12 +264,12 @@ final class PostInventoryMovementAction
             'batch_number' => $batchNumber,
             'expiry_date' => $expiryDate,
             'stock_condition' => $condition->value,
-            'quantity_remaining' => abs($delta),
+            'quantity_remaining' => Quantity::round(abs($delta)),
             'unit_cost_minor' => $unitCostMinor,
         ]);
     }
 
-    private function assertEnoughStock(InventoryStockLevel $stockLevel, int $quantity): void
+    private function assertEnoughStock(InventoryStockLevel $stockLevel, float $quantity): void
     {
         if ($stockLevel->quantity_available >= $quantity) {
             return;
@@ -267,7 +291,7 @@ final class PostInventoryMovementAction
     private function postAccountingEntryIfApplicable(
         array $data,
         InventoryMovementType $type,
-        int $delta,
+        float $delta,
         int $unitCostMinor,
         InventoryStockLevel $stockLevel,
         InventoryMovement $movement,

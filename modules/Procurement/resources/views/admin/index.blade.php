@@ -20,7 +20,7 @@
 <x-layouts.admin title="Purchasing & Suppliers">
     <datalist id="variant-options">
         @foreach ($variants as $variant)
-            <option value="{{ $variantLabel($variant) }}" data-variant-id="{{ $variant->id }}" data-cost="{{ $money($variant->cost_price_minor ?: $variant->product?->base_cost_price_minor) }}"></option>
+            <option value="{{ $variantLabel($variant) }}" data-variant-id="{{ $variant->id }}" data-cost="{{ $money($variant->cost_price_minor ?: $variant->product?->base_cost_price_minor) }}" data-type="{{ $variant->product?->product_type?->value }}"></option>
         @endforeach
     </datalist>
 

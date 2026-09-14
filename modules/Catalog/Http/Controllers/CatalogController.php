@@ -121,6 +121,9 @@ final class CatalogController extends Controller
             'inventoryVendors' => $inventory['vendors'],
             'variantStock' => $inventory['variantStock'],
             'defaultInventoryLocationId' => $inventory['defaultLocationId'],
+            'reorderUnits' => $inventory['reorderUnits'],
+            'reorderLevels' => $inventory['reorderLevels'],
+            'canManageReorder' => $inventory['enabled'] && ($user->is_platform_admin || $user->hasPermission($tenant, 'inventory.manage')),
             'products' => $visibleProducts,
             'productItems' => $productItems,
             'serviceItems' => $serviceItems,
@@ -138,6 +141,8 @@ final class CatalogController extends Controller
             'categoryTypes' => CategoryType::options(),
             'discountTypes' => DiscountType::cases(),
             'productTypes' => ProductType::options(),
+            'unitCategories' => \Modules\Inventory\Models\UnitCategory::query()->where('tenant_id', $tenant->id)->orderByDesc('is_default')->orderBy('name')->get(),
+            'prepStations' => \Modules\Inventory\Models\InventoryLocation::query()->where('tenant_id', $tenant->id)->where('is_prep_station', true)->orderBy('name')->get(),
             'productStatuses' => ProductStatus::cases(),
             'taxBehaviors' => TaxBehavior::options(),
             'stats' => [
@@ -397,12 +402,12 @@ final class CatalogController extends Controller
     }
 
     /**
-     * @return array{enabled: bool, locations: mixed, vendors: mixed, variantStock: mixed, defaultLocationId: ?int}
+     * @return array{enabled: bool, locations: mixed, vendors: mixed, variantStock: mixed, defaultLocationId: ?int, reorderUnits: array, reorderLevels: array}
      */
     private function inventoryViewData(Tenant $tenant): array
     {
         if (! app(TenantModuleAccess::class)->allows($tenant, 'inventory')) {
-            return ['enabled' => false, 'locations' => collect(), 'vendors' => collect(), 'variantStock' => collect(), 'defaultLocationId' => null];
+            return ['enabled' => false, 'locations' => collect(), 'vendors' => collect(), 'variantStock' => collect(), 'defaultLocationId' => null, 'reorderUnits' => [], 'reorderLevels' => []];
         }
 
         // Guarantee at least one inventory location so the Inventory tab always works.
@@ -426,6 +431,8 @@ final class CatalogController extends Controller
                 ->get()
                 ->groupBy('product_variant_id'),
             'defaultLocationId' => $defaultLocationId,
+            'reorderUnits' => \Modules\Inventory\Support\ReorderLevels::unitsFor($tenant->id),
+            'reorderLevels' => \Modules\Inventory\Support\ReorderLevels::levelsFor($tenant->id),
         ];
     }
 

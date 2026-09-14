@@ -15,6 +15,8 @@ enum InventoryMovementType: string
     case TransferIn = 'transfer_in';
     case Damaged = 'damaged';
     case Returned = 'returned';
+    case ProductionConsume = 'production_out';
+    case ProductionOutput = 'production_in';
 
     public function label(): string
     {
@@ -28,14 +30,16 @@ enum InventoryMovementType: string
             self::TransferIn => 'Transfer in',
             self::Damaged => 'Damaged stock',
             self::Returned => 'Returned stock',
+            self::ProductionConsume => 'Production consumption',
+            self::ProductionOutput => 'Production output',
         };
     }
 
     public function stockDeltaSign(): int
     {
         return match ($this) {
-            self::OpeningStock, self::StockIn, self::AdjustmentIn, self::TransferIn, self::Returned => 1,
-            self::StockOut, self::AdjustmentOut, self::TransferOut, self::Damaged => -1,
+            self::OpeningStock, self::StockIn, self::AdjustmentIn, self::TransferIn, self::Returned, self::ProductionOutput => 1,
+            self::StockOut, self::AdjustmentOut, self::TransferOut, self::Damaged, self::ProductionConsume => -1,
         };
     }
 
@@ -45,7 +49,7 @@ enum InventoryMovementType: string
     public static function options(): array
     {
         return collect(self::cases())
-            ->reject(fn (self $type): bool => in_array($type, [self::TransferIn, self::TransferOut, self::Returned], true))
+            ->reject(fn (self $type): bool => in_array($type, [self::TransferIn, self::TransferOut, self::Returned, self::ProductionConsume, self::ProductionOutput], true))
             ->mapWithKeys(fn (self $type): array => [$type->value => match ($type) {
                 self::StockIn => 'Stock-in (non-purchase)',
                 self::StockOut => 'Stock-out / write-off',

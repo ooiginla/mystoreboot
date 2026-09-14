@@ -28,10 +28,23 @@
                         @endforeach
                     </select>
                 </div>
+                <div class="field">
+                    <label>Type</label>
+                    <select data-datalist-type="variant-options">
+                        <option value="">All</option>
+                        <option value="product">Product</option>
+                        <option value="raw_material">Raw material</option>
+                    </select>
+                </div>
                 <x-variant-picker label="Product variant" class="full" enhanced />
+                <div class="field" data-measurement-field hidden>
+                    <label>Measurement unit</label>
+                    <select name="unit_id" data-movement-unit></select>
+                </div>
                 <div class="field">
                     <label>Quantity</label>
-                    <input name="quantity" type="number" min="1" step="1" required>
+                    <input name="quantity" type="number" min="0" step="any" required>
+                    <small class="subtle" data-measurement-hint hidden>In the selected unit — converted to the base unit automatically.</small>
                 </div>
                 <div class="field">
                     <label for="movement-unit-cost">Unit cost</label>
@@ -50,9 +63,18 @@
                     <label>Occurred at</label>
                     <input name="occurred_at" type="datetime-local">
                 </div>
+                <div class="field full">
+                    <h3 style="margin: 8px 0 2px; font-size: 0.95rem;">Batch &amp; expiry tracking <span class="subtle" style="font-weight: 400;">(optional)</span></h3>
+                    <p class="subtle" style="margin: 0;">
+                        Fill either field and this stock is recorded as its own <strong>lot</strong>. Lots are depleted
+                        earliest-expiry-first, and you can trace where each one went from
+                        <a href="{{ route('admin.inventory.batches.index', array_filter(['tenant' => request('tenant')])) }}">Lot traceability</a>.
+                        Leave both blank for stock you do not need to track by batch.
+                    </p>
+                </div>
                 <div class="field">
                     <label>Batch number</label>
-                    <input name="batch_number">
+                    <input name="batch_number" placeholder="e.g. LOT-2026-001">
                 </div>
                 <div class="field">
                     <label>Expiry date</label>

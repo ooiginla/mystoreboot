@@ -23,7 +23,17 @@
                 <div class="field"><label>Shipping</label><input name="shipping" type="text" inputmode="decimal" data-money-input value="{{ $selectedPo ? $money($selectedPo->shipping_minor) : '' }}"></div>
             </div>
             <div class="panel">
-                <div class="panel-header"><h3 class="panel-title">Items</h3><button class="btn secondary" type="button" data-add-po-line>Add line</button></div>
+                <div class="panel-header" style="gap:8px; flex-wrap:wrap;">
+                    <h3 class="panel-title">Items</h3>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <select data-datalist-type="variant-options" aria-label="Filter items by type" title="Filter the product list by type">
+                            <option value="">All types</option>
+                            <option value="raw_material">Raw materials</option>
+                            <option value="product">Products</option>
+                        </select>
+                        <button class="btn secondary" type="button" data-add-po-line>Add line</button>
+                    </div>
+                </div>
                 <div class="panel-body" data-po-lines>
                     @foreach ($poItems as $i => $poItem)
                         <div class="po-line-card" data-po-line>

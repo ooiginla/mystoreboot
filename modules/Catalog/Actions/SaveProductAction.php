@@ -47,6 +47,8 @@ final class SaveProductAction
                 'personalization_settings' => $this->personalizationSettings($data),
                 'has_variants' => (bool) ($data['has_variants'] ?? false),
                 'track_inventory' => (bool) ($data['track_inventory'] ?? true),
+                'unit_category_id' => $data['unit_category_id'] ?? null,
+                'prep_location_id' => $data['prep_location_id'] ?? null,
                 'lead_time' => $data['lead_time'] ?? null,
                 'base_price_minor' => $this->moneyToMinor($data['base_price'] ?? 0),
                 'base_cost_price_minor' => $this->moneyToMinor($data['base_cost_price'] ?? 0),
@@ -66,6 +68,9 @@ final class SaveProductAction
                 $product->options()->delete();
                 $this->syncDefaultVariant($product, $data);
             }
+
+            // A product's stock is kept in its measurement category's base unit.
+            $this->syncVariantBaseUnit($product);
 
             $tagIds = collect($data['tag_ids'] ?? [])
                 ->merge($this->syncInlineTags($data))
@@ -151,6 +156,23 @@ final class SaveProductAction
     /**
      * @param  array<string, mixed>  $data
      */
+    private function syncVariantBaseUnit(Product $product): void
+    {
+        if (! $product->unit_category_id) {
+            return;
+        }
+
+        $baseUnitId = \Modules\Inventory\Models\UnitOfMeasure::query()
+            ->where('unit_category_id', $product->unit_category_id)
+            ->orderByDesc('is_base_for_dimension')
+            ->orderBy('to_base_factor')
+            ->value('id');
+
+        if ($baseUnitId) {
+            $product->variants()->update(['base_unit_id' => $baseUnitId]);
+        }
+    }
+
     private function syncDefaultVariant(Product $product, array $data): ProductVariant
     {
         $taxRate = $this->taxRateFor($data);

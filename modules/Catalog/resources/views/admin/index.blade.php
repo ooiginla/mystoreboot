@@ -812,6 +812,10 @@
 
     @include('sales::admin.partials.coupon-dialog')
 
+    @if ($canManageReorder)
+        @include('inventory::admin.partials.reorder-dialog', ['reorderLocations' => $inventoryLocations])
+    @endif
+
     <dialog class="dialog" id="custom-definition-dialog">
         <div class="dialog-header">
             <div><h2 class="panel-title">New custom key</h2><p class="subtle">Create a reusable key and its available values.</p></div>

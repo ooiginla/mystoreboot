@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\TaxBehavior;
+use Modules\Inventory\Models\UnitOfMeasure;
 
 final class ProductVariant extends Model
 {
@@ -25,12 +26,23 @@ final class ProductVariant extends Model
             'status' => ProductStatus::class,
             'tax_behavior' => TaxBehavior::class,
             'tax_rate' => 'decimal:2',
+            'purchase_to_base_factor' => 'decimal:6',
         ];
     }
 
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function baseUnit(): BelongsTo
+    {
+        return $this->belongsTo(UnitOfMeasure::class, 'base_unit_id');
+    }
+
+    public function purchaseUnit(): BelongsTo
+    {
+        return $this->belongsTo(UnitOfMeasure::class, 'purchase_unit_id');
     }
 
     public function optionValues(): BelongsToMany

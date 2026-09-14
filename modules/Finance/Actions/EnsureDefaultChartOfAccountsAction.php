@@ -98,6 +98,7 @@ final class EnsureDefaultChartOfAccountsAction
             '4120' => $this->account('Inventory Adjustment Gains', 'income', 'Other Income', 'Gains recognized when inventory is increased through manual adjustments.', 'credit'),
             '4130' => $this->account('Payment Gateway Charge Recovered', 'income', 'Other Income', 'Payment gateway surcharges collected from customers to recover online payment processing costs.', 'credit'),
             '4140' => $this->account('Platform / Transfer Fee Income', 'income', 'Other Income', 'Fees earned by the platform on merchant wallet withdrawals and transfers.', 'credit'),
+            '4050' => $this->account('Service Charge Income', 'income', 'Operating Income', 'Service charge added to restaurant bills, kept apart from food and drink sales so it can be reported and shared.', 'credit'),
             'EXP-5000' => $this->account('Cost of Goods Sold', 'expense', 'Direct Costs', 'Cost of inventory sold.', 'debit'),
             'EXP-5100' => $this->account('Outbound Delivery Expense', 'expense', 'Admin & Ops', 'Customer delivery and outbound shipping expenses.', 'debit'),
             'EXP-5200' => $this->account('Taxes and Licenses', 'expense', 'Non-Operating Expenses', 'Business taxes, levies, permits, and licenses that are not recoverable VAT.', 'debit'),

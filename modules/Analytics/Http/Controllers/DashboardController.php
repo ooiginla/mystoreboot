@@ -104,7 +104,7 @@ final class DashboardController extends Controller
             ->with('variant.product')
             ->get();
 
-        $cogsMinor = (int) $items->sum(fn (SalesOrderItem $item): int => max(0, $item->quantity - $item->quantity_returned) * $this->unitCostMinor($item));
+        $cogsMinor = (int) round($items->sum(fn (SalesOrderItem $item): float => max(0, (float) $item->quantity - (float) $item->quantity_returned) * (int) $this->unitCostMinor($item)));
 
         $expenses = FinanceExpense::query()
             ->where('tenant_id', $tenant->id)

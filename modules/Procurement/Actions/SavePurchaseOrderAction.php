@@ -18,9 +18,9 @@ final class SavePurchaseOrderAction
     {
         return DB::transaction(function () use ($data, $purchaseOrder): PurchaseOrder {
             $items = collect((array) $data['items'])
-                ->filter(fn (array $item): bool => (int) ($item['quantity_ordered'] ?? 0) > 0)
+                ->filter(fn (array $item): bool => (float) ($item['quantity_ordered'] ?? 0) > 0)
                 ->values();
-            $subtotalMinor = $items->sum(fn (array $item): int => (int) $item['quantity_ordered'] * $this->moneyToMinor($item['unit_cost'] ?? 0));
+            $subtotalMinor = (int) $items->sum(fn (array $item): int => (int) round((float) $item['quantity_ordered'] * $this->moneyToMinor($item['unit_cost'] ?? 0)));
             $taxMinor = $this->moneyToMinor($data['tax'] ?? 0);
             $shippingMinor = $this->moneyToMinor($data['shipping'] ?? 0);
 
@@ -56,7 +56,7 @@ final class SavePurchaseOrderAction
                     'inventory_location_id' => $item['inventory_location_id'],
                     'quantity_ordered' => $item['quantity_ordered'],
                     'unit_cost_minor' => $unitCostMinor,
-                    'line_total_minor' => (int) $item['quantity_ordered'] * $unitCostMinor,
+                    'line_total_minor' => (int) round((float) $item['quantity_ordered'] * $unitCostMinor),
                     'vendor_sku' => $item['vendor_sku'] ?? null,
                 ]);
             }

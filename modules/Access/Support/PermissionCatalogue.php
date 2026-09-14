@@ -44,6 +44,16 @@ final class PermissionCatalogue
         $add('sales', 'sales.refunds.issue', 'Issue refunds', 'Directly process refunds and returns.', true);
         $add('sales', 'sales.orders.void', 'Void completed sales', 'Cancel or void a completed sale.', true);
         $add('sales', 'sales.prices.override', 'Override prices', 'Change an item price at the point of sale.', true);
+
+        // Restaurant POS (Phase 6) — table service, kitchen tickets and kitchen screens.
+        $add('sales', 'pos.restaurant.operate', 'Operate restaurant POS', 'Open checks at tables, add items and send them to the kitchen.');
+        $add('sales', 'pos.restaurant.tables.manage', 'Manage floor plan', 'Create and edit service areas and tables.');
+        $add('sales', 'kds.view', 'View kitchen screen', 'See a kitchen display for a prep station.');
+        $add('sales', 'kds.operate', 'Operate kitchen screen', 'Move kitchen tickets through cooking, ready and served.');
+        $add('sales', 'pos.restaurant.modifiers.manage', 'Manage modifiers', 'Create modifier groups such as "Spice level" or "Extras" and attach them to menu items.');
+        $add('sales', 'sales.service-charge.manage', 'Manage service charge', 'Set the restaurant service charge rate and waive it on a bill.', true);
+        $add('sales', 'sales.void', 'Void sent items', 'Void food or drink already sent to the kitchen, with a reason. It is recorded as waste.', true);
+        $add('sales', 'sales.void.approve', 'Approve voids', 'Approve voids of food or drink already sent to the kitchen.', true);
         $add('sales', 'sales.discounts.override', 'Override discounts', 'Apply discounts above the standard limit.', true);
         $add('sales', 'sales.costs.view', 'View costs & profit', 'See product cost prices, margins and profit.', true);
         $add('sales', 'sales.till.variance.writeoff', 'Write off till variance', 'Close a till while booking a cash variance as loss/gain.', true);
@@ -132,7 +142,7 @@ final class PermissionCatalogue
                     'operate' => ['sales.view', 'sales.create', 'sales.payments.receive', 'sales.till.manage'],
                     'manage' => ['sales.view', 'sales.create', 'sales.payments.receive', 'sales.till.manage', 'sales.update'],
                 ],
-                'sensitive' => ['sales.refunds.request', 'sales.refunds.approve', 'sales.refunds.issue', 'sales.orders.void', 'sales.prices.override', 'sales.discounts.override', 'sales.costs.view', 'sales.till.variance.writeoff'],
+                'sensitive' => ['sales.refunds.request', 'sales.refunds.approve', 'sales.refunds.issue', 'sales.orders.void', 'sales.prices.override', 'sales.discounts.override', 'sales.costs.view', 'sales.till.variance.writeoff', 'sales.service-charge.manage', 'sales.void', 'sales.void.approve'],
             ],
             'catalog' => [
                 'label' => 'Products & Services',
@@ -237,6 +247,7 @@ final class PermissionCatalogue
             'expense' => ['name' => 'Expenses', 'request' => 'finance.expenses.create', 'approve' => 'finance.expenses.approve', 'setting' => 'expense'],
             'journal' => ['name' => 'Journal entries', 'request' => 'finance.journals.create', 'approve' => 'finance.journals.post', 'setting' => 'journal'],
             'payroll' => ['name' => 'Payroll', 'request' => 'payroll.prepare', 'approve' => 'payroll.approve', 'setting' => 'payroll'],
+            'sales_void' => ['name' => 'Restaurant voids', 'request' => 'sales.void', 'approve' => 'sales.void.approve', 'setting' => 'sales_void'],
         ];
     }
 

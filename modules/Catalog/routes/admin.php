@@ -4,8 +4,15 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Modules\Catalog\Http\Controllers\CatalogController;
+use Modules\Catalog\Http\Controllers\RawMaterialController;
 
 Route::get('/', [CatalogController::class, 'index'])->name('index');
+
+// Raw materials (separate catalog — never sold)
+Route::get('/raw-materials', [RawMaterialController::class, 'index'])->name('raw-materials.index');
+Route::post('/raw-materials', [RawMaterialController::class, 'store'])->name('raw-materials.store');
+Route::put('/raw-materials/{product}', [RawMaterialController::class, 'update'])->name('raw-materials.update');
+Route::delete('/raw-materials/{product}', [RawMaterialController::class, 'destroy'])->name('raw-materials.destroy');
 Route::post('/products', [CatalogController::class, 'storeProduct'])->name('products.store');
 Route::post('/products/import', [CatalogController::class, 'importProductsFromImages'])->name('products.import');
 Route::post('/products/import-sheet', [CatalogController::class, 'importProductsFromSheet'])->name('products.import-sheet');

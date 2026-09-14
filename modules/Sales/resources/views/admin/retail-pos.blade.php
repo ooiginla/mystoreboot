@@ -4,7 +4,8 @@
     $currency = $currencySymbols[$tenant->currency_code] ?? $tenant->currency_code;
     $signedMoney = fn (int $minor): string => ($minor < 0 ? '-' : '').$currency.' '.number_format(abs($minor) / 100, 2);
     $posLocations = $activeTill
-        ? $locations->filter(fn ($location) => $location->branch_id === null || $location->branch_id === $activeTill->branch_id)
+        ? $locations->filter(fn ($location) => $location->is_sellable_point
+            && ($location->branch_id === null || $location->branch_id === $activeTill->branch_id))
         : collect();
     $tileName = fn ($v): string => $v->product?->name.($v->variant_name && $v->variant_name !== 'Default' ? ' · '.$v->variant_name : '');
     $tileImage = function ($v): ?string {

@@ -27,6 +27,8 @@ final class StorebootPlanSeeder extends Seeder
             ['name' => 'HR & Payroll', 'slug' => 'hrpayroll', 'is_core' => false],
             ['name' => 'Analytics Dashboard', 'slug' => 'analytics', 'is_core' => false],
             ['name' => 'Customer-Facing Storefront', 'slug' => 'storefront', 'is_core' => false],
+            ['name' => 'F&B / Advanced Inventory', 'slug' => 'fnb', 'is_core' => false],
+            ['name' => 'Restaurant POS', 'slug' => 'restaurant', 'is_core' => false],
             ['name' => 'Recommendation Engine', 'slug' => 'recommendations', 'is_core' => false],
         ];
 
@@ -52,7 +54,7 @@ final class StorebootPlanSeeder extends Seeder
                 'monthly_price_minor' => 0,
                 'yearly_price_minor' => 0,
                 'limits' => ['trial' => true],
-                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'retail-pos', 'customers', 'procurement', 'finance', 'hrpayroll', 'analytics', 'storefront'],
+                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'retail-pos', 'customers', 'procurement', 'finance', 'hrpayroll', 'analytics', 'storefront', 'fnb', 'restaurant'],
             ],
             [
                 'name' => 'Starter',
@@ -88,7 +90,7 @@ final class StorebootPlanSeeder extends Seeder
                 'monthly_price_minor' => 0,
                 'yearly_price_minor' => 0,
                 'limits' => ['custom' => true],
-                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'retail-pos', 'customers', 'procurement', 'finance', 'hrpayroll', 'analytics', 'storefront'],
+                'modules' => ['business', 'access', 'subscriptions', 'catalog', 'inventory', 'sales', 'retail-pos', 'customers', 'procurement', 'finance', 'hrpayroll', 'analytics', 'storefront', 'fnb', 'restaurant'],
             ],
         ];
 

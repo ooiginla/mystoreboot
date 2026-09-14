@@ -1095,9 +1095,9 @@ final class FinanceReportController extends Controller
             'rows' => $rows,
             'totals' => [
                 'products' => $rows->count(),
-                'quantity_sold' => (int) $rows->sum('quantity_sold'),
-                'quantity_returned' => (int) $rows->sum('quantity_returned'),
-                'net_quantity' => (int) $rows->sum('net_quantity'),
+                'quantity_sold' => (float) $rows->sum('quantity_sold'),
+                'quantity_returned' => (float) $rows->sum('quantity_returned'),
+                'net_quantity' => (float) $rows->sum('net_quantity'),
                 'gross_revenue_minor' => (int) $rows->sum('gross_revenue_minor'),
                 'returned_revenue_minor' => (int) $rows->sum('returned_revenue_minor'),
                 'net_revenue_minor' => $netRevenueMinor,
@@ -1943,7 +1943,7 @@ final class FinanceReportController extends Controller
 
     private function costOfGoodsSold(Collection $salesItems): int
     {
-        return (int) $salesItems->sum(fn (SalesOrderItem $item): int => max(0, $item->quantity - $item->quantity_returned) * $this->unitCostMinor($item));
+        return (int) round($salesItems->sum(fn (SalesOrderItem $item): float => max(0, (float) $item->quantity - (float) $item->quantity_returned) * (int) $this->unitCostMinor($item)));
     }
 
     private function unitCostMinor(SalesOrderItem $item): int
@@ -1981,14 +1981,14 @@ final class FinanceReportController extends Controller
             ->map(function (Collection $items): array {
                 /** @var SalesOrderItem $first */
                 $first = $items->first();
-                $quantitySold = (int) $items->sum('quantity');
-                $quantityReturned = (int) $items->sum('quantity_returned');
-                $netQuantity = (int) $items->sum(fn (SalesOrderItem $item): int => max(0, $item->quantity - $item->quantity_returned));
+                $quantitySold = (float) $items->sum('quantity');
+                $quantityReturned = (float) $items->sum('quantity_returned');
+                $netQuantity = (float) $items->sum(fn (SalesOrderItem $item): float => max(0, (float) $item->quantity - (float) $item->quantity_returned));
                 $grossRevenueMinor = (int) $items->sum('line_total_minor');
                 $returnedRevenueMinor = (int) $items->sum(function (SalesOrderItem $item): int {
-                    $quantity = max(1, (int) $item->quantity);
+                    $quantity = max(0.0001, (float) $item->quantity);
 
-                    return (int) round(((int) $item->line_total_minor / $quantity) * (int) $item->quantity_returned);
+                    return (int) round(((int) $item->line_total_minor / $quantity) * (float) $item->quantity_returned);
                 });
                 $revenueMinor = max(0, $grossRevenueMinor - $returnedRevenueMinor);
                 $cogsMinor = $this->costOfGoodsSold($items);

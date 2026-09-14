@@ -31,5 +31,6 @@ final class AccessServiceProvider extends ModuleServiceProvider
         $approvals->registerExecutor('expense', \Modules\Access\Approvals\ExpenseExecutor::class);
         $approvals->registerExecutor('journal', \Modules\Access\Approvals\JournalExecutor::class);
         $approvals->registerExecutor('payroll', \Modules\Access\Approvals\PayrollExecutor::class);
+        $approvals->registerExecutor('sales_void', \Modules\Access\Approvals\SalesVoidExecutor::class);
     }
 }

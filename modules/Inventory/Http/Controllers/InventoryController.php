@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
@@ -17,6 +18,7 @@ use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
+use Modules\Inventory\Actions\SaveReorderLevelsAction;
 use Modules\Inventory\Enums\InventoryLocationType;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Enums\StockCondition;
@@ -31,7 +33,11 @@ use Modules\Tenancy\Models\Tenant;
 
 final class InventoryController extends Controller
 {
-    public function index(Request $request, EnsureInventoryLocationsAction $inventoryLocations): View
+    public function index(
+        Request $request,
+        EnsureInventoryLocationsAction $inventoryLocations,
+        \Modules\Subscriptions\Support\TenantModuleAccess $moduleAccess,
+    ): View
     {
         /** @var User $user */
         $user = $request->user();
@@ -41,6 +47,14 @@ final class InventoryController extends Controller
         abort_if(! $tenant, 403);
 
         $inventoryLocations->forTenant($tenant);
+        app(\Modules\Inventory\Actions\EnsureLocationTypesAction::class)->forTenant($tenant->id);
+
+        $locationTypeOptions = \Modules\Inventory\Models\LocationType::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('status', 'active')
+            ->orderByDesc('is_system')
+            ->orderBy('label')
+            ->get(['id', 'key', 'label', 'is_system']);
 
         $locations = InventoryLocation::query()
             ->with('branch')
@@ -48,21 +62,51 @@ final class InventoryController extends Controller
             ->orderBy('name')
             ->get();
 
+        $requestedStockLocationId = $request->integer('stock_location');
+        $selectedStockLocationId = $locations->contains(
+            fn (InventoryLocation $location): bool => $location->id === $requestedStockLocationId,
+        ) ? $requestedStockLocationId : null;
+        $stockProductSearch = trim($request->string('stock_product')->toString());
+
         $variants = ProductVariant::query()
-            ->with(['product.category', 'optionValues.option'])
+            ->with(['product.category', 'product.unitCategory.units', 'optionValues.option', 'baseUnit'])
             ->where('tenant_id', $tenant->id)
-            ->whereHas('product', fn ($query) => $query->where('product_type', ProductType::Product->value))
+            ->whereHas('product', fn ($query) => $query->whereIn('product_type', array_map(fn (ProductType $t) => $t->value, ProductType::stockable())))
             ->orderBy('sku')
             ->get();
 
-        $stockLevels = InventoryStockLevel::query()
-            ->with(['location.branch', 'variant.product.category', 'variant.optionValues.option'])
+        $allStockLevels = InventoryStockLevel::query()
+            ->with(['location.branch', 'variant.baseUnit', 'variant.product.category', 'variant.optionValues.option'])
             ->where('tenant_id', $tenant->id)
             ->latest('last_movement_at')
             ->get();
 
+        $stockLevels = $allStockLevels;
+
+        if ($stockProductSearch !== '') {
+            $needle = Str::lower($stockProductSearch);
+            $stockLevels = $stockLevels->filter(function (InventoryStockLevel $level) use ($needle): bool {
+                $variant = $level->variant;
+                $haystack = Str::lower(implode(' ', [
+                    $variant?->product?->name,
+                    $variant?->variant_name,
+                    $variant?->sku,
+                    $variant?->barcode,
+                    ($variant?->product?->name ?? 'Item').' / '.($variant?->variant_name ?? '').' ('.($variant?->sku ?? '').')',
+                ]));
+
+                return Str::contains($haystack, $needle);
+            });
+        }
+
+        if ($selectedStockLocationId) {
+            $stockLevels = $stockLevels->where('inventory_location_id', $selectedStockLocationId);
+        }
+
+        $stockLevels = $stockLevels->values();
+
         $movements = InventoryMovement::query()
-            ->with(['location.branch', 'destinationLocation.branch', 'variant.product'])
+            ->with(['location.branch', 'destinationLocation.branch', 'variant.product', 'batchAllocations.batch'])
             ->where('tenant_id', $tenant->id)
             ->latest('occurred_at')
             ->limit(80)
@@ -75,7 +119,7 @@ final class InventoryController extends Controller
             ->latest()
             ->get();
 
-        $lowStock = $stockLevels->filter(fn (InventoryStockLevel $level): bool => $level->is_low_stock);
+        $lowStock = $allStockLevels->filter(fn (InventoryStockLevel $level): bool => $level->is_low_stock);
 
         return view('inventory::admin.index', [
             'tenant' => $tenant,
@@ -83,6 +127,8 @@ final class InventoryController extends Controller
             'isPlatformAdmin' => $user->is_platform_admin,
             'branches' => Branch::query()->where('tenant_id', $tenant->id)->orderByDesc('is_primary')->orderBy('name')->get(),
             'locations' => $locations,
+            'selectedStockLocationId' => $selectedStockLocationId,
+            'stockProductSearch' => $stockProductSearch,
             'variants' => $variants,
             'stockLevels' => $stockLevels,
             'movements' => $movements,
@@ -90,14 +136,32 @@ final class InventoryController extends Controller
             'lowStock' => $lowStock,
             'expiringBatches' => $batches->filter(fn (InventoryBatch $batch): bool => $batch->expiry_date && $batch->expiry_date->between(now(), now()->addDays(30))),
             'conditionBatches' => $batches->filter(fn (InventoryBatch $batch): bool => $batch->stock_condition !== StockCondition::Sellable),
-            'locationTypes' => InventoryLocationType::options(),
+            'locationTypes' => $locationTypeOptions->pluck('label', 'key')->all(),
+            'locationTypeRows' => $locationTypeOptions,
+            // Prep stations only mean something to a kitchen, so the panel is shown to
+            // tenants on either of the two modules that route by them.
+            'hasPrepStations' => $moduleAccess->allows($tenant, 'fnb') || $moduleAccess->allows($tenant, 'restaurant'),
+            'prepStations' => $locations->filter(
+                fn (InventoryLocation $location): bool => (bool) $location->is_prep_station,
+            )->values(),
+            'variantUnits' => $variants->mapWithKeys(fn ($variant): array => [
+                $variant->id => ($variant->product?->unitCategory?->units ?? collect())
+                    ->filter(fn ($unit): bool => $unit->isConvertible())
+                    ->map(fn ($unit): array => ['id' => $unit->id, 'code' => $unit->code])
+                    ->values()
+                    ->all(),
+            ])->all(),
+            'reorderUnits' => $variants->mapWithKeys(fn (ProductVariant $variant): array => [
+                $variant->id => \Modules\Inventory\Support\ReorderLevels::unitsOf($variant),
+            ])->all(),
+            'reorderLevels' => \Modules\Inventory\Support\ReorderLevels::levelsFor($tenant->id),
             'movementTypes' => InventoryMovementType::options(),
             'stockConditions' => StockCondition::options(),
             'stats' => [
-                'on_hand' => $stockLevels->sum('quantity_on_hand'),
-                'available' => $stockLevels->sum(fn (InventoryStockLevel $level): int => $level->quantity_available),
+                'on_hand' => $allStockLevels->sum('quantity_on_hand'),
+                'available' => $allStockLevels->sum(fn (InventoryStockLevel $level): float => (float) $level->quantity_available),
                 'low_stock' => $lowStock->count(),
-                'valuation_minor' => $stockLevels->sum(fn (InventoryStockLevel $level): int => $level->stock_value_minor),
+                'valuation_minor' => $allStockLevels->sum(fn (InventoryStockLevel $level): int => $level->stock_value_minor),
             ],
         ]);
     }
@@ -113,6 +177,37 @@ final class InventoryController extends Controller
             ->with('status', "Inventory location {$location->name} created.");
     }
 
+    public function updateLocation(Request $request, InventoryLocation $location): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), (string) $location->tenant_id);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:140'],
+            'code' => [
+                'nullable', 'string', 'max:50',
+                \Illuminate\Validation\Rule::unique('inventory_locations', 'code')
+                    ->where('tenant_id', $location->tenant_id)
+                    ->ignore($location->id),
+            ],
+            'location_type' => [
+                'required', 'string', 'max:40',
+                \Illuminate\Validation\Rule::exists('location_types', 'key')->where('tenant_id', $location->tenant_id),
+            ],
+        ]);
+
+        $location->update([
+            'name' => $validated['name'],
+            'code' => filled($validated['code'] ?? null) ? $validated['code'] : null,
+            'location_type' => $validated['location_type'],
+            'is_sellable_point' => $request->boolean('is_sellable_point'),
+            'is_prep_station' => $request->boolean('is_prep_station'),
+        ]);
+
+        return redirect()
+            ->to(route('admin.inventory.index', ['tenant' => $location->tenant_id]).'#locations')
+            ->with('status', "{$location->name} updated.");
+    }
+
     public function storeMovement(
         InventoryMovementRequest $request,
         PostInventoryMovementAction $action,
@@ -124,6 +219,19 @@ final class InventoryController extends Controller
         $this->authorizeTenantIdAccess($user, $tenantId);
 
         $data = $request->validated();
+
+        // If a measurement unit was chosen, convert the entered quantity to the item's
+        // base unit for storage (e.g. 2 cartons → 48 base units).
+        if (! empty($data['unit_id'])) {
+            $unit = \Modules\Inventory\Models\UnitOfMeasure::query()
+                ->where('tenant_id', $tenantId)->find((int) $data['unit_id']);
+
+            if ($unit && $unit->isConvertible()) {
+                $data['quantity'] = app(\Modules\Inventory\Support\UnitConverter::class)->toBase((float) $data['quantity'], $unit);
+            }
+        }
+        unset($data['unit_id']);
+
         $redirect = route('admin.inventory.index', ['tenant' => $tenantId]).'#movements';
 
         $isAdjustment = in_array($data['movement_type'], [
@@ -152,7 +260,7 @@ final class InventoryController extends Controller
                     'branch_id' => $this->branchIdForLocation($tenant, (int) $data['inventory_location_id']),
                     'amount_minor' => $valueMinor,
                     'payload' => $data,
-                    'description' => sprintf('%s of %d unit(s)', $data['movement_type'] === InventoryMovementType::AdjustmentIn->value ? 'Increase' : 'Decrease', (int) $data['quantity']),
+                    'description' => sprintf('%s of %s unit(s)', $data['movement_type'] === InventoryMovementType::AdjustmentIn->value ? 'Increase' : 'Decrease', \Modules\Inventory\Support\Quantity::format((float) $data['quantity'])),
                     'request_note' => $data['notes'] ?? null,
                 ]);
 
@@ -185,7 +293,7 @@ final class InventoryController extends Controller
 
         $unitCostMinor = (int) ($stock->average_cost_minor ?? 0);
 
-        return abs((int) $data['quantity']) * $unitCostMinor;
+        return (int) round(abs((float) $data['quantity']) * $unitCostMinor);
     }
 
     private function branchIdForLocation(Tenant $tenant, int $locationId): ?int
@@ -196,22 +304,25 @@ final class InventoryController extends Controller
             ->value('branch_id');
     }
 
-    public function saveReorder(ReorderSettingRequest $request): RedirectResponse
+    /**
+     * Shared by the per-item dialog (Inventory, Raw Materials, Products) and the bulk
+     * per-location page, so it returns to whichever screen posted it.
+     */
+    public function saveReorder(ReorderSettingRequest $request, SaveReorderLevelsAction $action): RedirectResponse
     {
-        $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
+        $tenantId = $request->string('tenant_id')->toString();
+        $this->authorizeTenantIdAccess($request->user(), $tenantId);
 
-        InventoryStockLevel::query()->firstOrCreate([
-            'tenant_id' => $request->string('tenant_id')->toString(),
-            'inventory_location_id' => $request->integer('inventory_location_id'),
-            'product_variant_id' => $request->integer('product_variant_id'),
-        ])->update([
-            'reorder_level' => $request->integer('reorder_level'),
-            'reorder_quantity' => $request->integer('reorder_quantity'),
-        ]);
+        $saved = $action->execute($tenantId, $request->validated('rows'));
+        $fragment = $request->validated('fragment');
 
         return redirect()
-            ->to(route('admin.inventory.index', ['tenant' => $request->string('tenant_id')->toString()]).'#reorder')
-            ->with('status', 'Reorder settings saved.');
+            ->to(url()->previous(route('admin.inventory.index', ['tenant' => $tenantId])).($fragment ? '#'.$fragment : ''))
+            ->with('status', match ($saved) {
+                0 => 'No reorder levels changed.',
+                1 => 'Reorder level saved.',
+                default => "{$saved} reorder levels saved.",
+            });
     }
 
     /**

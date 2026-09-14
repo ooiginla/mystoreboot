@@ -11,6 +11,7 @@ use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Inventory\Actions\AdjustInventoryReservationAction;
 use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
+use Modules\Inventory\Actions\SaleRecipeDepletionAction;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Enums\StockCondition;
 use Modules\Inventory\Models\InventoryLocation;
@@ -27,6 +28,7 @@ final class CompleteSalesOrderAction
         private readonly AdjustInventoryReservationAction $reservations,
         private readonly EnsureInventoryLocationsAction $inventoryLocations,
         private readonly TenantModuleAccess $moduleAccess,
+        private readonly SaleRecipeDepletionAction $recipeDepletion,
     ) {}
 
     public function execute(SalesOrder $order): SalesOrder
@@ -37,6 +39,7 @@ final class CompleteSalesOrderAction
                     'tenant',
                     'customer',
                     'items.variant.product',
+                    'items.modifiers.componentUnit',
                     'payments.paymentAccount.financeAccount',
                     'payments.tillSession.cashLocation.financeAccount',
                 ])
@@ -58,7 +61,15 @@ final class CompleteSalesOrderAction
             $useEstimatedCost = (bool) ($lockedOrder->tenant->settings['use_estimated_cost_for_cogs'] ?? false);
             $cogsMinor = 0;
 
+            $isCheck = $lockedOrder->isCheck();
+
             foreach ($lockedOrder->items as $item) {
+                // A voided restaurant line is off the bill; its cost was written off as
+                // waste when it was voided, so it books neither revenue nor COGS here.
+                if ($isCheck && $item->voided_at !== null) {
+                    continue;
+                }
+
                 $variant = $item->variant;
                 // Use the policy snapshotted on the line at order time. Old lines default to
                 // tracked, guarded by product type so services still skip inventory.
@@ -66,10 +77,37 @@ final class CompleteSalesOrderAction
                     && $variant?->product?->product_type === ProductType::Product;
                 $unitCostMinor = (int) $item->unit_cost_minor;
 
-                if ($inventoryEnabled && $tracksInventory) {
+                // A check's lines each come off their own shelf — the lounge bar's wine
+                // poured at the pool — not the check's default store.
+                $lineLocation = $isCheck ? $this->lineLocationFor($lockedOrder, $item, $location) : $location;
+                $adjustments = $isCheck ? $item->ingredientAdjustments() : [];
+                $alreadyConsumed = $item->ingredients_depleted_at !== null;
+
+                $usesRecipe = $inventoryEnabled && $lineLocation
+                    && (bool) ($variant?->product?->usesRecipeDepletion() ?? false);
+
+                if ($usesRecipe && $alreadyConsumed) {
+                    // Cooked and consumed when the kitchen was sent it. Book what it cost
+                    // then — depleting again here would take the ingredients out twice.
+                    $unitCostMinor = (int) round((int) $item->consumed_cost_minor / max(0.0001, (float) $item->quantity));
+                } elseif ($usesRecipe) {
+                    // À la carte: deduct the recipe's ingredients directly. COGS is the
+                    // ingredient cost, booked once from the accumulated total below.
+                    $recipeCostMinor = $this->recipeDepletion->deplete(
+                        $lockedOrder->tenant_id,
+                        $lineLocation->id,
+                        $variant,
+                        (float) $item->quantity,
+                        $lockedOrder->order_number,
+                        $lockedOrder->id,
+                        false,
+                        $adjustments,
+                    );
+                    $unitCostMinor = (int) round($recipeCostMinor / max(0.0001, (float) $item->quantity));
+                } elseif ($inventoryEnabled && $tracksInventory) {
                     $averageCostMinor = (int) InventoryStockLevel::query()
                         ->where('tenant_id', $lockedOrder->tenant_id)
-                        ->where('inventory_location_id', $location->id)
+                        ->where('inventory_location_id', $lineLocation->id)
                         ->where('product_variant_id', $item->product_variant_id)
                         ->lockForUpdate()
                         ->value('average_cost_minor');
@@ -78,20 +116,38 @@ final class CompleteSalesOrderAction
                         ? $averageCostMinor
                         : ($useEstimatedCost ? $this->estimatedUnitCost($item) : 0);
 
+                    // An extra on a tracked item ("extra shot") consumed its ingredient at
+                    // fire or consumes it now — either way it is part of this line's cost.
+                    if ($adjustments !== []) {
+                        $extraMinor = $alreadyConsumed
+                            ? (int) $item->consumed_cost_minor
+                            : $this->recipeDepletion->deplete(
+                                $lockedOrder->tenant_id,
+                                $lineLocation->id,
+                                $variant,
+                                (float) $item->quantity,
+                                $lockedOrder->order_number,
+                                $lockedOrder->id,
+                                false,
+                                $adjustments,
+                            );
+                        $unitCostMinor += (int) round($extraMinor / max(0.0001, (float) $item->quantity));
+                    }
+
                     // Release the soft reservation first so completing the sale
                     // does not double-count the held stock against availability.
                     if ($lockedOrder->stock_reserved) {
                         $this->reservations->release(
                             $lockedOrder->tenant_id,
-                            $location->id,
+                            $lineLocation->id,
                             (int) $item->product_variant_id,
-                            (int) $item->quantity,
+                            (float) $item->quantity,
                         );
                     }
 
                     $this->postInventoryMovement->executeFromSource([
                         'tenant_id' => $lockedOrder->tenant_id,
-                        'inventory_location_id' => $location->id,
+                        'inventory_location_id' => $lineLocation->id,
                         'product_variant_id' => $item->product_variant_id,
                         'movement_type' => InventoryMovementType::StockOut->value,
                         'stock_condition' => StockCondition::Sellable->value,
@@ -109,7 +165,7 @@ final class CompleteSalesOrderAction
                     $item->update(['unit_cost_minor' => $unitCostMinor]);
                 }
 
-                $cogsMinor += (int) $item->quantity * $unitCostMinor;
+                $cogsMinor += (int) round((float) $item->quantity * $unitCostMinor);
             }
 
             $discountMinor = (int) $lockedOrder->coupon_discount_minor + (int) $lockedOrder->admin_discount_minor;
@@ -131,6 +187,9 @@ final class CompleteSalesOrderAction
                     ['account_code' => '4000', 'branch_id' => $lockedOrder->branch_id, 'credit_minor' => (int) $lockedOrder->subtotal_minor],
                     ['account_code' => '2100', 'branch_id' => $lockedOrder->branch_id, 'credit_minor' => (int) $lockedOrder->tax_minor],
                     ['account_code' => '4010', 'branch_id' => $lockedOrder->branch_id, 'credit_minor' => (int) $lockedOrder->shipping_minor],
+                    // Restaurant service charge: its own revenue line, so it can be
+                    // reported — and shared with staff — apart from food and drink.
+                    ['account_code' => '4050', 'branch_id' => $lockedOrder->branch_id, 'credit_minor' => (int) ($lockedOrder->service_charge_minor ?? 0)],
                     ['account_code' => '4130', 'branch_id' => $lockedOrder->branch_id, 'credit_minor' => $gatewayChargeMinor],
                     ['account_code' => 'EXP-5000', 'branch_id' => $lockedOrder->branch_id, 'debit_minor' => $cogsMinor],
                     ['account_code' => '1200', 'branch_id' => $lockedOrder->branch_id, 'credit_minor' => $cogsMinor],
@@ -189,6 +248,17 @@ final class CompleteSalesOrderAction
         }
 
         return $location;
+    }
+
+    private function lineLocationFor(SalesOrder $order, mixed $item, ?InventoryLocation $fallback): ?InventoryLocation
+    {
+        if (! $fallback || ! $item->inventory_location_id || (int) $item->inventory_location_id === $fallback->id) {
+            return $fallback;
+        }
+
+        return InventoryLocation::query()
+            ->where('tenant_id', $order->tenant_id)
+            ->find((int) $item->inventory_location_id) ?? $fallback;
     }
 
     private function estimatedUnitCost(mixed $item): int

@@ -18,6 +18,7 @@ final class GoodsReceiptItem extends Model
     {
         return [
             'expiry_date' => 'date',
+            'quantity_received' => 'decimal:4',
         ];
     }
 

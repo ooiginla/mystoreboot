@@ -36,7 +36,7 @@ final class ProcessSalesReturnAction
         $refundMinor = 0;
 
         foreach ((array) ($data['items'] ?? []) as $item) {
-            $quantity = (int) ($item['quantity'] ?? 0);
+            $quantity = \Modules\Inventory\Support\Quantity::round((float) ($item['quantity'] ?? 0));
 
             if ($quantity <= 0) {
                 continue;
@@ -87,7 +87,7 @@ final class ProcessSalesReturnAction
 
             $validItems = collect((array) $data['items'])
                 ->map(function (array $item) use ($order): array {
-                    $quantity = (int) ($item['quantity'] ?? 0);
+                    $quantity = \Modules\Inventory\Support\Quantity::round((float) ($item['quantity'] ?? 0));
                     $orderItem = $order->items()->whereKey($item['sales_order_item_id'])->firstOrFail();
 
                     if ($quantity > $orderItem->quantity_returnable) {
@@ -133,7 +133,7 @@ final class ProcessSalesReturnAction
             foreach ($validItems as [$orderItem, $quantity]) {
                 $lineRefundMinor = (int) round(($orderItem->line_total_minor / max(1, $orderItem->quantity)) * $quantity);
                 $refundMinor += $lineRefundMinor;
-                $returnedCostMinor += $quantity * (int) $orderItem->unit_cost_minor;
+                $returnedCostMinor += (int) round($quantity * (int) $orderItem->unit_cost_minor);
 
                 $salesReturn->items()->create([
                     'tenant_id' => $order->tenant_id,

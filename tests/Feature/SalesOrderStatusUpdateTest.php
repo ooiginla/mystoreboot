@@ -217,7 +217,7 @@ class SalesOrderStatusUpdateTest extends TestCase
         $this->assertSame(SalesOrderStatus::Completed, $order->order_status);
         $this->assertTrue($order->is_credit_sale);
         $this->assertSame(110000, $order->customer->refresh()->account_balance_minor);
-        $this->assertSame(1, $stock->refresh()->quantity_on_hand);
+        $this->assertSame(1, (int) $stock->refresh()->quantity_on_hand);
         $this->assertDatabaseHas('inventory_movements', [
             'reference_type' => 'sales_order',
             'reference_id' => $order->id,

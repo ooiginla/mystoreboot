@@ -7,6 +7,7 @@ namespace Modules\Inventory\Models;
 use App\Shared\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Enums\StockCondition;
@@ -22,6 +23,8 @@ final class InventoryMovement extends Model
         return [
             'movement_type' => InventoryMovementType::class,
             'stock_condition' => StockCondition::class,
+            'quantity' => 'decimal:4',
+            'stock_after' => 'decimal:4',
             'expiry_date' => 'date',
             'occurred_at' => 'datetime',
         ];
@@ -40,5 +43,14 @@ final class InventoryMovement extends Model
     public function variant(): BelongsTo
     {
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');
+    }
+
+    /**
+     * The lots this movement drew from (or, for a transfer-in, created). Lets a single
+     * movement be traced back to the batch numbers and expiry dates behind it.
+     */
+    public function batchAllocations(): HasMany
+    {
+        return $this->hasMany(InventoryMovementBatch::class, 'inventory_movement_id');
     }
 }

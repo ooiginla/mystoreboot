@@ -33,7 +33,7 @@ final class ReceivePurchaseOrderAction
 
             $validItems = collect((array) $data['items'])
                 ->map(function (array $item) use ($purchaseOrder): array {
-                    $quantity = (int) ($item['quantity_received'] ?? 0);
+                    $quantity = \Modules\Inventory\Support\Quantity::round((float) ($item['quantity_received'] ?? 0));
                     $poItem = $purchaseOrder->items()->whereKey($item['purchase_order_item_id'])->firstOrFail();
 
                     if ($quantity > $poItem->quantity_pending) {
@@ -53,12 +53,12 @@ final class ReceivePurchaseOrderAction
                 ]);
             }
 
-            $receiptSubtotalMinor = (int) $validItems->sum(
-                fn (array $row): int => $row[1]->unit_cost_minor * $row[2],
-            );
-            $receivedQuantity = (int) $validItems->sum(fn (array $row): int => $row[2]);
-            $pendingQuantity = (int) $purchaseOrder->items->sum(fn ($item): int => $item->quantity_pending);
-            $isFinalReceipt = $receivedQuantity === $pendingQuantity;
+            $receiptSubtotalMinor = (int) round($validItems->sum(
+                fn (array $row): float => (int) $row[1]->unit_cost_minor * (float) $row[2],
+            ));
+            $receivedQuantity = (float) $validItems->sum(fn (array $row): float => (float) $row[2]);
+            $pendingQuantity = (float) $purchaseOrder->items->sum(fn ($item): float => (float) $item->quantity_pending);
+            $isFinalReceipt = abs($receivedQuantity - $pendingQuantity) < 0.0001;
             $previousTaxMinor = (int) $purchaseOrder->receipts()->sum('tax_minor');
             $previousShippingMinor = (int) $purchaseOrder->receipts()->sum('shipping_minor');
             $receiptTaxMinor = $this->receiptAllocation(
@@ -67,7 +67,7 @@ final class ReceivePurchaseOrderAction
                 $receiptSubtotalMinor,
                 (int) $purchaseOrder->subtotal_minor,
                 $receivedQuantity,
-                (int) $purchaseOrder->items->sum('quantity_ordered'),
+                (float) $purchaseOrder->items->sum('quantity_ordered'),
                 $isFinalReceipt,
             );
             $receiptShippingMinor = $this->receiptAllocation(
@@ -76,11 +76,11 @@ final class ReceivePurchaseOrderAction
                 $receiptSubtotalMinor,
                 (int) $purchaseOrder->subtotal_minor,
                 $receivedQuantity,
-                (int) $purchaseOrder->items->sum('quantity_ordered'),
+                (float) $purchaseOrder->items->sum('quantity_ordered'),
                 $isFinalReceipt,
             );
             $weights = $validItems
-                ->map(fn (array $row): int => ($row[1]->unit_cost_minor * $row[2]) ?: $row[2])
+                ->map(fn (array $row): int => (int) round(((int) $row[1]->unit_cost_minor * (float) $row[2]) ?: (float) $row[2]))
                 ->all();
             $shippingByItem = $this->distributeAmount($receiptShippingMinor, $weights);
             $taxByItem = $this->distributeAmount($receiptTaxMinor, $weights);
@@ -111,8 +111,8 @@ final class ReceivePurchaseOrderAction
                 ]);
 
                 $poItem->increment('quantity_received', $quantity);
-                $inventoryValueMinor = ($poItem->unit_cost_minor * $quantity) + $shippingByItem[$index];
-                $landedUnitCostMinor = (int) round($inventoryValueMinor / $quantity);
+                $inventoryValueMinor = (int) round(((int) $poItem->unit_cost_minor * $quantity) + $shippingByItem[$index]);
+                $landedUnitCostMinor = (int) round($inventoryValueMinor / max(0.0001, $quantity));
                 $branchId = $poItem->location?->branch_id;
 
                 $this->postInventoryMovement->executeFromSource([
@@ -265,8 +265,8 @@ final class ReceivePurchaseOrderAction
         int $previouslyAllocatedMinor,
         int $receiptSubtotalMinor,
         int $purchaseSubtotalMinor,
-        int $receivedQuantity,
-        int $orderedQuantity,
+        float $receivedQuantity,
+        float $orderedQuantity,
         bool $isFinalReceipt,
     ): int {
         $remainingMinor = max(0, $totalMinor - $previouslyAllocatedMinor);

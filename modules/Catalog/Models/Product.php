@@ -45,6 +45,8 @@ final class Product extends Model
             'tax_behavior' => TaxBehavior::class,
             'has_variants' => 'boolean',
             'track_inventory' => 'boolean',
+            'is_finished_product' => 'boolean',
+            'stock_policy' => \Modules\Catalog\Enums\StockPolicy::class,
             'custom_fields' => 'array',
             'personalization_settings' => 'array',
             'tax_rate' => 'decimal:2',
@@ -55,6 +57,31 @@ final class Product extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProductCategory::class, 'category_id');
+    }
+
+    public function prepStation(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Inventory\Models\InventoryLocation::class, 'prep_location_id');
+    }
+
+    /** Choices offered with this item on the restaurant pad — "Spice level", "Extras". */
+    public function modifierGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(\Modules\Sales\Models\ModifierGroup::class, 'modifier_group_product')
+            ->withPivot(['tenant_id', 'sort_order'])
+            ->withTimestamps()
+            ->orderBy('modifier_groups.sort_order')
+            ->orderBy('modifier_groups.name');
+    }
+
+    public function unitCategory(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Inventory\Models\UnitCategory::class, 'unit_category_id');
+    }
+
+    public function usesRecipeDepletion(): bool
+    {
+        return $this->stock_policy === \Modules\Catalog\Enums\StockPolicy::Recipe;
     }
 
     public function options(): HasMany

@@ -16,6 +16,14 @@ final class PurchaseOrderItem extends Model
 
     protected $guarded = [];
 
+    protected function casts(): array
+    {
+        return [
+            'quantity_ordered' => 'decimal:4',
+            'quantity_received' => 'decimal:4',
+        ];
+    }
+
     public function purchaseOrder(): BelongsTo
     {
         return $this->belongsTo(PurchaseOrder::class);
@@ -31,8 +39,8 @@ final class PurchaseOrderItem extends Model
         return $this->belongsTo(InventoryLocation::class, 'inventory_location_id');
     }
 
-    public function getQuantityPendingAttribute(): int
+    public function getQuantityPendingAttribute(): float
     {
-        return max(0, $this->quantity_ordered - $this->quantity_received);
+        return max(0, (float) $this->quantity_ordered - (float) $this->quantity_received);
     }
 }

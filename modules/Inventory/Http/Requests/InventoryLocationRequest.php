@@ -6,7 +6,6 @@ namespace Modules\Inventory\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Modules\Inventory\Enums\InventoryLocationType;
 
 final class InventoryLocationRequest extends FormRequest
 {
@@ -34,7 +33,14 @@ final class InventoryLocationRequest extends FormRequest
                 'max:50',
                 Rule::unique('inventory_locations', 'code')->where('tenant_id', $this->string('tenant_id')->toString()),
             ],
-            'location_type' => ['required', Rule::in(array_column(InventoryLocationType::cases(), 'value'))],
+            'location_type' => [
+                'required',
+                'string',
+                'max:40',
+                Rule::exists('location_types', 'key')->where('tenant_id', $this->string('tenant_id')->toString()),
+            ],
+            'is_sellable_point' => ['nullable', 'boolean'],
+            'is_prep_station' => ['nullable', 'boolean'],
         ];
     }
 }

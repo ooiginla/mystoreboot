@@ -67,7 +67,7 @@ final class ExpireOnlineOrderReservationsAction
                             $order->tenant_id,
                             (int) $order->inventory_location_id,
                             (int) $item->product_variant_id,
-                            (int) $item->quantity,
+                            (float) $item->quantity,
                         );
                     }
                 }

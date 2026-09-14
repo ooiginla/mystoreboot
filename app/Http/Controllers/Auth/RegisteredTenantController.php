@@ -134,6 +134,10 @@ final class RegisteredTenantController extends Controller
 
             app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
 
+            // Configurable location types + a default sales point (till) per branch,
+            // so POS depletion resolves to the branch store with no manual setup.
+            app(\Modules\Inventory\Actions\EnsureLocationTypesAction::class)->forTenant($tenant->id);
+
             // Every business gets a zero-balance wallet from day one, regardless of payout
             // mode, so they can always see and move any balance held for them.
             app(\Modules\Sales\Support\Wallet\WalletService::class)->walletFor($tenant);

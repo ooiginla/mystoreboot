@@ -150,6 +150,7 @@ class SalesReturnAccountingTest extends TestCase
             'name' => 'Return Stock',
             'code' => 'RETURN-STOCK',
             'location_type' => InventoryLocationType::Branch->value,
+            'is_sellable_point' => true,
             'status' => 'active',
         ]);
         $stock = InventoryStockLevel::query()->create([

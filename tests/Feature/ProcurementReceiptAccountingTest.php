@@ -67,7 +67,7 @@ final class ProcurementReceiptAccountingTest extends TestCase
             ->sole();
         $movement = InventoryMovement::query()->where('reference_type', 'goods_receipt')->sole();
 
-        $this->assertSame(2, $stock->quantity_on_hand);
+        $this->assertSame(2, (int) $stock->quantity_on_hand);
         $this->assertSame(55000, $stock->average_cost_minor);
         $this->assertSame(110000, $movement->movement_value_minor);
         $this->assertSame($receipt->id, $movement->reference_id);
@@ -186,7 +186,7 @@ final class ProcurementReceiptAccountingTest extends TestCase
             ->where('inventory_location_id', $location->id)
             ->where('product_variant_id', $variant->id)
             ->sole();
-        $this->assertSame(2, $stock->quantity_on_hand);
+        $this->assertSame(2, (int) $stock->quantity_on_hand);
         $this->assertSame(55000, $stock->average_cost_minor);
     }
 

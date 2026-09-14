@@ -55,6 +55,7 @@ class SalesCostingTest extends TestCase
             'name' => 'Main Stock',
             'code' => 'MAIN-STOCK',
             'location_type' => InventoryLocationType::Branch->value,
+            'is_sellable_point' => true,
             'status' => 'active',
         ]);
         $product = Product::query()->create([
@@ -251,7 +252,7 @@ class SalesCostingTest extends TestCase
             ->where('source_type', 'sales_order')
             ->where('source_id', $customerOrder->id)
             ->exists());
-        $this->assertSame(1, InventoryStockLevel::query()
+        $this->assertSame(1, (int) InventoryStockLevel::query()
             ->where('inventory_location_id', $location->id)
             ->where('product_variant_id', $variant->id)
             ->value('quantity_on_hand'));
@@ -313,6 +314,7 @@ class SalesCostingTest extends TestCase
             'name' => 'Main Branch',
             'code' => 'MAIN',
             'location_type' => InventoryLocationType::Branch->value,
+            'is_sellable_point' => true,
             'status' => 'active',
         ]);
         $product = Product::query()->create([
@@ -499,6 +501,7 @@ class SalesCostingTest extends TestCase
             'name' => 'Main Branch',
             'code' => 'MAIN',
             'location_type' => InventoryLocationType::Branch->value,
+            'is_sellable_point' => true,
             'status' => 'active',
         ]);
         $product = Product::query()->create([
@@ -595,6 +598,7 @@ class SalesCostingTest extends TestCase
             'name' => 'Main Branch',
             'code' => 'MAIN',
             'location_type' => InventoryLocationType::Branch->value,
+            'is_sellable_point' => true,
             'status' => 'active',
         ]);
         $product = Product::query()->create([

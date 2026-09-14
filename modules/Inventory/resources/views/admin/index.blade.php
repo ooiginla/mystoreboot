@@ -8,13 +8,18 @@
 <x-layouts.admin title="Inventory & Stock">
     <datalist id="variant-options">
         @foreach ($variants as $variant)
-            <option value="{{ $variantLabel($variant) }}" data-variant-id="{{ $variant->id }}" data-sku="{{ $variant->sku }}" data-barcode="{{ $variant->barcode }}"></option>
+            <option value="{{ $variantLabel($variant) }}" data-variant-id="{{ $variant->id }}" data-sku="{{ $variant->sku }}" data-barcode="{{ $variant->barcode }}" data-type="{{ $variant->product?->product_type?->value }}"></option>
         @endforeach
     </datalist>
 
     <style>
         .inventory-toolbar { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
         .inventory-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .stock-visibility-filters { display: inline-flex; align-items: end; gap: 8px; flex-wrap: wrap; }
+        .stock-visibility-filter-field { display: grid; gap: 4px; }
+        .stock-visibility-filter-field label { white-space: nowrap; }
+        .stock-visibility-filter-field input { min-width: 220px; padding-top: 8px; padding-bottom: 8px; }
+        .stock-visibility-filter-field select { min-width: 190px; padding-top: 8px; padding-bottom: 8px; }
         .stock-status { font-weight: 800; }
         .stock-status.low { color: #b54708; }
         .stock-status.ok { color: #067647; }
@@ -25,6 +30,9 @@
             .report-grid { grid-template-columns: 1fr; }
             .inventory-actions { width: 100%; }
             .inventory-actions .btn { flex: 1; }
+            .stock-visibility-filters { width: 100%; }
+            .stock-visibility-filter-field { flex: 1; min-width: 180px; }
+            .stock-visibility-filter-field input, .stock-visibility-filter-field select { min-width: 0; }
         }
     </style>
 
@@ -86,6 +94,23 @@
                         <p class="subtle">Each row maps a product variant to a branch or inventory location.</p>
                     </div>
                     <div class="inventory-actions">
+                        <form class="stock-visibility-filters" method="GET" action="{{ route('admin.inventory.index') }}">
+                            <input type="hidden" name="tenant" value="{{ $tenant->id }}">
+                            <div class="stock-visibility-filter-field">
+                                <label for="stock-product-filter">Product</label>
+                                <input id="stock-product-filter" name="stock_product" type="search" list="variant-options" value="{{ $stockProductSearch }}" placeholder="Name, variant, SKU or barcode" autocomplete="off">
+                            </div>
+                            <div class="stock-visibility-filter-field">
+                                <label for="stock-location-filter">Location</label>
+                                <select id="stock-location-filter" name="stock_location" onchange="this.form.submit()">
+                                    <option value="">All locations</option>
+                                    @foreach ($locations as $location)
+                                        <option value="{{ $location->id }}" @selected($selectedStockLocationId === $location->id)>{{ $location->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <button class="btn secondary" type="submit">Search</button>
+                        </form>
                         <button class="btn accent" type="button" data-dialog-open="movement-dialog">Post movement</button>
                         <button class="btn primary" type="button" data-dialog-open="transfer-dialog">Transfer stock</button>
                     </div>
@@ -96,6 +121,7 @@
                             <tr>
                                 <th>Variant</th>
                                 <th>Location</th>
+                                <th>Unit</th>
                                 <th>On hand</th>
                                 <th>Available</th>
                                 <th>Reorder</th>
@@ -105,20 +131,21 @@
                         </thead>
                         <tbody>
                             @forelse ($stockLevels as $level)
-                                <tr>
+                                <tr data-stock-location-id="{{ $level->inventory_location_id }}" data-stock-variant-id="{{ $level->product_variant_id }}">
                                     <td>
                                         <strong>{{ $level->variant->product?->name }}</strong><br>
                                         <span class="subtle">{{ $level->variant->variant_name }} · {{ $level->variant->sku }}</span>
                                     </td>
                                     <td>{{ $level->location->name }}</td>
-                                    <td class="stock-status {{ $level->is_low_stock ? 'low' : 'ok' }}">{{ number_format($level->quantity_on_hand) }}</td>
-                                    <td>{{ number_format($level->quantity_available) }}</td>
-                                    <td>{{ number_format($level->reorder_level) }}</td>
+                                    <td>{{ ($level->variant->baseUnit?->code ?? 'ea') === 'ea' ? 'each' : $level->variant->baseUnit->code }}</td>
+                                    <td class="stock-status {{ $level->is_low_stock ? 'low' : 'ok' }}">{{ \Modules\Inventory\Support\Quantity::format($level->quantity_on_hand) }}</td>
+                                    <td>{{ \Modules\Inventory\Support\Quantity::format($level->quantity_available) }}</td>
+                                    <td>{{ \Modules\Inventory\Support\Quantity::format($level->reorder_level) }}</td>
                                     <td>{{ $tenant->currency_code }} {{ $money($level->average_cost_minor) }}</td>
                                     <td>{{ $tenant->currency_code }} {{ $money($level->stock_value_minor) }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="7"><div class="empty">No stock levels yet. Post stock-in or opening stock to begin tracking inventory.</div></td></tr>
+                                <tr><td colspan="8"><div class="empty">No stock levels yet. Post stock-in or opening stock to begin tracking inventory.</div></td></tr>
                             @endforelse
                         </tbody>
                     </table>
@@ -158,9 +185,18 @@
                                             <br><span class="subtle">To {{ $movement->destinationLocation->name }}</span>
                                         @endif
                                     </td>
-                                    <td>{{ number_format($movement->quantity) }}</td>
+                                    <td>{{ \Modules\Inventory\Support\Quantity::format($movement->quantity) }}</td>
                                     <td>{{ $tenant->currency_code }} {{ $money($movement->unit_cost_minor) }}</td>
-                                    <td class="movement-note">{{ $movement->reference_number ?: $movement->notes ?: 'Not set' }}</td>
+                                    <td class="movement-note">
+                                        {{ $movement->reference_number ?: $movement->notes ?: 'Not set' }}
+                                        @if ($movement->batchAllocations->isNotEmpty())
+                                            <br><span class="subtle">Lots:
+                                                {{ $movement->batchAllocations->map(fn ($a) => ($a->batch?->batch_number ?: 'no batch no.')
+                                                    .($a->batch?->expiry_date ? ' exp '.$a->batch->expiry_date->format('d M Y') : '')
+                                                    .' ('.\Modules\Inventory\Support\Quantity::format($a->quantity).')')->implode(', ') }}
+                                            </span>
+                                        @endif
+                                    </td>
                                 </tr>
                             @empty
                                 <tr><td colspan="7"><div class="empty">No inventory movements yet.</div></td></tr>
@@ -174,19 +210,31 @@
                 <div class="panel-header">
                     <div>
                         <h2 class="panel-title">Low-stock alerts & reorder settings</h2>
-                        <p class="subtle">Set reorder levels per branch/location and variant.</p>
+                        <p class="subtle">An item is low when what is available at a location falls to or below its alert level there.</p>
                     </div>
-                    <button class="btn accent" type="button" data-dialog-open="reorder-dialog">Set reorder level</button>
+                    <div class="inventory-actions">
+                        <a class="btn secondary" href="{{ route('admin.inventory.reorder-levels.index', array_filter(['tenant' => request('tenant')])) }}">Set levels by location</a>
+                        <button class="btn accent" type="button" data-dialog-open="reorder-dialog">Set levels for an item</button>
+                    </div>
                 </div>
                 <div class="panel-body">
                     <div class="list">
                         @forelse ($lowStock as $level)
+                            @php
+                                $alertUnit = ' '.($level->variant->baseUnit?->code ?? '');
+                                $alertLabel = $level->variant->product?->name.($level->variant->variant_name !== 'Default' ? ' / '.$level->variant->variant_name : '');
+                            @endphp
                             <div class="item">
                                 <div>
-                                    <div class="item-title">{{ $level->variant->product?->name }} / {{ $level->variant->variant_name }}</div>
-                                    <div class="subtle">{{ $level->location->name }} · Available {{ number_format($level->quantity_available) }} · Reorder at {{ number_format($level->reorder_level) }}</div>
+                                    <div class="item-title">{{ $alertLabel }}</div>
+                                    <div class="subtle">{{ $level->location->name }} · Available {{ \Modules\Inventory\Support\Quantity::format($level->quantity_available) }}{{ $alertUnit }} · Alert at {{ \Modules\Inventory\Support\Quantity::format($level->reorder_level) }}{{ $alertUnit }}</div>
                                 </div>
-                                <span class="badge neutral">Reorder {{ number_format($level->reorder_quantity) }}</span>
+                                <div style="display:flex; gap:8px; align-items:center;">
+                                    @if ((float) $level->reorder_quantity > 0)
+                                        <span class="badge neutral">Reorder {{ \Modules\Inventory\Support\Quantity::format($level->reorder_quantity) }}{{ $alertUnit }}</span>
+                                    @endif
+                                    <button class="btn ghost" type="button" onclick="window.__reorderOpen && window.__reorderOpen({{ $level->product_variant_id }}, @js($alertLabel))">Edit</button>
+                                </div>
                             </div>
                         @empty
                             <div class="empty">No low-stock alerts. Set reorder levels to start monitoring.</div>
@@ -201,6 +249,7 @@
                         <h2 class="panel-title">Expiry, damaged, and returned stock</h2>
                         <p class="subtle">Batch and condition tracking for pharmacies, supermarkets, food, and similar businesses.</p>
                     </div>
+                    <a class="btn ghost" href="{{ route('admin.inventory.batches.index', array_filter(['tenant' => request('tenant')])) }}">Trace a lot</a>
                 </div>
                 <div class="panel-body">
                     <div class="report-grid">
@@ -210,7 +259,7 @@
                                 @forelse ($expiringBatches as $batch)
                                     <div class="item">
                                         <div>
-                                            <div class="item-title">{{ $batch->variant->product?->name }}</div>
+                                            <div class="item-title"><a href="{{ route('admin.inventory.batches.show', array_filter(['batch' => $batch->id, 'tenant' => request('tenant')])) }}">{{ $batch->variant->product?->name }}</a></div>
                                             <div class="subtle">{{ $batch->location->name }} · Batch {{ $batch->batch_number ?: 'N/A' }}</div>
                                         </div>
                                         <span class="badge neutral">{{ $batch->expiry_date->format('M j, Y') }}</span>
@@ -226,8 +275,8 @@
                                 @forelse ($conditionBatches as $batch)
                                     <div class="item">
                                         <div>
-                                            <div class="item-title">{{ $batch->variant->product?->name }}</div>
-                                            <div class="subtle">{{ $batch->location->name }} · {{ number_format($batch->quantity_remaining) }} units</div>
+                                            <div class="item-title"><a href="{{ route('admin.inventory.batches.show', array_filter(['batch' => $batch->id, 'tenant' => request('tenant')])) }}">{{ $batch->variant->product?->name }}</a></div>
+                                            <div class="subtle">{{ $batch->location->name }} · {{ \Modules\Inventory\Support\Quantity::format($batch->quantity_remaining) }} units</div>
                                         </div>
                                         <span class="badge neutral">{{ $batch->stock_condition->label() }}</span>
                                     </div>
@@ -269,27 +318,123 @@
                         <h2 class="panel-title">Inventory locations</h2>
                         <p class="subtle">Branches are automatically mapped as stock locations. Add warehouses or store rooms here.</p>
                     </div>
-                    <button class="btn accent" type="button" data-dialog-open="location-dialog">Add location</button>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn secondary" type="button" data-dialog-open="location-types-dialog">Manage types</button>
+                        <button class="btn accent" type="button" data-dialog-open="location-dialog">Add location</button>
+                    </div>
                 </div>
                 <div class="panel-body">
                     <div class="list">
                         @foreach ($locations as $location)
                             <div class="item">
                                 <div>
-                                    <div class="item-title">{{ $location->name }}</div>
-                                    <div class="subtle">{{ $location->branch?->name ? 'Branch: '.$location->branch->name : 'Standalone location' }}</div>
+                                    <div class="item-title">{{ $location->name }} @if ($location->is_sellable_point)<span class="badge success">Sells here</span>@endif @if ($location->is_prep_station)<span class="badge neutral">Prep station</span>@endif</div>
+                                    <div class="subtle">
+                                        {{ $location->code ? $location->code.' · ' : '' }}{{ $location->branch?->name ? 'Branch: '.$location->branch->name : 'Standalone location' }}
+                                    </div>
                                 </div>
-                                <span class="badge neutral">{{ $location->location_type->label() }}</span>
+                                <div style="display:flex; align-items:center; gap:12px;">
+                                    <span class="badge neutral">{{ $locationTypes[$location->location_type] ?? \Illuminate\Support\Str::headline($location->location_type) }}</span>
+                                    <button class="icon-btn" type="button" aria-label="Edit location" title="Edit location"
+                                        data-edit-location
+                                        data-id="{{ $location->id }}"
+                                        data-name="{{ $location->name }}"
+                                        data-code="{{ $location->code }}"
+                                        data-type="{{ $location->location_type }}"
+                                        data-sellable="{{ $location->is_sellable_point ? '1' : '0' }}"
+                                        data-prep="{{ $location->is_prep_station ? '1' : '0' }}">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                    </button>
+                                </div>
                             </div>
                         @endforeach
                     </div>
                 </div>
+
+                @if ($hasPrepStations)
+                    <div class="panel-body" style="border-top: 1px solid var(--line); padding-top: 14px;">
+                        <p class="subtle" style="margin:0;">
+                            <strong>Prep stations</strong> are locations flagged “Food is made here” — Grill, Main Kitchen,
+                            Bar. A station is where food is <em>made</em>; the same row is the store its ingredients come
+                            from, so the two can never disagree. Set one on a product and its orders print to that
+                            station's kitchen screen.
+                            @if ($prepStations->isEmpty())
+                                <br><em>None yet — edit a location above and tick “Food is made here”.</em>
+                            @else
+                                <br>Current stations: {{ $prepStations->pluck('name')->implode(', ') }}.
+                            @endif
+                        </p>
+                    </div>
+                @endif
             </section>
         </div>
     </div>
 
     @include('inventory::admin.partials.movement-dialog')
     @include('inventory::admin.partials.transfer-dialog')
-    @include('inventory::admin.partials.reorder-dialog')
+    @include('inventory::admin.partials.reorder-dialog', [
+        'reorderLocations' => $locations,
+        'reorderPicker' => true,
+        'reorderFragment' => 'alerts',
+    ])
     @include('inventory::admin.partials.location-dialog')
+    @include('inventory::admin.partials.location-edit-dialog')
+    @include('inventory::admin.partials.location-types-dialog')
+
+    <script>
+        (function () {
+            const dialog = document.getElementById('location-edit-dialog');
+            if (! dialog) return;
+            const form = dialog.querySelector('form');
+            const base = form.getAttribute('data-action-base');
+            document.querySelectorAll('[data-edit-location]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    form.action = base.replace('__ID__', btn.dataset.id);
+                    form.querySelector('[name="name"]').value = btn.dataset.name || '';
+                    form.querySelector('[name="code"]').value = btn.dataset.code || '';
+                    const typeSelect = form.querySelector('[name="location_type"]');
+                    if (typeSelect) typeSelect.value = btn.dataset.type || '';
+                    form.querySelector('[name="is_sellable_point"][type="checkbox"]').checked = btn.dataset.sellable === '1';
+                    form.querySelector('[name="is_prep_station"][type="checkbox"]').checked = btn.dataset.prep === '1';
+                    if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+                });
+            });
+        })();
+    </script>
+
+    <script>
+        (function () {
+            const VARIANT_UNITS = @json($variantUnits ?? []);
+            function refresh(picker) {
+                if (! picker) return;
+                const dialog = picker.closest('dialog');
+                if (! dialog) return;
+                const unitSel = dialog.querySelector('[data-movement-unit]');
+                const field = dialog.querySelector('[data-measurement-field]');
+                const hint = dialog.querySelector('[data-measurement-hint]');
+                if (! unitSel || ! field) return;
+                const variantId = picker.querySelector('[data-variant-value]')?.value;
+                const units = VARIANT_UNITS[variantId] || [];
+                if (units.length) {
+                    unitSel.innerHTML = units.map((u) => `<option value="${u.id}">${u.code}</option>`).join('');
+                    field.hidden = false;
+                    if (hint) hint.hidden = false;
+                } else {
+                    unitSel.innerHTML = '';
+                    field.hidden = true;
+                    if (hint) hint.hidden = true;
+                }
+            }
+            // Defer on input so the layout's handler has set [data-variant-value] first;
+            // also handle change (fired when an item is chosen from the results).
+            document.addEventListener('input', function (e) {
+                const search = e.target.closest('[data-variant-search]');
+                if (search) setTimeout(function () { refresh(search.closest('[data-variant-picker]')); }, 0);
+            });
+            document.addEventListener('change', function (e) {
+                const search = e.target.closest('[data-variant-search]');
+                if (search) refresh(search.closest('[data-variant-picker]'));
+            });
+        })();
+    </script>
 </x-layouts.admin>

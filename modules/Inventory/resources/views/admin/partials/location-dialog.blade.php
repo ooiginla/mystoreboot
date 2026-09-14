@@ -36,6 +36,19 @@
                         @endforeach
                     </select>
                 </div>
+                <div class="field full">
+                    <label style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" name="is_sellable_point" value="1" style="width:auto;">
+                        Can sell from here (available as a POS point of sale)
+                    </label>
+                </div>
+                <div class="field full">
+                    <label style="display:flex; align-items:center; gap:8px;">
+                        <input type="hidden" name="is_prep_station" value="0">
+                        <input type="checkbox" name="is_prep_station" value="1" style="width:auto;">
+                        Food is made here (a prep station — gets its own kitchen screen)
+                    </label>
+                </div>
             </div>
             <div class="button-row">
                 <button class="btn secondary" type="button" data-dialog-close>Cancel</button>

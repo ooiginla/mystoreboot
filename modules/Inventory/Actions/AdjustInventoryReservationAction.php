@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Inventory\Models\InventoryStockLevel;
+use Modules\Inventory\Support\Quantity;
 
 /**
  * Manages soft stock reservations for pending orders. A reservation increases
@@ -18,8 +19,10 @@ use Modules\Inventory\Models\InventoryStockLevel;
  */
 final class AdjustInventoryReservationAction
 {
-    public function reserve(string $tenantId, int $locationId, int $variantId, int $quantity, ?string $itemName = null): void
+    public function reserve(string $tenantId, int $locationId, int $variantId, float $quantity, ?string $itemName = null): void
     {
+        $quantity = Quantity::round($quantity);
+
         if ($quantity <= 0) {
             return;
         }
@@ -27,25 +30,27 @@ final class AdjustInventoryReservationAction
         DB::transaction(function () use ($tenantId, $locationId, $variantId, $quantity, $itemName): void {
             $stockLevel = $this->lockedStockLevel($tenantId, $locationId, $variantId);
 
-            if ($stockLevel->quantity_available < $quantity) {
-                $available = max(0, (int) $stockLevel->quantity_available);
+            if ((float) $stockLevel->quantity_available < $quantity) {
+                $available = max(0, (float) $stockLevel->quantity_available);
                 $displayName = filled($itemName) ? '“'.trim((string) $itemName).'”' : 'this item';
-                $message = $available === 0
+                $message = $available <= 0
                     ? "Sorry, {$displayName} has just sold out. Please remove it from your cart to continue."
-                    : "Sorry, only {$available} of {$displayName} is available, but your cart has {$quantity}. Please reduce the quantity or remove it to continue.";
+                    : 'Sorry, only '.Quantity::format($available)." of {$displayName} is available, but your cart has ".Quantity::format($quantity).'. Please reduce the quantity or remove it to continue.';
 
                 throw ValidationException::withMessages([
                     'items' => $message,
                 ]);
             }
 
-            $stockLevel->quantity_reserved += $quantity;
+            $stockLevel->quantity_reserved = Quantity::round((float) $stockLevel->quantity_reserved + $quantity);
             $stockLevel->save();
         });
     }
 
-    public function release(string $tenantId, int $locationId, int $variantId, int $quantity): void
+    public function release(string $tenantId, int $locationId, int $variantId, float $quantity): void
     {
+        $quantity = Quantity::round($quantity);
+
         if ($quantity <= 0) {
             return;
         }
@@ -62,7 +67,7 @@ final class AdjustInventoryReservationAction
                 return;
             }
 
-            $stockLevel->quantity_reserved = max(0, (int) $stockLevel->quantity_reserved - $quantity);
+            $stockLevel->quantity_reserved = Quantity::round(max(0, (float) $stockLevel->quantity_reserved - $quantity));
             $stockLevel->save();
         });
     }

@@ -63,14 +63,12 @@ class TenantSignupTest extends TestCase
             '_token' => 'local-test-token',
             'email' => 'local@bootup.test',
             'code' => $user->email_verification_code,
-        ])->assertRedirect(route('admin.home'));
+        ])->assertRedirect(route('onboarding.index'));
 
         $this->assertNotNull($user->refresh()->email_verified_at);
         $this->assertNull($user->email_verification_code);
 
-        // admin.home dispatches the owner to the first area their role can access.
-        $this->get(route('admin.home'))->assertRedirect(route('admin.analytics.index'));
-
+        // New tenants are sent to the onboarding wizard before the admin area.
         $this->assertAuthenticatedAs($user);
     }
 
@@ -132,7 +130,7 @@ class TenantSignupTest extends TestCase
         $this->assertSame(SubscriptionStatus::Trialing, $subscription->status);
         $this->assertSame('starter', $subscription->plan->slug);
         $this->assertEqualsCanonicalizing(
-            ['access', 'business', 'catalog', 'finance', 'inventory', 'retail-pos', 'sales', 'subscriptions'],
+            ['access', 'analytics', 'business', 'catalog', 'customers', 'finance', 'inventory', 'retail-pos', 'sales', 'storefront', 'subscriptions'],
             $subscription->plan->modules->pluck('slug')->all(),
         );
         $this->assertTrue(FinanceExpenseCategory::query()->where('tenant_id', $tenant->id)->where('code', 'office-supplies')->exists());
@@ -158,13 +156,10 @@ class TenantSignupTest extends TestCase
         $this->post(route('verification.verify'), [
             'email' => 'owner@bootup.test',
             'code' => $verificationCode,
-        ])->assertRedirect(route('admin.home'));
+        ])->assertRedirect(route('onboarding.index'));
 
         $this->assertNotNull($user->refresh()->email_verified_at);
         $this->assertNull($user->email_verification_code);
-
-        // admin.home dispatches the owner to the first area their role can access.
-        $this->get(route('admin.home'))->assertRedirect(route('admin.analytics.index'));
 
         $this->assertAuthenticatedAs($user);
     }
