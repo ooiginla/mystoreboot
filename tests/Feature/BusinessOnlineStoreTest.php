@@ -91,6 +91,8 @@ class BusinessOnlineStoreTest extends TestCase
             ->get(route('admin.business.index', ['tenant' => $secondTenant->id]))
             ->assertOk()
             ->assertSee('name="tenant"', false)
+            ->assertSee('data-tenant-search-switcher', false)
+            ->assertSee('Search organizations')
             ->assertSee('First Shop')
             ->assertSee('Second Shop')
             ->assertSee('value="'.$secondTenant->id.'" selected', false)

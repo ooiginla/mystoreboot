@@ -115,6 +115,10 @@
             .branch-switcher-label span { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
             .branch-switcher-label strong { color: var(--ink); font-size: 13px; font-weight: 750; line-height: 1.2; }
             .branch-switcher select { min-width: 150px; padding-top: 8px; padding-bottom: 8px; border-radius: 8px; }
+            .tenant-search-switcher { position: relative; width: 100%; min-width: 0; }
+            .tenant-search-switcher input { width: 100%; padding-right: 34px; }
+            .tenant-search-switcher::after { content: ''; position: absolute; right: 13px; top: 50%; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+            .tenant-search-switcher select[hidden] { display: none; }
             .branch-choice-grid { display: grid; gap: 10px; }
             .branch-choice-grid .btn { width: 100%; justify-content: flex-start; padding: 12px 14px; }
             .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 22px; }
@@ -686,6 +690,67 @@
                     if (window.innerWidth > 960 && adminSidebar?.classList.contains('is-open')) {
                         setAdminMenu(false);
                     }
+                });
+
+                document.querySelectorAll('select[name="tenant"]').forEach((select, index) => {
+                    if (select.dataset.searchEnhanced === 'true' || select.options.length < 2) return;
+
+                    select.dataset.searchEnhanced = 'true';
+                    const options = Array.from(select.options).map((option) => ({
+                        label: option.textContent.trim(),
+                        value: option.value,
+                    }));
+                    const selectedOption = select.selectedOptions[0];
+                    const listId = `tenant-switch-options-${index}`;
+                    const wrapper = document.createElement('div');
+                    const search = document.createElement('input');
+                    const list = document.createElement('datalist');
+
+                    wrapper.className = 'tenant-search-switcher';
+                    wrapper.setAttribute('data-tenant-search-switcher', '');
+                    search.type = 'search';
+                    search.value = selectedOption?.textContent.trim() || '';
+                    search.placeholder = 'Search organizations';
+                    search.autocomplete = 'off';
+                    search.setAttribute('list', listId);
+                    search.setAttribute('role', 'combobox');
+                    search.setAttribute('aria-autocomplete', 'list');
+                    search.setAttribute('aria-label', select.getAttribute('aria-label') || 'Switch organization');
+                    list.id = listId;
+
+                    options.forEach((option) => {
+                        const item = document.createElement('option');
+                        item.value = option.label;
+                        list.appendChild(item);
+                    });
+
+                    select.before(wrapper);
+                    wrapper.append(search, list, select);
+                    select.hidden = true;
+
+                    const normalize = (value) => value.trim().toLocaleLowerCase();
+                    const selectOrganization = () => {
+                        const query = normalize(search.value);
+                        const matches = options.filter((option) => normalize(option.label).includes(query));
+                        const match = options.find((option) => normalize(option.label) === query)
+                            || (matches.length === 1 ? matches[0] : null);
+
+                        if (!match) return;
+
+                        search.value = match.label;
+                        if (select.value === match.value) return;
+
+                        select.value = match.value;
+                        select.dispatchEvent(new Event('change', { bubbles: true }));
+                    };
+
+                    search.addEventListener('change', selectOrganization);
+                    search.addEventListener('keydown', (event) => {
+                        if (event.key !== 'Enter') return;
+
+                        event.preventDefault();
+                        selectOrganization();
+                    });
                 });
 
                 const supportsNativeDialog = typeof window.HTMLDialogElement !== 'undefined'

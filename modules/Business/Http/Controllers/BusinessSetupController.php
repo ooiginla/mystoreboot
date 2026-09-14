@@ -21,6 +21,7 @@ use Modules\Access\Support\AuditLogger;
 use Modules\Access\Support\PermissionCatalogue;
 use Modules\Business\Actions\CreateBranchAction;
 use Modules\Business\Actions\CreateDepartmentAction;
+use Modules\Business\Actions\DeleteTenantAction;
 use Modules\Business\Actions\GenerateStoreContentAction;
 use Modules\Business\Actions\SaveBusinessProfileAction;
 use Modules\Business\Enums\BusinessType;
@@ -835,12 +836,41 @@ final class BusinessSetupController extends Controller
     {
         abort_unless($request->user()?->is_platform_admin, 403);
 
+        $organizationSearch = trim($request->string('organization_search')->toString());
+
         return view('business::admin.organizations.index', [
             'tenants' => Tenant::query()
                 ->withCount(['branches', 'roles'])
+                ->when($organizationSearch !== '', function ($query) use ($organizationSearch): void {
+                    $query->where(function ($query) use ($organizationSearch): void {
+                        $query
+                            ->whereLike('name', '%'.$organizationSearch.'%')
+                            ->orWhereLike('slug', '%'.$organizationSearch.'%')
+                            ->orWhereLike('email', '%'.$organizationSearch.'%')
+                            ->orWhereLike('address', '%'.$organizationSearch.'%')
+                            ->orWhereLike('business_type', '%'.$organizationSearch.'%');
+                    });
+                })
                 ->orderBy('name')
-                ->paginate(20),
+                ->paginate(20)
+                ->withQueryString(),
+            'organizationSearch' => $organizationSearch,
+            'activeOrganizationId' => $request->session()->get('active_tenant_id'),
         ]);
+    }
+
+    public function activateOrganization(Request $request, Tenant $tenant): RedirectResponse
+    {
+        abort_unless($request->user()?->is_platform_admin, 403);
+
+        $request->session()->put('active_tenant_id', (string) $tenant->id);
+        $organizationSearch = trim($request->string('organization_search')->toString());
+
+        return redirect()
+            ->route('admin.business.organizations.index', array_filter([
+                'organization_search' => $organizationSearch,
+            ]))
+            ->with('status', "{$tenant->name} is now the active organization.");
     }
 
     public function organizationDetails(Request $request, Tenant $tenant): View
@@ -863,6 +893,34 @@ final class BusinessSetupController extends Controller
                 ->latest('tenant_subscriptions.id')
                 ->value('plans.name'),
         ]);
+    }
+
+    public function destroyOrganization(
+        Request $request,
+        Tenant $tenant,
+        DeleteTenantAction $deleteTenant,
+    ): RedirectResponse {
+        abort_unless($request->user()?->is_platform_admin, 403);
+
+        $request->validate([
+            'confirmation' => ['required', 'string', Rule::in([$tenant->name])],
+        ], [
+            'confirmation.in' => 'Enter the organization name exactly as shown to confirm permanent deletion.',
+        ]);
+
+        $tenantId = (string) $tenant->id;
+        $tenantName = $tenant->name;
+
+        app(\App\Support\ActiveBranchManager::class)->forget($request, $tenantId);
+        if ($request->session()->get('active_tenant_id') === $tenantId) {
+            $request->session()->forget('active_tenant_id');
+        }
+
+        $deleteTenant->execute($tenant);
+
+        return redirect()
+            ->route('admin.business.organizations.index')
+            ->with('status', "{$tenantName} and all related organization data were permanently deleted.");
     }
 
     /**

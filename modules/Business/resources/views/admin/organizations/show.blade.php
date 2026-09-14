@@ -23,8 +23,13 @@
             <h1>{{ $tenant->name }}</h1>
             <p class="subtle">{{ $tenant->slug }} · {{ $businessTypes[$tenant->business_type] ?? $tenant->business_type ?? 'Business type not set' }}</p>
         </div>
-        <a class="btn primary" href="{{ route('admin.business.index', ['tenant' => $tenant->id]) }}">Manage setup</a>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <a class="btn primary" href="{{ route('admin.business.index', ['tenant' => $tenant->id]) }}">Manage setup</a>
+            <button class="btn danger" type="button" data-dialog-open="delete-organization-{{ $tenant->id }}">Delete organization</button>
+        </div>
     </div>
+
+    @if ($errors->any())<div class="alert errors">{{ $errors->first() }}</div>@endif
 
     <div class="stats-grid" style="margin-bottom: 18px;">
         <div class="stat"><span class="subtle">Status</span><strong>{{ $tenant->status->label() }}</strong></div>
@@ -168,4 +173,9 @@
             </section>
         </aside>
     </div>
+
+    @include('business::admin.organizations.partials.delete-dialog', [
+        'tenant' => $tenant,
+        'deleteDialogId' => 'delete-organization-'.$tenant->id,
+    ])
 </x-layouts.admin>

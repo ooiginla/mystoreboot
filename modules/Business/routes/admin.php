@@ -6,7 +6,9 @@ use Illuminate\Support\Facades\Route;
 use Modules\Business\Http\Controllers\BusinessSetupController;
 
 Route::get('/organizations', [BusinessSetupController::class, 'organizations'])->name('organizations.index');
+Route::post('/organizations/{tenant}/activate', [BusinessSetupController::class, 'activateOrganization'])->name('organizations.activate');
 Route::get('/organizations/{tenant}', [BusinessSetupController::class, 'organizationDetails'])->name('organizations.show');
+Route::delete('/organizations/{tenant}', [BusinessSetupController::class, 'destroyOrganization'])->name('organizations.destroy');
 Route::get('/', [BusinessSetupController::class, 'index'])->name('index');
 Route::get('/online-store', [BusinessSetupController::class, 'onlineStore'])->name('online-store.index');
 Route::get('/online-store/address-availability', [BusinessSetupController::class, 'onlineStoreAddressAvailability'])->name('online-store.address-availability');
