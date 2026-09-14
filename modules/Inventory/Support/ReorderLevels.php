@@ -38,7 +38,7 @@ final class ReorderLevels
 
         return $units !== [] ? $units : [[
             'id' => null,
-            'code' => $variant->baseUnit?->code ?? 'each',
+            'code' => $variant->baseUnit?->code ?? 'pc',
             'factor' => 1.0,
         ]];
     }

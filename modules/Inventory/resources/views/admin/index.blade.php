@@ -137,7 +137,7 @@
                                         <span class="subtle">{{ $level->variant->variant_name }} · {{ $level->variant->sku }}</span>
                                     </td>
                                     <td>{{ $level->location->name }}</td>
-                                    <td>{{ ($level->variant->baseUnit?->code ?? 'ea') === 'ea' ? 'each' : $level->variant->baseUnit->code }}</td>
+                                    <td>{{ ($level->variant->baseUnit?->code ?? 'ea') === 'ea' ? 'pc' : $level->variant->baseUnit->code }}</td>
                                     <td class="stock-status {{ $level->is_low_stock ? 'low' : 'ok' }}">{{ \Modules\Inventory\Support\Quantity::format($level->quantity_on_hand) }}</td>
                                     <td>{{ \Modules\Inventory\Support\Quantity::format($level->quantity_available) }}</td>
                                     <td>{{ \Modules\Inventory\Support\Quantity::format($level->reorder_level) }}</td>

@@ -324,14 +324,14 @@ final class InventoryOpeningStockTest extends TestCase
 
         $each = \Modules\Inventory\Models\UnitOfMeasure::query()
             ->where('tenant_id', $tenant->id)
-            ->where('code', 'ea')
+            ->where('code', 'pc')
             ->firstOrFail();
         $variant->update(['base_unit_id' => $each->id]);
 
         $this->actingAs($user)
             ->get(route('admin.inventory.index', ['tenant' => $tenant->id]))
             ->assertOk()
-            ->assertSee('<td>each</td>', false)
+            ->assertSee('<td>pc</td>', false)
             ->assertDontSee('<td>ea</td>', false);
     }
 

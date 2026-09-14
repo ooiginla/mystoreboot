@@ -53,7 +53,7 @@ final class UnitOfMeasureTest extends TestCase
         $this->assertDatabaseMissing('units_of_measure', ['id' => $bag->id]);
 
         // A unit referenced by a product cannot be removed.
-        $ea = UnitOfMeasure::query()->where('tenant_id', $tenant->id)->where('code', 'ea')->firstOrFail();
+        $ea = UnitOfMeasure::query()->where('tenant_id', $tenant->id)->where('code', 'pc')->firstOrFail();
         $product = Product::query()->create([
             'tenant_id' => $tenant->id, 'name' => 'Thing', 'slug' => 'thing',
             'product_type' => ProductType::Product->value, 'status' => ProductStatus::Active->value,

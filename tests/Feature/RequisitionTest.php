@@ -127,7 +127,7 @@ final class RequisitionTest extends TestCase
         $this->actingAs($user)
             ->get(route('admin.inventory.requisitions.index', ['tenant' => $tenant->id]))
             ->assertOk()
-            ->assertSee('each')
+            ->assertSee('<td>pc</td>', false)
             ->assertSee('Central Store')
             ->assertSee('Poolside Bar')
             // The variant repeats the product name, so it must not be printed twice.

@@ -94,7 +94,7 @@
                                     <strong>{{ $item->componentVariant?->product?->name }}</strong><br>
                                     <span class="subtle">{{ $item->componentVariant?->variant_name }} · {{ $item->componentVariant?->sku }}</span>
                                 </td>
-                                <td>{{ (! $unit || $unit === 'ea') ? 'each' : $unit }}</td>
+                                <td>{{ (! $unit || $unit === 'ea') ? 'pc' : $unit }}</td>
                                 @if ($showSystem)<td>{{ $qty($item->system_quantity) }}</td>@endif
                                 <td>
                                     @if ($isOpen)

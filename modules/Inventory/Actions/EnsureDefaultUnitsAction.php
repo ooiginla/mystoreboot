@@ -11,7 +11,7 @@ use Modules\Tenancy\Models\Tenant;
 
 /**
  * Seeds a tenant's starter set of units of measure. Idempotent — safe to call on
- * every registration and to re-run for backfills. "Each" (ea) is the default base
+ * every registration and to re-run for backfills. "Piece" (pc) is the default base
  * unit for ordinary retail products, so a basic tenant that never touches the F&B
  * module still has a sensible, invisible default.
  */
@@ -23,7 +23,7 @@ final class EnsureDefaultUnitsAction
      * @var array<string, array{0: string, 1: UnitDimension, 2: float|null, 3: bool}>
      */
     private const DEFAULTS = [
-        'ea' => ['Each', UnitDimension::Count, 1.0, true],
+        'pc' => ['Piece', UnitDimension::Count, 1.0, true],
         'g' => ['Gram', UnitDimension::Weight, 1.0, true],
         'kg' => ['Kilogram', UnitDimension::Weight, 1000.0, false],
         'ml' => ['Millilitre', UnitDimension::Volume, 1.0, true],
@@ -49,6 +49,17 @@ final class EnsureDefaultUnitsAction
         return collect(self::DEFAULTS)->map(function (array $spec, string $code) use ($tenantId, $category): UnitOfMeasure {
             [$name, $dimension, $factor, $isBase] = $spec;
 
+            // A business that had already made its own "pc" kept the default count unit
+            // on its old code "ea" when it was renamed to Piece. That row is still its
+            // count base, so a second one is never created alongside it.
+            if ($code === 'pc') {
+                $legacy = UnitOfMeasure::query()->where('tenant_id', $tenantId)->where('code', 'ea')->first();
+
+                if ($legacy) {
+                    return $legacy;
+                }
+            }
+
             return UnitOfMeasure::query()->updateOrCreate(
                 ['tenant_id' => $tenantId, 'code' => $code],
                 [
@@ -63,11 +74,13 @@ final class EnsureDefaultUnitsAction
         })->values();
     }
 
+    /** The default count unit: "pc", or the legacy "ea" row where that was kept. */
     public function baseUnitId(string $tenantId): ?int
     {
         return UnitOfMeasure::query()
             ->where('tenant_id', $tenantId)
-            ->where('code', 'ea')
+            ->whereIn('code', ['pc', 'ea'])
+            ->orderByRaw("code = 'pc' desc")
             ->value('id');
     }
 }

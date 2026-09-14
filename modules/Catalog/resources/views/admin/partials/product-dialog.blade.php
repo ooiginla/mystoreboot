@@ -291,7 +291,7 @@
                         <div class="field">
                             <label>Measurement</label>
                             <select name="unit_category_id">
-                                <option value="">Default (each) — plain count</option>
+                                <option value="">Default (pc) — counted in pieces</option>
                                 @foreach ($unitCategories as $unitCategory)
                                     <option value="{{ $unitCategory->id }}" @selected((int) old('unit_category_id', $product?->unit_category_id) === $unitCategory->id)>{{ $unitCategory->name }}</option>
                                 @endforeach

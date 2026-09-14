@@ -49,7 +49,7 @@
                                         @forelse ($rmUnits as $u)
                                             <option value="{{ $u->to_base_factor }}">{{ $u->code }}</option>
                                         @empty
-                                            <option value="1">each</option>
+                                            <option value="1">pc</option>
                                         @endforelse
                                     </select>
                                 </td>
@@ -121,7 +121,7 @@
                     <div class="field">
                         <label>Measurement</label>
                         <select name="unit_category_id" data-rm-unit-category>
-                            <option value="">Default (each) — plain count</option>
+                            <option value="">Default (pc) — counted in pieces</option>
                             @foreach ($unitCategories as $unitCategory)
                                 <option value="{{ $unitCategory->id }}">{{ $unitCategory->name }}</option>
                             @endforeach

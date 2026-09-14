@@ -214,7 +214,7 @@
                 if (matches.length) {
                     select.innerHTML = matches.map((u) => `<option value="${u.id}">${u.code}</option>`).join('');
                 } else {
-                    select.innerHTML = '<option value="">each</option>';
+                    select.innerHTML = '<option value="">pc</option>';
                 }
             }
             function fillItems(select, type) {

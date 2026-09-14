@@ -162,7 +162,7 @@
                                             <div class="req-short">sent {{ $qty($item->fulfilled_quantity) }}</div>
                                         @endif
                                     </td>
-                                    <td>{{ $item->unit?->code ?: 'each' }}</td>
+                                    <td>{{ $item->unit?->code ?: 'pc' }}</td>
                                 </tr>
                             @empty
                                 <tr><td colspan="3"><div class="empty">No items on this requisition.</div></td></tr>
@@ -249,7 +249,7 @@
                 }
 
                 const unit = VARIANT_UNIT[itemSel.value];
-                const suffix = (!unit || unit === 'ea') ? '' : ' ' + unit;
+                const suffix = ' ' + ((!unit || unit === 'ea') ? 'pc' : unit);
                 const wanted = qtyInput && qtyInput.value ? Number(qtyInput.value) : 0;
 
                 note.textContent = 'Source has ' + trimQty(available) + suffix + ' available';
@@ -283,7 +283,7 @@
                     select.innerHTML = matches.map((u) => `<option value="${u.id}">${u.code}</option>`).join('');
                     if (matches.some((u) => String(u.id) === String(current))) select.value = current;
                 } else {
-                    select.innerHTML = '<option value="">each</option>';
+                    select.innerHTML = '<option value="">pc</option>';
                 }
             }
 

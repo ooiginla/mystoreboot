@@ -12,7 +12,7 @@
     $outbound = $allocations->filter(fn ($a): bool => (float) ($a->movement?->quantity ?? 0) < 0);
 
     $unit = $batch->variant?->baseUnit?->code;
-    $unitLabel = (! $unit || $unit === 'ea') ? '' : ' '.$unit;
+    $unitLabel = ' '.((! $unit || $unit === 'ea') ? 'pc' : $unit);
 @endphp
 
 <x-layouts.admin :title="$batch->batch_number ?: 'Lot trace'">

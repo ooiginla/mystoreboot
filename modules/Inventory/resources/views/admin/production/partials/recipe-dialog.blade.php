@@ -9,7 +9,7 @@
             .'<div class="field"><label>Type</label><select data-recipe-type>'.$typeOpt('raw_material', 'Raw material').$typeOpt('product', 'Product').'</select></div>'
             .'<div class="field"><label>Ingredient</label><select name="items['.$idx.'][component_product_variant_id]" data-recipe-component data-selected="'.($selItem ?: '').'" required></select></div>'
             .'<div class="field"><label>Qty</label><input name="items['.$idx.'][quantity]" type="number" step="0.0001" min="0" value="'.e($qty).'" required></div>'
-            .'<div class="field"><label>Unit</label><select name="items['.$idx.'][unit_id]" data-recipe-unit data-selected="'.($selUnit ?: '').'"><option value="">each</option></select></div>'
+            .'<div class="field"><label>Unit</label><select name="items['.$idx.'][unit_id]" data-recipe-unit data-selected="'.($selUnit ?: '').'"><option value="">pc</option></select></div>'
             .'<div class="field"><label>Waste %</label><input name="items['.$idx.'][wastage_percent]" type="number" step="0.001" min="0" value="'.e($waste).'"></div>'
             .'<button type="button" class="btn ghost" data-remove-row aria-label="Remove">✕</button>'
             .'</div>';
@@ -42,7 +42,7 @@
                 <div class="field">
                     <label>Yield unit</label>
                     <select name="yield_unit_id">
-                        <option value="">each</option>
+                        <option value="">pc</option>
                         @foreach ($outputUnits as $u)
                             <option value="{{ $u->id }}" @selected((int) old('yield_unit_id', $recipe?->yield_unit_id) === $u->id)>{{ $u->code }}</option>
                         @endforeach

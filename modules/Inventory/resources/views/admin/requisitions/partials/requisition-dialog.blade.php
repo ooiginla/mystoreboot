@@ -12,7 +12,7 @@
             .'<div class="field"><label>Type</label><select data-req-type><option value="">All</option><option value="raw_material">Raw material</option><option value="product">Product</option></select></div>'
             .'<div class="field"><label>Product</label><select name="items['.$idx.'][product_variant_id]" data-req-product required></select></div>'
             .'<div class="field"><label>Qty</label><input name="items['.$idx.'][requested_quantity]" type="number" step="0.0001" min="0" required data-req-qty><small class="subtle" data-req-avail></small></div>'
-            .'<div class="field"><label>Unit</label><select name="items['.$idx.'][unit_id]" data-req-unit><option value="">each</option></select></div>'
+            .'<div class="field"><label>Unit</label><select name="items['.$idx.'][unit_id]" data-req-unit><option value="">pc</option></select></div>'
             .'<button type="button" class="btn ghost" data-remove-row aria-label="Remove">✕</button>'
             .'</div>';
     };
