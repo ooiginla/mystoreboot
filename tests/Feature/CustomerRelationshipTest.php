@@ -11,6 +11,9 @@ use Modules\Customers\Enums\TicketType;
 use Modules\Customers\Models\Customer;
 use Modules\Customers\Models\CustomerGroup;
 use Modules\Customers\Models\SupportTicket;
+use Modules\Sales\Enums\SalesOrderStatus;
+use Modules\Sales\Enums\SalesPaymentStatus;
+use Modules\Sales\Models\SalesOrder;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 use Tests\TestCase;
@@ -18,6 +21,47 @@ use Tests\TestCase;
 class CustomerRelationshipTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_customer_dialog_shows_overall_current_year_and_current_month_sales_values(): void
+    {
+        $this->travelTo('2026-09-14 12:00:00');
+
+        $tenant = $this->tenant();
+        $customer = Customer::query()->create([
+            'tenant_id' => $tenant->id,
+            'first_name' => 'Sales',
+            'last_name' => 'Customer',
+            'phone' => '08012345678',
+            'status' => CustomerStatus::Active->value,
+        ]);
+
+        $this->salesOrder($tenant, $customer, 'PREVIOUS-YEAR', '2025-12-15', 100000);
+        $this->salesOrder($tenant, $customer, 'CURRENT-YEAR', '2026-04-10', 200000);
+        $this->salesOrder($tenant, $customer, 'CURRENT-MONTH', '2026-09-05', 300000, 50000);
+        $this->salesOrder($tenant, $customer, 'CANCELLED', '2026-09-06', 900000, 0, SalesOrderStatus::Cancelled);
+
+        $this->assertSame(4, SalesOrder::query()->where('customer_id', $customer->id)->count());
+        $this->assertSame(
+            550000,
+            (int) SalesOrder::query()
+                ->where('customer_id', $customer->id)
+                ->where('order_status', '!=', SalesOrderStatus::Cancelled->value)
+                ->sum(\DB::raw('total_minor - refunded_minor')),
+        );
+
+        $this->actingAs(User::factory()->create(['is_platform_admin' => true]))
+            ->get(route('admin.customers.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('aria-label="Customer sales values"', false)
+            ->assertSeeInOrder([
+                'Overall sales',
+                'NGN 5,500.00',
+                'Current year sales',
+                'NGN 4,500.00',
+                'Current month sales',
+                'NGN 2,500.00',
+            ]);
+    }
 
     public function test_customer_listing_is_paginated_and_group_names_filter_customers(): void
     {
@@ -170,6 +214,31 @@ class CustomerRelationshipTest extends TestCase
             'status' => TicketStatus::Open->value,
             'subject' => 'Damaged delivery',
             'description' => 'The delivered item was damaged.',
+        ]);
+    }
+
+    private function salesOrder(
+        Tenant $tenant,
+        Customer $customer,
+        string $reference,
+        string $date,
+        int $totalMinor,
+        int $refundedMinor = 0,
+        SalesOrderStatus $status = SalesOrderStatus::Completed,
+    ): SalesOrder {
+        return SalesOrder::query()->create([
+            'tenant_id' => $tenant->id,
+            'customer_id' => $customer->id,
+            'order_number' => 'SO-'.$reference,
+            'invoice_number' => 'INV-'.$reference,
+            'receipt_number' => 'RCT-'.$reference,
+            'order_status' => $status->value,
+            'payment_status' => SalesPaymentStatus::Paid->value,
+            'order_date' => $date,
+            'total_minor' => $totalMinor,
+            'paid_minor' => $totalMinor,
+            'refunded_minor' => $refundedMinor,
+            'payment_method' => 'Cash',
         ]);
     }
 

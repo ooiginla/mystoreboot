@@ -57,7 +57,8 @@
         .btn.primary:hover { background:var(--brand-strong); }
         .btn.ghost { background:transparent; color:var(--muted); }
         .actions { margin-top:8px; }
-        .skip { display:block; text-align:center; margin-top:14px; color:var(--muted); font-size:13px; }
+        .skip { display:block; width:100%; border:0; background:transparent; text-align:center; margin-top:14px; padding:4px; color:var(--muted); font:inherit; font-size:13px; cursor:pointer; }
+        .skip:hover { color:var(--brand-strong); text-decoration:underline; }
         .alert { background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; border-radius:10px; padding:11px 13px; font-size:13.5px; margin-bottom:16px; }
         .hint { color:var(--muted); font-size:12px; }
         /* username + suffix */
@@ -174,24 +175,25 @@
 
             {{-- STEP 3: BANK --}}
             @elseif ($step === 3)
+                @php $manualBankAccountName = ! \Modules\Business\Support\BankAccountNameVerification::required($tenant); @endphp
                 <form method="POST" action="{{ route('onboarding.bank') }}"
-                      data-bank data-tenant="{{ $tenant->id }}"
+                      data-bank data-manual-name="{{ $manualBankAccountName ? '1' : '0' }}" data-tenant="{{ $tenant->id }}"
                       data-banks-url="{{ route('admin.business.banks.index', ['tenant' => $tenant->id]) }}"
                       data-resolve-url="{{ route('admin.business.resolve-account') }}">
                     @csrf
                     <div class="field">
                         <label>Your bank</label>
-                        <input type="text" autocomplete="off" placeholder="Search your bank…" data-bank-search>
+                        <input type="text" name="bank_name" autocomplete="off" placeholder="{{ $manualBankAccountName ? 'Enter bank name' : 'Search your bank…' }}" data-bank-search value="{{ old('bank_name') }}">
                         <input type="hidden" name="bank_code" data-bank-code>
                         <div class="bank-options" data-bank-options hidden></div>
                     </div>
                     <div class="field">
                         <label>Account number</label>
-                        <input type="text" name="account_number" inputmode="numeric" maxlength="10" placeholder="10-digit NUBAN" data-account-number>
+                        <input type="text" name="account_number" inputmode="{{ $manualBankAccountName ? 'text' : 'numeric' }}" maxlength="{{ $manualBankAccountName ? 80 : 10 }}" placeholder="{{ $manualBankAccountName ? 'Enter account number' : '10-digit NUBAN' }}" data-account-number value="{{ old('account_number') }}">
                     </div>
                     <div class="field">
                         <label>Account name</label>
-                        <input type="text" class="verified" readonly placeholder="Verified automatically" data-account-name>
+                        <input type="text" name="account_name" class="verified" @unless ($manualBankAccountName) readonly @endunless placeholder="{{ $manualBankAccountName ? 'Enter account name' : 'Verified automatically' }}" data-account-name value="{{ old('account_name') }}">
                         <div class="status" data-bank-status></div>
                     </div>
                     <div class="field">
@@ -199,7 +201,10 @@
                         <label class="check-card"><input type="checkbox" name="store_payment_methods[]" value="storeboot_paystack" checked> <span>Card & bank transfer <small>Secure online payments via Paystack, settled to the account above.</small></span></label>
                         <label class="check-card"><input type="checkbox" name="store_payment_methods[]" value="pay_on_delivery"> <span>Pay on delivery <small>Customer pays when the order arrives.</small></span></label>
                     </div>
-                    <div class="actions"><button class="btn primary" type="submit">Continue →</button></div>
+                    <div class="actions">
+                        <button class="btn primary" type="submit">Continue →</button>
+                        <button class="skip" type="submit" name="skip" value="1" formnovalidate>Skip bank setup for now →</button>
+                    </div>
                     @unless ($paystackConfigured)<p class="hint" style="margin-top:10px;">Bank verification isn't configured on this environment yet.</p>@endunless
                 </form>
 
@@ -335,6 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Bank picker
     const bankForm = document.querySelector('[data-bank]');
     if (bankForm) {
+        const manualName = bankForm.dataset.manualName === '1';
         const search = bankForm.querySelector('[data-bank-search]');
         const code = bankForm.querySelector('[data-bank-code]');
         const panel = bankForm.querySelector('[data-bank-options]');
@@ -353,6 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
             panel.hidden = false;
         };
         const resolve = async () => {
+            if (manualName) return;
             const n = (acct.value||'').trim();
             if (!code.value || !/^[0-9]{10}$/.test(n)) return;
             status.textContent = 'Verifying account…'; status.style.color = 'var(--muted)';
@@ -365,11 +372,11 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch(e){ status.textContent='Verification failed.'; status.style.color='var(--danger)'; }
         };
         search.addEventListener('focus', async () => { await load(); render(search.value); });
-        search.addEventListener('input', async () => { code.value=''; name.value=''; status.textContent=''; await load(); render(search.value); });
+        search.addEventListener('input', async () => { code.value=''; if (!manualName) name.value=''; status.textContent=''; await load(); render(search.value); });
         panel.addEventListener('click', (e) => { const btn = e.target.closest('[data-code]'); if(!btn) return; search.value=btn.textContent; code.value=btn.dataset.code; panel.hidden=true; resolve(); });
         document.addEventListener('click', (e) => { if(!bankForm.querySelector('.field').contains(e.target)) panel.hidden=true; });
         acct.addEventListener('blur', resolve);
-        acct.addEventListener('input', () => { if(name.value){ name.value=''; status.textContent=''; } });
+        acct.addEventListener('input', () => { if(!manualName && name.value){ name.value=''; status.textContent=''; } });
     }
 
     // Product photo autofill

@@ -31,6 +31,46 @@ class StorefrontFrontendTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_live_finished_product_is_visible_without_enabling_its_category_in_the_store_theme(): void
+    {
+        [$tenant, $store] = $this->storeFixture();
+        $category = ProductCategory::query()->create([
+            'tenant_id' => $tenant->id,
+            'category_type' => CategoryType::Product->value,
+            'name' => 'Kitchen specials',
+            'slug' => 'kitchen-specials',
+            'status' => 'active',
+        ]);
+        $product = Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'category_id' => $category->id,
+            'product_type' => ProductType::Product->value,
+            'name' => 'Kitchen Pie',
+            'slug' => 'kitchen-pie',
+            'status' => ProductStatus::Active->value,
+            'is_finished_product' => true,
+            'base_price_minor' => 250000,
+        ]);
+
+        $this->assertFalse($store->categories()->whereKey($category->id)->exists());
+        $this->get(route('storefront.storefront.store.home', $store))
+            ->assertOk()
+            ->assertSee('Kitchen Pie');
+        $this->get(route('storefront.storefront.store.products.show', [$store, $product->slug]))
+            ->assertOk()
+            ->assertSee('Kitchen Pie');
+        $this->get(route('storefront.storefront.store.sitemap', $store))
+            ->assertOk()
+            ->assertSee(route('storefront.storefront.store.products.show', [$store, $product->slug]), false);
+
+        $product->update(['status' => ProductStatus::Draft->value]);
+        $this->get(route('storefront.storefront.store.home', $store))
+            ->assertOk()
+            ->assertDontSee('Kitchen Pie');
+        $this->get(route('storefront.storefront.store.products.show', [$store, $product->slug]))
+            ->assertNotFound();
+    }
+
     public function test_public_storefront_uses_online_store_configuration(): void
     {
         [$tenant, $store] = $this->storeFixture([
@@ -709,7 +749,6 @@ class StorefrontFrontendTest extends TestCase
             'slug' => 'footwear',
             'status' => 'active',
         ]);
-        $store->categories()->attach($category->id);
         $product = Product::query()->create([
             'tenant_id' => $tenant->id,
             'category_id' => $category->id,

@@ -29,6 +29,8 @@ use Modules\Customers\Models\CustomerFollowUp;
 use Modules\Customers\Models\CustomerGroup;
 use Modules\Customers\Models\CustomerPurchase;
 use Modules\Customers\Models\SupportTicket;
+use Modules\Sales\Enums\SalesOrderStatus;
+use Modules\Sales\Models\SalesOrder;
 use Modules\Tenancy\Models\Tenant;
 
 final class CustomerRelationshipController extends Controller
@@ -46,6 +48,7 @@ final class CustomerRelationshipController extends Controller
         $groupId = $request->string('group_id')->toString();
         $status = $request->string('status')->toString();
         $ticketSearch = trim($request->string('ticket_search')->toString());
+        $today = now($tenant->timezone ?: config('app.timezone'));
 
         $customers = Customer::query()
             ->with(['group', 'purchases', 'followUps', 'tickets'])
@@ -62,12 +65,36 @@ final class CustomerRelationshipController extends Controller
             ->paginate(20, ['*'], 'customers_page')
             ->withQueryString()
             ->fragment('customers');
-
         $allCustomers = Customer::query()
             ->with(['group', 'purchases', 'followUps', 'tickets'])
             ->where('tenant_id', $tenant->id)
             ->latest()
             ->get();
+        $salesTotals = SalesOrder::query()
+            ->select('customer_id')
+            ->selectRaw('COALESCE(SUM(total_minor - refunded_minor), 0) as sales_overall_minor')
+            ->selectRaw(
+                'COALESCE(SUM(CASE WHEN order_date >= ? THEN total_minor - refunded_minor ELSE 0 END), 0) as sales_current_year_minor',
+                [$today->copy()->startOfYear()->toDateString()],
+            )
+            ->selectRaw(
+                'COALESCE(SUM(CASE WHEN order_date >= ? THEN total_minor - refunded_minor ELSE 0 END), 0) as sales_current_month_minor',
+                [$today->copy()->startOfMonth()->toDateString()],
+            )
+            ->where('tenant_id', $tenant->id)
+            ->whereNotNull('customer_id')
+            ->where('order_status', '!=', SalesOrderStatus::Cancelled->value)
+            ->whereDate('order_date', '<=', $today->toDateString())
+            ->groupBy('customer_id')
+            ->get()
+            ->keyBy('customer_id');
+        $allCustomers->each(function (Customer $customer) use ($salesTotals): void {
+            $totals = $salesTotals->get($customer->id);
+            $customer->setAttribute('sales_overall_minor', (int) ($totals?->sales_overall_minor ?? 0));
+            $customer->setAttribute('sales_current_year_minor', (int) ($totals?->sales_current_year_minor ?? 0));
+            $customer->setAttribute('sales_current_month_minor', (int) ($totals?->sales_current_month_minor ?? 0));
+        });
+
         $groups = CustomerGroup::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
         $followUps = CustomerFollowUp::query()->with('customer')->where('tenant_id', $tenant->id)->where('status', FollowUpStatus::Pending->value)->oldest('due_date')->get();
         $ticketQuery = SupportTicket::query()->with(['customer', 'assignee', 'responses.user'])->where('tenant_id', $tenant->id);

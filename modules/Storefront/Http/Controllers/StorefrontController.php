@@ -267,11 +267,10 @@ final class StorefrontController extends Controller
     public function sitemap(OnlineStore $store): Response
     {
         $store = $this->preparedStore($store);
-        $categoryIds = $store->categories->pluck('id');
         $products = Product::query()
             ->where('tenant_id', $store->tenant_id)
             ->where('status', ProductStatus::Active->value)
-            ->when($categoryIds->isNotEmpty(), fn ($query) => $query->whereIn('category_id', $categoryIds))
+            ->whereIn('product_type', [ProductType::Product->value, ProductType::Service->value])
             ->get(['id', 'slug', 'product_type', 'updated_at']);
         $urls = collect([[
             'loc' => StorefrontUrl::route($store),
@@ -538,16 +537,14 @@ final class StorefrontController extends Controller
                     ->whereIn('id', collect($data['items'])->pluck('product_variant_id')->unique()->all())
                     ->get()
                     ->keyBy('id');
-                $categoryIds = $store->categories->pluck('id');
-
-                $items = collect($data['items'])->map(function (array $item) use ($store, $variantLookup, $categoryIds): array {
+                $items = collect($data['items'])->map(function (array $item) use ($store, $variantLookup): array {
                     $variant = $variantLookup->get($item['product_variant_id']);
 
                     abort_unless(
                         $variant
                         && $variant->product
                         && $variant->product->status === ProductStatus::Active
-                        && ($categoryIds->isEmpty() || $categoryIds->contains($variant->product->category_id)),
+                        && in_array($variant->product->product_type, ProductType::sellable(), true),
                         422,
                         'One or more cart items are unavailable.',
                     );
@@ -1015,8 +1012,6 @@ final class StorefrontController extends Controller
 
     private function productsFor(OnlineStore $store, ProductType $type)
     {
-        $categoryIds = $store->categories->pluck('id');
-
         return Product::query()
             ->with([
                 'tenant',
@@ -1032,25 +1027,19 @@ final class StorefrontController extends Controller
             ])
             ->where('tenant_id', $store->tenant_id)
             ->where('status', ProductStatus::Active->value)
-            ->where('product_type', $type->value)
-            ->when($categoryIds->isNotEmpty(), fn ($query) => $query->whereIn('category_id', $categoryIds));
+            ->where('product_type', $type->value);
     }
 
     private function showCatalogItem(OnlineStore $store, string $slug, ProductType $type): View
     {
         $store = $this->preparedStore($store);
-        $categoryIds = $store->categories->pluck('id');
         $product = Product::query()
             ->where('tenant_id', $store->tenant_id)
             ->where('slug', $slug)
             ->where('product_type', $type->value)
             ->firstOrFail();
 
-        abort_unless(
-            $product->status === ProductStatus::Active
-            && ($categoryIds->isEmpty() || $categoryIds->contains($product->category_id)),
-            404,
-        );
+        abort_unless($product->status === ProductStatus::Active, 404);
 
         $product->load([
             'badges' => fn ($query) => $query->where('is_visible', true),

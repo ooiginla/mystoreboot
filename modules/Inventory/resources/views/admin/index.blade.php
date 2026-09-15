@@ -26,6 +26,11 @@
         .report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         .report-card { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: #fff; }
         .movement-note { max-width: 260px; }
+        /* Quantity and its unit read as one control: [ 25 | kg ▾ ]. */
+        .qty-unit { display: flex; align-items: stretch; }
+        .qty-unit input { flex: 1; min-width: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+        .qty-unit select { flex: 0 0 auto; width: auto; min-width: 88px; margin-left: -1px; border-top-left-radius: 0; border-bottom-left-radius: 0; background-color: #f9fafb; font-weight: 700; }
+        .qty-unit select:disabled { color: #344054; opacity: 1; cursor: default; }
         @media (max-width: 900px) {
             .report-grid { grid-template-columns: 1fr; }
             .inventory-actions { width: 100%; }
@@ -404,37 +409,106 @@
 
     <script>
         (function () {
-            const VARIANT_UNITS = @json($variantUnits ?? []);
-            function refresh(picker) {
-                if (! picker) return;
-                const dialog = picker.closest('dialog');
-                if (! dialog) return;
-                const unitSel = dialog.querySelector('[data-movement-unit]');
-                const field = dialog.querySelector('[data-measurement-field]');
-                const hint = dialog.querySelector('[data-measurement-hint]');
-                if (! unitSel || ! field) return;
-                const variantId = picker.querySelector('[data-variant-value]')?.value;
-                const units = VARIANT_UNITS[variantId] || [];
-                if (units.length) {
-                    unitSel.innerHTML = units.map((u) => `<option value="${u.id}">${u.code}</option>`).join('');
-                    field.hidden = false;
-                    if (hint) hint.hidden = false;
-                } else {
-                    unitSel.innerHTML = '';
-                    field.hidden = true;
-                    if (hint) hint.hidden = true;
-                }
+            // Units each item can be counted in, smallest first. An item with no measurement
+            // set gets one fixed unit ("pc") with no id, which is shown but never submitted.
+            // Stock per location is held in the base unit (factor 1).
+            const UNITS = @json($reorderUnits ?? []);
+            const LEVELS = @json($reorderLevels ?? []);
+            const DIALOGS = '#movement-dialog, #transfer-dialog';
+            const fmt = (n) => (Math.round(n * 10000) / 10000).toLocaleString(undefined, { maximumFractionDigits: 4 });
+
+            function parts(dialog) {
+                const picker = dialog.querySelector('[data-variant-picker]');
+                const variantId = picker?.querySelector('[data-variant-value]')?.value || '';
+                return {
+                    variantId,
+                    units: variantId ? (UNITS[variantId] || []) : [],
+                    unit: dialog.querySelector('[data-movement-unit]'),
+                    qty: dialog.querySelector('[data-qty-input]'),
+                    hint: dialog.querySelector('[data-measurement-hint]'),
+                    location: dialog.querySelector('select[name="inventory_location_id"]'),
+                };
             }
-            // Defer on input so the layout's handler has set [data-variant-value] first;
-            // also handle change (fired when an item is chosen from the results).
+
+            // Rebuild the unit list for the chosen item, starting on the unit stock is kept in.
+            function loadUnits(dialog) {
+                const p = parts(dialog);
+                if (!p.unit) return;
+
+                if (!p.units.length) {
+                    p.unit.innerHTML = '<option value="">—</option>';
+                    p.unit.disabled = true;
+                } else {
+                    p.unit.innerHTML = p.units.map((u) =>
+                        `<option value="${u.id ?? ''}" data-factor="${u.factor}" data-code="${u.code}">${u.code}</option>`
+                    ).join('');
+                    const base = p.units.findIndex((u) => u.factor === 1);
+                    p.unit.selectedIndex = base >= 0 ? base : 0;
+                    // A plain count has nothing to choose and nothing to convert.
+                    p.unit.disabled = p.units.length === 1 && p.units[0].id === null;
+                }
+
+                describe(dialog);
+            }
+
+            // One line under the quantity: what the stock is kept in, the conversion, and what is there.
+            function describe(dialog) {
+                const p = parts(dialog);
+                if (!p.hint || !p.unit) return;
+
+                if (!p.variantId || !p.units.length) {
+                    p.hint.textContent = 'Choose an item to see how it is measured.';
+                    return;
+                }
+
+                const option = p.unit.selectedOptions[0];
+                const factor = parseFloat(option?.dataset.factor) || 1;
+                const code = option?.dataset.code || '';
+                const base = p.units.find((u) => u.factor === 1) || p.units[0];
+                const qty = parseFloat(p.qty?.value);
+                const bits = [];
+
+                if (p.units.length === 1 && p.units[0].id === null) {
+                    bits.push(`Counted in ${code}`);
+                } else if (factor !== 1) {
+                    bits.push(qty > 0
+                        ? `${fmt(qty)} ${code} = ${fmt(qty * factor)} ${base.code} in stock`
+                        : `Stock is kept in ${base.code} — ${code} is converted automatically`);
+                } else {
+                    bits.push(`Stock is kept in ${code}`);
+                }
+
+                if (p.location?.value) {
+                    const level = (LEVELS[p.variantId] || {})[p.location.value];
+                    const place = p.location.selectedOptions[0]?.textContent.trim() || 'this location';
+                    bits.push(`${fmt((level ? level.available : 0) / factor)} ${code} available at ${place}`);
+                }
+
+                p.hint.textContent = bits.join(' · ');
+            }
+
+            const dialogOf = (el) => el.closest ? el.closest(DIALOGS) : null;
+
+            // Defer on input so the picker has set [data-variant-value] first; change fires when
+            // an item is chosen from the results, and a click covers picking from the list.
             document.addEventListener('input', function (e) {
-                const search = e.target.closest('[data-variant-search]');
-                if (search) setTimeout(function () { refresh(search.closest('[data-variant-picker]')); }, 0);
+                const dialog = dialogOf(e.target);
+                if (!dialog) return;
+                if (e.target.closest('[data-variant-search]')) setTimeout(() => loadUnits(dialog), 0);
+                else if (e.target.matches('[data-qty-input]')) describe(dialog);
             });
             document.addEventListener('change', function (e) {
-                const search = e.target.closest('[data-variant-search]');
-                if (search) refresh(search.closest('[data-variant-picker]'));
+                const dialog = dialogOf(e.target);
+                if (!dialog) return;
+                if (e.target.closest('[data-variant-search]')) loadUnits(dialog);
+                else if (e.target.matches('[data-movement-unit], select[name="inventory_location_id"]')) describe(dialog);
             });
+            document.addEventListener('click', function (e) {
+                const dialog = dialogOf(e.target);
+                if (dialog && e.target.closest('[data-variant-search-options]')) setTimeout(() => loadUnits(dialog), 0);
+            });
+
+            document.querySelectorAll(DIALOGS).forEach(loadUnits);
         })();
     </script>
 </x-layouts.admin>

@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Mail\TenantWelcomeMail;
 use App\Mail\VerifyEmailMail;
 use App\Models\User;
+use App\Support\Geo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
 use Modules\Finance\Models\FinanceExpenseCategory;
@@ -70,6 +72,72 @@ class TenantSignupTest extends TestCase
 
         // New tenants are sent to the onboarding wizard before the admin area.
         $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_signup_offers_all_iso_countries_and_configures_togo(): void
+    {
+        Mail::fake();
+        $this->app->detectEnvironment(fn (): string => 'local');
+        $this->withSession(['_token' => 'togo-signup-token']);
+
+        $this->get(route('register'))
+            ->assertOk()
+            ->assertSee('Afghanistan')
+            ->assertSee('<option value="TG"', false)
+            ->assertSee('Togo')
+            ->assertSee('Vatican City');
+
+        $this->assertCount(249, Geo::countries());
+        $this->assertCount(249, array_unique(array_column(Geo::countries(), 'code')));
+
+        $this->post(route('register.store'), [
+            '_token' => 'togo-signup-token',
+            'business_name' => 'Lome Retail',
+            'business_category' => 'retail',
+            'city' => 'Lome',
+            'country' => 'TG',
+            'name' => 'Togo Owner',
+            'email' => 'owner@lome.test',
+            'phone' => '+22890123456',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ])->assertRedirect(route('verification.notice'));
+
+        $tenant = Tenant::query()->where('slug', 'lome-retail')->firstOrFail();
+
+        $this->assertSame('TG', $tenant->country_code);
+        $this->assertSame('Africa/Lome', $tenant->timezone);
+        $this->assertSame('XOF', $tenant->currency_code);
+    }
+
+    public function test_bank_setup_can_be_skipped_during_onboarding(): void
+    {
+        $user = User::factory()->create();
+        $tenant = Tenant::query()->create([
+            'name' => 'Skip Bank Shop',
+            'slug' => 'skip-bank-shop',
+            'status' => TenantStatus::Trialing,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+            'settings' => ['onboarding' => ['completed' => false, 'step' => 3]],
+        ]);
+        TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $user->id,
+            'status' => MembershipStatus::Active,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('onboarding.step', ['step' => 3]))
+            ->assertOk()
+            ->assertSee('Skip bank setup for now');
+
+        $this->post(route('onboarding.bank'), ['skip' => '1'])
+            ->assertRedirect(route('onboarding.step', ['step' => 4]));
+
+        $this->assertSame(4, $tenant->refresh()->settings['onboarding']['step']);
     }
 
     public function test_new_tenant_can_sign_up_and_verify_email(): void

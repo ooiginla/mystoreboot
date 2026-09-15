@@ -34,6 +34,7 @@ use Modules\Business\Models\Branch;
 use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Business\Models\Department;
 use Modules\Business\Models\OnlineStore;
+use Modules\Business\Support\BankAccountNameVerification;
 use Modules\Business\Support\OnlineStoreContentDefaults;
 use Modules\Business\Support\PaystackDirectory;
 use Modules\Business\Support\SafeRichText;
@@ -302,6 +303,11 @@ final class BusinessSetupController extends Controller
             'bank_code' => ['required', 'string', 'max:20'],
         ]);
         $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+        $tenant = Tenant::query()->findOrFail($data['tenant_id']);
+
+        if (! BankAccountNameVerification::required($tenant)) {
+            return response()->json(['message' => 'Enter the account name manually for this business profile.'], 422);
+        }
 
         $result = $paystack->resolveAccount($data['account_number'], $data['bank_code']);
 
@@ -323,15 +329,20 @@ final class BusinessSetupController extends Controller
             'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
             'payout_mode' => ['nullable', Rule::in(array_column(PayoutMode::cases(), 'value'))],
             'settlement_bank_code' => ['nullable', 'string', 'max:20'],
-            'settlement_account_number' => ['nullable', 'string', 'regex:/^[0-9]{10}$/'],
+            'settlement_account_number' => BankAccountNameVerification::required($tenant)
+                ? ['nullable', 'string', 'regex:/^[0-9]{10}$/']
+                : ['nullable', 'string', 'max:80'],
+            'settlement_bank_name' => ['nullable', 'string', 'max:140'],
+            'settlement_account_name' => ['nullable', 'string', 'max:160'],
         ]);
 
         $settings = $tenant->settings ?? [];
         $paystack = app(PaystackDirectory::class);
 
         // The bank/subaccount profile is editable by anyone with business-settings access.
-        // Bank name + account name are always taken from Paystack — never trusted from the client.
-        if (filled($data['settlement_bank_code'] ?? null) && filled($data['settlement_account_number'] ?? null)) {
+        // Nigerian/NGN account names come from Paystack; other profiles enter them manually.
+        if (filled($data['settlement_bank_code'] ?? null) && filled($data['settlement_account_number'] ?? null)
+            && BankAccountNameVerification::required($tenant)) {
             $currency = $tenant->currency_code ?: 'NGN';
 
             abort_unless($paystack->isValidBankCode($data['settlement_bank_code'], $currency), 422, 'Select a valid bank.');
@@ -347,6 +358,18 @@ final class BusinessSetupController extends Controller
                 'bank_code' => $data['settlement_bank_code'],
                 'account_number' => $data['settlement_account_number'],
                 'account_name' => $result['account_name'],
+            ]);
+        } elseif (filled($data['settlement_account_number'] ?? null) && ! BankAccountNameVerification::required($tenant)) {
+            $accountName = trim((string) ($data['settlement_account_name'] ?? ''));
+            if ($accountName === '') {
+                return back()->withErrors(['settlement_account_name' => 'Enter the account name.'])->withInput();
+            }
+
+            $settings['payout'] = array_merge((array) ($settings['payout'] ?? []), [
+                'bank_name' => trim((string) ($data['settlement_bank_name'] ?? '')) ?: null,
+                'bank_code' => $data['settlement_bank_code'] ?? null,
+                'account_number' => $data['settlement_account_number'],
+                'account_name' => $accountName,
             ]);
         }
 
@@ -506,25 +529,37 @@ final class BusinessSetupController extends Controller
         $user = $request->user();
         $this->authorizeTenantIdAccess($user, $data['tenant_id']);
 
-        // Storeboot Paystack settlement: verify the bank account with Paystack and take the
-        // bank name + account name from Paystack (never trusted from the client).
         $settlement = (array) ($data['settlement_bank_account'] ?? []);
-        if (filled($settlement['bank_code'] ?? null) && preg_match('/^[0-9]{10}$/', (string) ($settlement['account_number'] ?? ''))) {
+        $tenant = Tenant::query()->findOrFail($data['tenant_id']);
+        $verifyAccountName = BankAccountNameVerification::required($tenant);
+        if (! $verifyAccountName && filled($settlement['account_number'] ?? null)) {
+            if (trim((string) ($settlement['account_name'] ?? '')) === '') {
+                return back()->withErrors(['settlement_bank_account.account_name' => 'Enter the settlement account name.'])->withInput();
+            }
+            $data['settlement_bank_account'] = $settlement;
+        }
+
+        if (filled($settlement['bank_code'] ?? null)
+            && ($verifyAccountName
+                ? preg_match('/^[0-9]{10}$/', (string) ($settlement['account_number'] ?? ''))
+                : filled($settlement['account_number'] ?? null))) {
             $paystack = app(PaystackDirectory::class);
-            $currency = Tenant::query()->whereKey($data['tenant_id'])->value('currency_code') ?: 'NGN';
+            $currency = $tenant->currency_code ?: 'NGN';
 
-            if (! $paystack->isValidBankCode((string) $settlement['bank_code'], $currency)) {
-                return back()->withErrors(['settlement_bank_account.bank_code' => 'Select a valid bank.'])->withInput();
+            if ($verifyAccountName) {
+                if (! $paystack->isValidBankCode((string) $settlement['bank_code'], $currency)) {
+                    return back()->withErrors(['settlement_bank_account.bank_code' => 'Select a valid bank.'])->withInput();
+                }
+
+                $resolved = $paystack->resolveAccount((string) $settlement['account_number'], (string) $settlement['bank_code']);
+
+                if (! $resolved['ok']) {
+                    return back()->withErrors(['settlement_bank_account.account_number' => $resolved['message'] ?? 'We could not verify this account.'])->withInput();
+                }
+
+                $settlement['bank_name'] = $paystack->bankName((string) $settlement['bank_code'], $currency) ?: ($settlement['bank_name'] ?? null);
+                $settlement['account_name'] = $resolved['account_name'];
             }
-
-            $resolved = $paystack->resolveAccount((string) $settlement['account_number'], (string) $settlement['bank_code']);
-
-            if (! $resolved['ok']) {
-                return back()->withErrors(['settlement_bank_account.account_number' => $resolved['message'] ?? 'We could not verify this account.'])->withInput();
-            }
-
-            $settlement['bank_name'] = $paystack->bankName((string) $settlement['bank_code'], $currency) ?: ($settlement['bank_name'] ?? null);
-            $settlement['account_name'] = $resolved['account_name'];
 
             // Create/update the Paystack subaccount so Paystack settles the merchant's
             // share directly to this bank (direct settlement).
@@ -543,7 +578,7 @@ final class BusinessSetupController extends Controller
                 $settlement['subaccount_code'] = $subaccount['subaccount_code'];
             } else {
                 $settlement['subaccount_code'] = $existingCode;
-                session()->flash('payout_warning', 'Your bank was verified, but Storeboot could not set up direct settlement yet: '.($subaccount['message'] ?? 'please try again').'.');
+                session()->flash('payout_warning', 'Storeboot could not set up direct settlement yet: '.($subaccount['message'] ?? 'please try again').'.');
             }
 
             $data['settlement_bank_account'] = $settlement;
@@ -1100,11 +1135,18 @@ final class BusinessSetupController extends Controller
      */
     private function savePaymentAccount(array $data, ?BusinessPaymentAccount $paymentAccount = null): BusinessPaymentAccount
     {
-        // When a bank + 10-digit account are supplied, verify with Paystack and take the
-        // bank name + account name from Paystack (never trusted from the client).
-        if (filled($data['bank_code'] ?? null) && preg_match('/^[0-9]{10}$/', (string) ($data['account_number'] ?? ''))) {
+        $tenant = Tenant::query()->findOrFail($data['tenant_id']);
+        if (! BankAccountNameVerification::required($tenant)
+            && filled($data['account_number'] ?? null)
+            && trim((string) ($data['account_name'] ?? '')) === '') {
+            throw ValidationException::withMessages(['account_name' => 'Enter the account name.']);
+        }
+
+        if (BankAccountNameVerification::required($tenant)
+            && filled($data['bank_code'] ?? null)
+            && preg_match('/^[0-9]{10}$/', (string) ($data['account_number'] ?? ''))) {
             $paystack = app(PaystackDirectory::class);
-            $currency = Tenant::query()->whereKey($data['tenant_id'])->value('currency_code') ?: 'NGN';
+            $currency = $tenant->currency_code ?: 'NGN';
 
             if (! $paystack->isValidBankCode((string) $data['bank_code'], $currency)) {
                 throw ValidationException::withMessages(['bank_code' => 'Select a valid bank.']);

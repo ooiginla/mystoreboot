@@ -6,14 +6,15 @@ namespace Modules\Business\Actions;
 
 use Illuminate\Validation\ValidationException;
 use Modules\Business\Models\BusinessPaymentAccount;
+use Modules\Business\Support\BankAccountNameVerification;
 use Modules\Business\Support\PaystackDirectory;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Tenancy\Models\Tenant;
 
 /**
  * Creates or updates a business payment (receiving) account and its linked finance
- * account. When a bank code + 10-digit account number are supplied, the account is
- * verified with Paystack and the bank/account names are taken from Paystack.
+ * account. Nigerian/NGN accounts with a bank code and 10-digit account number are
+ * verified with Paystack; other profiles supply the account name themselves.
  *
  * Shared by Business Setup and the onboarding wizard.
  */
@@ -26,8 +27,16 @@ final class SavePaymentAccountAction
      */
     public function execute(array $data, ?BusinessPaymentAccount $paymentAccount = null): BusinessPaymentAccount
     {
-        if (filled($data['bank_code'] ?? null) && preg_match('/^[0-9]{10}$/', (string) ($data['account_number'] ?? ''))) {
-            $currency = Tenant::query()->whereKey($data['tenant_id'])->value('currency_code') ?: 'NGN';
+        $tenant = Tenant::query()->findOrFail($data['tenant_id']);
+        if (! BankAccountNameVerification::required($tenant)
+            && filled($data['account_number'] ?? null)
+            && trim((string) ($data['account_name'] ?? '')) === '') {
+            throw ValidationException::withMessages(['account_name' => 'Enter the account name.']);
+        }
+        if (BankAccountNameVerification::required($tenant)
+            && filled($data['bank_code'] ?? null)
+            && preg_match('/^[0-9]{10}$/', (string) ($data['account_number'] ?? ''))) {
+            $currency = $tenant->currency_code ?: 'NGN';
 
             if (! $this->paystack->isValidBankCode((string) $data['bank_code'], $currency)) {
                 throw ValidationException::withMessages(['bank_code' => 'Select a valid bank.']);

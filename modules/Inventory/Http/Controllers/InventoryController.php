@@ -144,13 +144,6 @@ final class InventoryController extends Controller
             'prepStations' => $locations->filter(
                 fn (InventoryLocation $location): bool => (bool) $location->is_prep_station,
             )->values(),
-            'variantUnits' => $variants->mapWithKeys(fn ($variant): array => [
-                $variant->id => ($variant->product?->unitCategory?->units ?? collect())
-                    ->filter(fn ($unit): bool => $unit->isConvertible())
-                    ->map(fn ($unit): array => ['id' => $unit->id, 'code' => $unit->code])
-                    ->values()
-                    ->all(),
-            ])->all(),
             'reorderUnits' => $variants->mapWithKeys(fn (ProductVariant $variant): array => [
                 $variant->id => \Modules\Inventory\Support\ReorderLevels::unitsOf($variant),
             ])->all(),

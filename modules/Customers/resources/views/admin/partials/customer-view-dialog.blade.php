@@ -6,6 +6,11 @@
             <div class="summary-item"><span>Account balance</span><strong>{{ $tenant->currency_code }} {{ $money($customer->account_balance_minor) }}</strong></div>
             <div class="summary-item"><span>Loyalty</span><strong>{{ $customer->loyalty_points }} pts</strong></div>
         </div>
+        <div class="summary-grid" style="margin-top: 14px;" aria-label="Customer sales values">
+            <div class="summary-item"><span>Overall sales</span><strong>{{ $tenant->currency_code }} {{ $money((int) $customer->sales_overall_minor) }}</strong></div>
+            <div class="summary-item"><span>Current year sales</span><strong>{{ $tenant->currency_code }} {{ $money((int) $customer->sales_current_year_minor) }}</strong></div>
+            <div class="summary-item"><span>Current month sales</span><strong>{{ $tenant->currency_code }} {{ $money((int) $customer->sales_current_month_minor) }}</strong></div>
+        </div>
         <nav class="pill-nav" style="position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 16px;" aria-label="Customer sections">
             <a href="#customer-history-{{ $customer->id }}" class="active" data-local-tab-target="customer-history-{{ $customer->id }}">History</a>
             <a href="#customer-followups-{{ $customer->id }}" data-local-tab-target="customer-followups-{{ $customer->id }}">Follow-ups</a>

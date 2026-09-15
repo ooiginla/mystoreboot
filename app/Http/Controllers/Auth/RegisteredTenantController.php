@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\TenantWelcomeMail;
 use App\Mail\VerifyEmailMail;
 use App\Models\User;
+use App\Support\Geo;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -366,36 +367,28 @@ final class RegisteredTenantController extends Controller
      */
     private function countries(): array
     {
-        return [
-            'NG' => 'Nigeria',
-            'GH' => 'Ghana',
-            'KE' => 'Kenya',
-            'ZA' => 'South Africa',
-            'GB' => 'United Kingdom',
-            'US' => 'United States',
-        ];
+        return collect(Geo::countries())->pluck('name', 'code')->all();
     }
 
     private function timezoneFor(string $country): string
     {
-        return match ($country) {
-            'GH', 'GB' => 'UTC',
-            'KE' => 'Africa/Nairobi',
-            'ZA' => 'Africa/Johannesburg',
-            'US' => 'America/New_York',
-            default => 'Africa/Lagos',
-        };
+        return $this->countryDetails($country)['timezone'];
     }
 
     private function currencyFor(string $country): string
     {
-        return match ($country) {
-            'GH' => 'GHS',
-            'KE' => 'KES',
-            'ZA' => 'ZAR',
-            'GB' => 'GBP',
-            'US' => 'USD',
-            default => 'NGN',
-        };
+        return $this->countryDetails($country)['currency'];
+    }
+
+    /**
+     * @return array{code: string, name: string, currency: string, timezone: string}
+     */
+    private function countryDetails(string $country): array
+    {
+        $details = collect(Geo::countries())->firstWhere('code', $country);
+
+        abort_unless(is_array($details), 422, 'Select a valid country.');
+
+        return $details;
     }
 }

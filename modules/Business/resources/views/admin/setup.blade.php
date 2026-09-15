@@ -1,5 +1,6 @@
 @php
     $onlineStoreOnly = (bool) ($onlineStoreOnly ?? false);
+    $manualBankAccountName = $tenant && ! \Modules\Business\Support\BankAccountNameVerification::required($tenant);
     $publicImageUrl = fn (?string $path): ?string => $path ? '/storage/'.ltrim($path, '/') : null;
     $days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
     $hours = old('opening_hours', $tenant?->opening_hours ?? []);
@@ -1049,20 +1050,20 @@
                                         <div class="field"><label>Self Hosted Paystack Live Public Key</label><input name="paystack[public_key]" value="{{ $onlinePaystack['public_key'] ?? '' }}"><span class="subtle">Required only when Self Hosted Paystack is selected.</span></div>
                                         <div class="field"><label>Self Hosted Paystack Live Private Key</label><input name="paystack[private_key]" value="{{ $onlinePaystack['private_key'] ?? '' }}"><span class="subtle">Required only when Self Hosted Paystack is selected.</span></div>
                                     </div>
-                                    <div data-paystack-settlement-bank-fields data-bank-picker data-tenant="{{ $tenant->id }}" data-banks-url="{{ route('admin.business.banks.index', ['tenant' => $tenant->id]) }}" data-resolve-url="{{ route('admin.business.resolve-account') }}" @if ($onlinePaystackMethod !== 'storeboot_paystack') hidden @endif>
-                                        <p class="subtle" style="margin:0 0 10px;">Storeboot settles your online Paystack earnings to this bank account. We verify the account name automatically.</p>
+                                    <div data-paystack-settlement-bank-fields data-bank-picker data-manual-name="{{ $manualBankAccountName ? '1' : '0' }}" data-tenant="{{ $tenant->id }}" data-banks-url="{{ route('admin.business.banks.index', ['tenant' => $tenant->id]) }}" data-resolve-url="{{ route('admin.business.resolve-account') }}" @if ($onlinePaystackMethod !== 'storeboot_paystack') hidden @endif>
+                                        <p class="subtle" style="margin:0 0 10px;">Storeboot settles your online Paystack earnings to this bank account. {{ $manualBankAccountName ? 'Enter the account name as it appears at your bank.' : 'We verify the account name automatically.' }}</p>
                                         <div class="form-grid">
                                             <div class="field" style="position:relative;">
                                                 <label>Settlement bank</label>
-                                                <input type="text" autocomplete="off" placeholder="Search your bank…" data-bank-search value="{{ $onlineSettlementBank['bank_name'] ?? '' }}">
+                                                <input type="text" autocomplete="off" placeholder="{{ $manualBankAccountName ? 'Enter bank name' : 'Search your bank…' }}" data-bank-search value="{{ $onlineSettlementBank['bank_name'] ?? '' }}">
                                                 <input type="hidden" name="settlement_bank_account[bank_name]" data-bank-provider value="{{ $onlineSettlementBank['bank_name'] ?? '' }}">
                                                 <input type="hidden" name="settlement_bank_account[bank_code]" data-bank-code value="{{ $onlineSettlementBank['bank_code'] ?? '' }}">
                                                 <div class="variant-search-options" data-bank-options hidden></div>
                                             </div>
-                                            <div class="field"><label>Settlement account number</label><input name="settlement_bank_account[account_number]" inputmode="numeric" maxlength="10" placeholder="10-digit NUBAN" data-account-number value="{{ $onlineSettlementBank['account_number'] ?? '' }}"></div>
+                                            <div class="field"><label>Settlement account number</label><input name="settlement_bank_account[account_number]" inputmode="{{ $manualBankAccountName ? 'text' : 'numeric' }}" maxlength="{{ $manualBankAccountName ? 80 : 10 }}" placeholder="{{ $manualBankAccountName ? 'Enter account number' : '10-digit NUBAN' }}" data-account-number value="{{ $onlineSettlementBank['account_number'] ?? '' }}"></div>
                                             <div class="field full">
-                                                <label>Settlement account name <span class="subtle" style="font-weight:500;">(verified)</span></label>
-                                                <input type="text" name="settlement_bank_account[account_name]" readonly placeholder="Verified automatically after the account number" data-account-name value="{{ $onlineSettlementBank['account_name'] ?? '' }}" style="background:var(--panel-soft);">
+                                                <label>Settlement account name @unless ($manualBankAccountName)<span class="subtle" style="font-weight:500;">(verified)</span>@endunless</label>
+                                                <input type="text" name="settlement_bank_account[account_name]" @unless ($manualBankAccountName) readonly @endunless placeholder="{{ $manualBankAccountName ? 'Enter account name' : 'Verified automatically after the account number' }}" data-account-name value="{{ $onlineSettlementBank['account_name'] ?? '' }}" @unless ($manualBankAccountName) style="background:var(--panel-soft);" @endunless>
                                                 <p class="subtle" data-bank-status style="font-size:12px; margin:6px 0 0;"></p>
                                             </div>
                                             @if ($isPlatformAdmin)
@@ -1631,19 +1632,19 @@
                         <div class="form-grid">
                             <div class="field"><label>Identifier</label><input name="identifier" required placeholder="Moniepoint Ikeja POS 001"></div>
                             <div class="field"><label>Type</label><select name="account_type" required><option value="normal">Normal</option><option value="virtual">Virtual</option></select></div>
-                            <div class="field full" data-bank-picker data-tenant="{{ $tenant->id }}" data-banks-url="{{ route('admin.business.banks.index', ['tenant' => $tenant->id]) }}" data-resolve-url="{{ route('admin.business.resolve-account') }}">
+                            <div class="field full" data-bank-picker data-manual-name="{{ $manualBankAccountName ? '1' : '0' }}" data-tenant="{{ $tenant->id }}" data-banks-url="{{ route('admin.business.banks.index', ['tenant' => $tenant->id]) }}" data-resolve-url="{{ route('admin.business.resolve-account') }}">
                                 <div class="form-grid">
                                     <div class="field" style="position:relative;">
                                         <label>Bank / provider</label>
-                                        <input type="text" autocomplete="off" placeholder="Search your bank…" data-bank-search>
+                                        <input type="text" autocomplete="off" placeholder="{{ $manualBankAccountName ? 'Enter bank name or provider' : 'Search your bank…' }}" data-bank-search>
                                         <input type="hidden" name="provider_name" data-bank-provider>
                                         <input type="hidden" name="bank_code" data-bank-code>
                                         <div class="variant-search-options" data-bank-options hidden></div>
                                     </div>
-                                    <div class="field"><label>Account number</label><input name="account_number" inputmode="numeric" maxlength="10" placeholder="10-digit NUBAN" data-account-number></div>
+                                    <div class="field"><label>Account number</label><input name="account_number" inputmode="{{ $manualBankAccountName ? 'text' : 'numeric' }}" maxlength="{{ $manualBankAccountName ? 100 : 10 }}" placeholder="{{ $manualBankAccountName ? 'Enter account number' : '10-digit NUBAN' }}" data-account-number></div>
                                     <div class="field full">
-                                        <label>Account name <span class="subtle" style="font-weight:500;">(verified)</span></label>
-                                        <input type="text" name="account_name" readonly placeholder="Verified automatically after the account number" data-account-name style="background:var(--panel-soft);">
+                                        <label>Account name @unless ($manualBankAccountName)<span class="subtle" style="font-weight:500;">(verified)</span>@endunless</label>
+                                        <input type="text" name="account_name" @unless ($manualBankAccountName) readonly @endunless placeholder="{{ $manualBankAccountName ? 'Enter account name' : 'Verified automatically after the account number' }}" data-account-name @unless ($manualBankAccountName) style="background:var(--panel-soft);" @endunless>
                                         <p class="subtle" data-bank-status style="font-size:12px; margin:6px 0 0;"></p>
                                     </div>
                                 </div>
@@ -1675,19 +1676,19 @@
                             <div class="form-grid">
                                 <div class="field"><label>Identifier</label><input name="identifier" required value="{{ $account->identifier }}"></div>
                                 <div class="field"><label>Type</label><select name="account_type" required><option value="normal" @selected($account->account_type === 'normal')>Normal</option><option value="virtual" @selected($account->account_type === 'virtual')>Virtual</option></select></div>
-                                <div class="field full" data-bank-picker data-tenant="{{ $tenant->id }}" data-banks-url="{{ route('admin.business.banks.index', ['tenant' => $tenant->id]) }}" data-resolve-url="{{ route('admin.business.resolve-account') }}">
+                                <div class="field full" data-bank-picker data-manual-name="{{ $manualBankAccountName ? '1' : '0' }}" data-tenant="{{ $tenant->id }}" data-banks-url="{{ route('admin.business.banks.index', ['tenant' => $tenant->id]) }}" data-resolve-url="{{ route('admin.business.resolve-account') }}">
                                     <div class="form-grid">
                                         <div class="field" style="position:relative;">
                                             <label>Bank / provider</label>
-                                            <input type="text" autocomplete="off" placeholder="Search your bank…" data-bank-search value="{{ $account->provider_name }}">
+                                            <input type="text" autocomplete="off" placeholder="{{ $manualBankAccountName ? 'Enter bank name or provider' : 'Search your bank…' }}" data-bank-search value="{{ $account->provider_name }}">
                                             <input type="hidden" name="provider_name" data-bank-provider value="{{ $account->provider_name }}">
                                             <input type="hidden" name="bank_code" data-bank-code value="{{ $account->bank_code }}">
                                             <div class="variant-search-options" data-bank-options hidden></div>
                                         </div>
-                                        <div class="field"><label>Account number</label><input name="account_number" inputmode="numeric" maxlength="10" placeholder="10-digit NUBAN" data-account-number value="{{ $account->account_number }}"></div>
+                                        <div class="field"><label>Account number</label><input name="account_number" inputmode="{{ $manualBankAccountName ? 'text' : 'numeric' }}" maxlength="{{ $manualBankAccountName ? 100 : 10 }}" placeholder="{{ $manualBankAccountName ? 'Enter account number' : '10-digit NUBAN' }}" data-account-number value="{{ $account->account_number }}"></div>
                                         <div class="field full">
-                                            <label>Account name <span class="subtle" style="font-weight:500;">(verified)</span></label>
-                                            <input type="text" name="account_name" readonly placeholder="Verified automatically after the account number" data-account-name value="{{ $account->account_name }}" style="background:var(--panel-soft);">
+                                            <label>Account name @unless ($manualBankAccountName)<span class="subtle" style="font-weight:500;">(verified)</span>@endunless</label>
+                                            <input type="text" name="account_name" @unless ($manualBankAccountName) readonly @endunless placeholder="{{ $manualBankAccountName ? 'Enter account name' : 'Verified automatically after the account number' }}" data-account-name value="{{ $account->account_name }}" @unless ($manualBankAccountName) style="background:var(--panel-soft);" @endunless>
                                             <p class="subtle" data-bank-status style="font-size:12px; margin:6px 0 0;"></p>
                                         </div>
                                     </div>
@@ -2722,6 +2723,7 @@
                 };
 
                 bankPickers.forEach((root) => {
+                    const manualName = root.dataset.manualName === '1';
                     const search = root.querySelector('[data-bank-search]');
                     const codeInput = root.querySelector('[data-bank-code]');
                     const providerInput = root.querySelector('[data-bank-provider]');
@@ -2739,8 +2741,9 @@
                             : '<div class="variant-search-empty">No banks found</div>';
                         panel.hidden = false;
                     };
-                    const resetName = () => { if (nameInput) nameInput.value = ''; if (statusEl) { statusEl.textContent = ''; statusEl.style.color = ''; } };
+                    const resetName = () => { if (!manualName && nameInput) nameInput.value = ''; if (statusEl) { statusEl.textContent = ''; statusEl.style.color = ''; } };
                     const tryResolve = async () => {
+                        if (manualName) return;
                         const number = (acct?.value || '').trim();
                         if (!codeInput.value || !/^[0-9]{10}$/.test(number)) return;
                         if (statusEl) { statusEl.textContent = 'Verifying account…'; statusEl.style.color = 'var(--muted)'; }
@@ -2771,7 +2774,7 @@
                     });
                     search.addEventListener('input', async () => {
                         codeInput.value = '';
-                        if (providerInput) providerInput.value = '';
+                        if (providerInput) providerInput.value = manualName ? search.value.trim() : '';
                         resetName();
                         const c = await loadBanks(root.dataset.banksUrl);
                         render(c.banks, search.value);

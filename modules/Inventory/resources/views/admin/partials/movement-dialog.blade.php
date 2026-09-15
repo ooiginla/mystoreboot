@@ -37,14 +37,16 @@
                     </select>
                 </div>
                 <x-variant-picker label="Product variant" class="full" enhanced />
-                <div class="field" data-measurement-field hidden>
-                    <label>Measurement unit</label>
-                    <select name="unit_id" data-movement-unit></select>
-                </div>
                 <div class="field">
-                    <label>Quantity</label>
-                    <input name="quantity" type="number" min="0" step="any" required>
-                    <small class="subtle" data-measurement-hint hidden>In the selected unit — converted to the base unit automatically.</small>
+                    <label for="movement-quantity">Quantity</label>
+                    {{-- The unit sits on the quantity itself, so "25" never goes in without saying 25 of what. --}}
+                    <div class="qty-unit">
+                        <input id="movement-quantity" name="quantity" type="number" min="0" step="any" required data-qty-input>
+                        <select name="unit_id" data-movement-unit aria-label="Measurement unit" disabled>
+                            <option value="">—</option>
+                        </select>
+                    </div>
+                    <small class="subtle" data-measurement-hint>Choose an item to see how it is measured.</small>
                 </div>
                 <div class="field">
                     <label for="movement-unit-cost">Unit cost</label>

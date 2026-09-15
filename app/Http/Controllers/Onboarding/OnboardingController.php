@@ -15,6 +15,7 @@ use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Business\Actions\SavePaymentAccountAction;
 use Modules\Business\Models\OnlineStore;
+use Modules\Business\Support\BankAccountNameVerification;
 use Modules\Business\Support\PaystackDirectory;
 use Modules\Catalog\Actions\CreateCategoryAction;
 use Modules\Catalog\Actions\DraftProductFromImageAction;
@@ -164,26 +165,44 @@ final class OnboardingController extends Controller
     public function saveBank(Request $request, SavePaymentAccountAction $savePaymentAccount, PaystackDirectory $paystack): RedirectResponse
     {
         $tenant = $this->tenant($request);
+
+        if ($request->boolean('skip')) {
+            return $this->advance($tenant, 4);
+        }
+
+        $verifyAccountName = BankAccountNameVerification::required($tenant);
         $data = $request->validate([
-            'bank_code' => ['required', 'string', 'max:20'],
-            'account_number' => ['required', 'string', 'regex:/^[0-9]{10}$/'],
+            'bank_code' => [$verifyAccountName ? 'required' : 'nullable', 'string', 'max:20'],
+            'bank_name' => [$verifyAccountName ? 'nullable' : 'required', 'string', 'max:140'],
+            'account_number' => $verifyAccountName
+                ? ['required', 'string', 'regex:/^[0-9]{10}$/']
+                : ['required', 'string', 'max:80'],
+            'account_name' => [$verifyAccountName ? 'nullable' : 'required', 'string', 'max:160'],
             'store_payment_methods' => ['nullable', 'array'],
             'store_payment_methods.*' => ['string', Rule::in(['storeboot_paystack', 'pay_on_delivery', 'place_order'])],
         ]);
 
         $currency = $tenant->currency_code ?: 'NGN';
 
-        if (! $paystack->isValidBankCode($data['bank_code'], $currency)) {
+        if ($verifyAccountName && ! $paystack->isValidBankCode($data['bank_code'], $currency)) {
             return back()->withErrors(['bank_code' => 'Select a valid bank.'])->withInput();
         }
 
-        $resolved = $paystack->resolveAccount($data['account_number'], $data['bank_code']);
-        if (! $resolved['ok']) {
-            return back()->withErrors(['account_number' => $resolved['message'] ?? 'We could not verify this account.'])->withInput();
+        $bankName = $verifyAccountName
+            ? $paystack->bankName($data['bank_code'], $currency)
+            : trim((string) $data['bank_name']);
+        if ($verifyAccountName) {
+            $resolved = $paystack->resolveAccount($data['account_number'], $data['bank_code']);
+            if (! $resolved['ok']) {
+                return back()->withErrors(['account_number' => $resolved['message'] ?? 'We could not verify this account.'])->withInput();
+            }
+            $accountName = $resolved['account_name'];
+        } else {
+            $accountName = trim((string) ($data['account_name'] ?? ''));
+            if ($accountName === '') {
+                return back()->withErrors(['account_name' => 'Enter the account name.'])->withInput();
+            }
         }
-
-        $bankName = $paystack->bankName($data['bank_code'], $currency);
-        $accountName = $resolved['account_name'];
         $store = $this->store($tenant);
 
         // 1. A receiving payment account (internal ledger + transfers).
@@ -191,8 +210,9 @@ final class OnboardingController extends Controller
             'tenant_id' => $tenant->id,
             'identifier' => $bankName.' — '.$accountName,
             'provider_name' => $bankName,
-            'bank_code' => $data['bank_code'],
+            'bank_code' => $data['bank_code'] ?? null,
             'account_number' => $data['account_number'],
+            'account_name' => $accountName,
             'account_type' => 'normal',
             'supported_payment_methods' => ['Transfer'],
             'status' => 'active',
@@ -200,17 +220,20 @@ final class OnboardingController extends Controller
 
         // 2. The Paystack settlement subaccount (direct settlement for online sales).
         $existingCode = $store->payment_settings['settlement_bank_account']['subaccount_code'] ?? null;
-        $subaccount = $paystack->createOrUpdateSubaccount([
-            'business_name' => $store->store_name ?: $tenant->name,
-            'bank_code' => $data['bank_code'],
-            'account_number' => $data['account_number'],
-            'subaccount_code' => $existingCode,
-        ]);
+        $subaccount = filled($data['bank_code'] ?? null)
+            && ($verifyAccountName ? preg_match('/^[0-9]{10}$/', $data['account_number']) : filled($data['account_number']))
+            ? $paystack->createOrUpdateSubaccount([
+                'business_name' => $store->store_name ?: $tenant->name,
+                'bank_code' => $data['bank_code'],
+                'account_number' => $data['account_number'],
+                'subaccount_code' => $existingCode,
+            ])
+            : ['ok' => false];
 
         $paymentSettings = $store->payment_settings ?? [];
         $paymentSettings['settlement_bank_account'] = [
             'bank_name' => $bankName,
-            'bank_code' => $data['bank_code'],
+            'bank_code' => $data['bank_code'] ?? null,
             'account_number' => $data['account_number'],
             'account_name' => $accountName,
             'subaccount_code' => $subaccount['ok'] ? $subaccount['subaccount_code'] : $existingCode,
