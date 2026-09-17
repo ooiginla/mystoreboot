@@ -31,6 +31,9 @@ Route::post('/production/recipes', [ProductionController::class, 'storeRecipe'])
 Route::put('/production/recipes/{recipe}', [ProductionController::class, 'updateRecipe'])->name('production.recipes.update');
 Route::delete('/production/recipes/{recipe}', [ProductionController::class, 'destroyRecipe'])->name('production.recipes.destroy');
 Route::post('/production/record', [ProductionController::class, 'record'])->name('production.record');
+Route::post('/production/start', [ProductionController::class, 'start'])->name('production.start');
+Route::post('/production/runs/{order}/complete', [ProductionController::class, 'complete'])->name('production.runs.complete');
+Route::post('/production/runs/{order}/cancel', [ProductionController::class, 'cancelRun'])->name('production.runs.cancel');
 Route::patch('/production/{product}/how-made', [ProductionController::class, 'updateStockPolicy'])->name('production.stock-policy');
 Route::get('/production/{product}', [ProductionController::class, 'show'])->name('production.show');
 

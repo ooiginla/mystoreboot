@@ -23,6 +23,9 @@ final class ProductionRequest extends FormRequest
             'recipe_id' => ['required', 'integer', 'exists:recipes,id'],
             'source_location_id' => ['required', 'integer', 'exists:inventory_locations,id'],
             'output_location_id' => ['nullable', 'integer', 'exists:inventory_locations,id'],
+            // How many the cook set out to make. Optional so older callers keep working;
+            // when absent, one batch of the recipe is the plan.
+            'planned_quantity' => ['nullable', 'numeric', 'gt:0', 'max:999999999'],
             'actual_yield_quantity' => ['required', 'numeric', 'gt:0', 'max:999999999'],
             'reference_number' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:2000'],

@@ -166,14 +166,16 @@ final class ProductionLotTest extends TestCase
             ->assertOk();
 
         // Expected yield sits beside actual so the variance is visible while typing,
-        // and is disabled because it is the recipe's number, not the cook's.
+        // and is disabled because it follows the plan, not the cook's typing.
         $response->assertSee('Expected yield')
             ->assertSee('Actual yield')
             ->assertSee('disabled', false)
+            // The plan drives the ingredient amounts.
+            ->assertSee('How many to make')
             // Availability column, filled from the chosen source store.
             ->assertSee('Available')
-            ->assertSee('Recipe qty')
-            ->assertSee('data-produce-available', false);
+            ->assertSee('Needed for')
+            ->assertSee('data-available', false);
     }
 
     public function test_the_source_picker_groups_prep_stations_first(): void

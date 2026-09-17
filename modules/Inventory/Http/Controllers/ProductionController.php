@@ -138,8 +138,16 @@ final class ProductionController extends Controller
                 ->with(['sourceLocation', 'outputLocation'])
                 ->where('tenant_id', $tenant->id)
                 ->where('output_product_variant_id', $variant->id)
-                ->latest('produced_at')
+                ->latest('id')
                 ->limit(50)
+                ->get(),
+            // Batches started and not yet finished — shown first, with their held ingredients.
+            'inProgress' => ProductionOrder::query()
+                ->with(['sourceLocation', 'outputLocation', 'items.componentVariant.product', 'items.unit'])
+                ->where('tenant_id', $tenant->id)
+                ->where('output_product_variant_id', $variant->id)
+                ->where('status', ProductionOrder::STATUS_IN_PROGRESS)
+                ->oldest('started_at')
                 ->get(),
             'locations' => InventoryLocation::query()->where('tenant_id', $tenant->id)->orderBy('name')->get(),
             'prepStations' => InventoryLocation::query()->where('tenant_id', $tenant->id)->where('is_prep_station', true)->orderBy('name')->get(),
@@ -296,6 +304,7 @@ final class ProductionController extends Controller
             'recipe_id' => $recipe->id,
             'source_location_id' => (int) $request->integer('source_location_id'),
             'output_location_id' => $request->input('output_location_id') ? (int) $request->integer('output_location_id') : null,
+            'planned_quantity' => $request->filled('planned_quantity') ? (float) $request->input('planned_quantity') : null,
             'actual_yield_quantity' => (float) $request->input('actual_yield_quantity'),
             'reference_number' => $request->input('reference_number'),
             'notes' => $request->input('notes'),
@@ -303,6 +312,89 @@ final class ProductionController extends Controller
         ]);
 
         return redirect()->to($this->showUrlForVariant($request, $recipe->output_product_variant_id))->with('status', 'Production recorded.');
+    }
+
+    /**
+     * Start a batch now, finish it later. The planned ingredients are held at the source
+     * store — nothing is deducted until the batch is completed.
+     */
+    public function start(Request $request, RecordProductionAction $action): RedirectResponse
+    {
+        $tenant = $this->tenantFromRequest($request);
+
+        $data = $request->validate([
+            'recipe_id' => ['required', 'integer'],
+            'source_location_id' => ['required', 'integer'],
+            'output_location_id' => ['nullable', 'integer'],
+            'planned_quantity' => ['required', 'numeric', 'gt:0', 'max:999999999'],
+            'reference_number' => ['nullable', 'string', 'max:120'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $recipe = Recipe::query()->where('tenant_id', $tenant->id)->findOrFail((int) $data['recipe_id']);
+        $source = InventoryLocation::query()->where('tenant_id', $tenant->id)->findOrFail((int) $data['source_location_id']);
+        $output = ! empty($data['output_location_id'])
+            ? InventoryLocation::query()->where('tenant_id', $tenant->id)->findOrFail((int) $data['output_location_id'])
+            : null;
+
+        $result = $action->start([
+            'tenant_id' => $tenant->id,
+            'recipe_id' => $recipe->id,
+            'source_location_id' => $source->id,
+            'output_location_id' => $output?->id,
+            'planned_quantity' => (float) $data['planned_quantity'],
+            'reference_number' => $data['reference_number'] ?? null,
+            'notes' => $data['notes'] ?? null,
+        ]);
+
+        $message = sprintf(
+            'Production started: %s planned. Ingredients are held at %s until you complete it.',
+            Quantity::format($result['order']->planned_quantity),
+            $source->name,
+        );
+
+        if ($result['short'] !== []) {
+            $message .= ' Not enough in stock to hold all of: '.implode(', ', $result['short']).'.';
+        }
+
+        return redirect()->to($this->showUrlForVariant($request, $recipe->output_product_variant_id))->with('status', $message);
+    }
+
+    /** Finish a started batch with the real yield and the amounts actually used. */
+    public function complete(Request $request, ProductionOrder $order, RecordProductionAction $action): RedirectResponse
+    {
+        $tenant = $this->tenantFromRequest($request);
+        abort_unless($order->tenant_id === $tenant->id, 404);
+
+        $data = $request->validate([
+            'actual_yield_quantity' => ['required', 'numeric', 'gt:0', 'max:999999999'],
+            'output_location_id' => ['nullable', 'integer'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'items' => ['nullable', 'array'],
+            'items.*.actual_quantity' => ['nullable', 'numeric', 'min:0', 'max:999999999'],
+        ]);
+
+        if (! empty($data['output_location_id'])) {
+            InventoryLocation::query()->where('tenant_id', $tenant->id)->findOrFail((int) $data['output_location_id']);
+        }
+
+        $order = $action->complete($order, $data);
+
+        return redirect()->to($this->showUrlForVariant($request, $order->output_product_variant_id))->with('status', sprintf(
+            'Production completed: %s made. The ingredients used were deducted and the finished goods added to stock.',
+            Quantity::format($order->actual_yield_quantity),
+        ));
+    }
+
+    public function cancelRun(Request $request, ProductionOrder $order, RecordProductionAction $action): RedirectResponse
+    {
+        $tenant = $this->tenantFromRequest($request);
+        abort_unless($order->tenant_id === $tenant->id, 404);
+
+        $action->cancel($order, $request->string('reason')->toString() ?: null);
+
+        return redirect()->to($this->showUrlForVariant($request, $order->output_product_variant_id))
+            ->with('status', 'Production cancelled. The held ingredients are available again.');
     }
 
     /**

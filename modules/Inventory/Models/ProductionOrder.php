@@ -22,7 +22,35 @@ final class ProductionOrder extends Model
             'planned_quantity' => 'decimal:4',
             'actual_yield_quantity' => 'decimal:4',
             'produced_at' => 'datetime',
+            'started_at' => 'datetime',
+            'cancelled_at' => 'datetime',
         ];
+    }
+
+    public const STATUS_IN_PROGRESS = 'in_progress';
+
+    public const STATUS_COMPLETED = 'completed';
+
+    public const STATUS_CANCELLED = 'cancelled';
+
+    /** Started, ingredients held, nothing deducted yet. */
+    public function isInProgress(): bool
+    {
+        return $this->status === self::STATUS_IN_PROGRESS;
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->status === self::STATUS_COMPLETED;
+    }
+
+    public function statusLabel(): string
+    {
+        return match ($this->status) {
+            self::STATUS_IN_PROGRESS => 'In progress',
+            self::STATUS_CANCELLED => 'Cancelled',
+            default => 'Completed',
+        };
     }
 
     public function items(): HasMany

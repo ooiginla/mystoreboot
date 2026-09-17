@@ -20,6 +20,7 @@ final class ProductionOrderItem extends Model
         return [
             'planned_quantity' => 'decimal:4',
             'actual_quantity' => 'decimal:4',
+            'reserved_base_quantity' => 'decimal:4',
         ];
     }
 

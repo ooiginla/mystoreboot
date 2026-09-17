@@ -17,6 +17,48 @@
     @if (session('status'))<div class="alert success">{{ session('status') }}</div>@endif
     @if ($errors->any())<div class="alert errors">{{ $errors->first() }}</div>@endif
 
+    @if ($inProgress->isNotEmpty())
+        {{-- Batches on the go: the first thing to see, so none is forgotten with its
+             ingredients still held. --}}
+        <section class="panel runs-panel">
+            <div class="panel-header">
+                <div>
+                    <h2 class="panel-title">In progress <span class="run-count">{{ $inProgress->count() }}</span></h2>
+                    <p class="subtle">Their ingredients are held at the source store — nothing is deducted until you complete them.</p>
+                </div>
+            </div>
+            <div class="panel-body">
+                @foreach ($inProgress as $run)
+                    <div class="run-row">
+                        <div>
+                            <div class="run-title">{{ $qty($run->planned_quantity) }} {{ $recipe?->yieldUnit?->code ?: 'pc' }} planned</div>
+                            <div class="subtle">
+                                Started {{ $run->started_at?->format('M j, H:i') }} ({{ $run->started_at?->diffForHumans() }}) ·
+                                from {{ $run->sourceLocation?->name }}
+                                @if ($run->reference_number) · {{ $run->reference_number }} @endif
+                            </div>
+                            <div class="run-held">
+                                Holding:
+                                {{ $run->items->map(fn ($i) => ($i->componentVariant?->product?->name ?? 'Item').' '.$qty($i->planned_quantity).($i->unit ? ' '.$i->unit->code : ''))->implode(' · ') ?: 'nothing' }}
+                            </div>
+                        </div>
+                        <div class="run-actions">
+                            @permission('inventory.manage')
+                            <button class="btn primary" type="button" data-dialog-open="complete-run-{{ $run->id }}">Complete</button>
+                            <form method="POST" action="{{ route('admin.inventory.production.runs.cancel', $run) }}"
+                                  onsubmit="return confirm('Cancel this batch? The held ingredients become available again.');">
+                                @csrf
+                                <input type="hidden" name="tenant" value="{{ $tenantParam }}">
+                                <button class="btn danger" type="submit">Cancel</button>
+                            </form>
+                            @endpermission
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </section>
+    @endif
+
     <div class="tab-layout">
         <nav class="pill-nav" aria-label="Finished product sections" role="tablist">
             <a href="#recipe" role="tab" data-tab-target="recipe">Recipe</a>
@@ -150,21 +192,27 @@
                 <div class="panel-body">
                     <div style="overflow-x:auto;">
                         <table class="table">
-                            <thead><tr><th>Date</th><th>Planned</th><th>Actual yield</th><th>Variance</th><th>Unit cost</th><th>Batch cost</th><th>Store</th></tr></thead>
+                            <thead><tr><th>Date</th><th>Status</th><th>Planned</th><th>Actual yield</th><th>Variance</th><th>Unit cost</th><th>Batch cost</th><th>Store</th></tr></thead>
                             <tbody>
                                 @forelse ($orders as $order)
                                     @php $planned = (float) $order->planned_quantity; $actual = (float) $order->actual_yield_quantity; $variance = $actual - $planned; $variancePct = $planned > 0 ? round($variance / $planned * 100, 1) : null; @endphp
                                     <tr>
-                                        <td>{{ $order->produced_at?->format('M j, Y H:i') }}</td>
+                                        <td>{{ ($order->produced_at ?? $order->cancelled_at ?? $order->started_at)?->format('M j, Y H:i') }}</td>
+                                        <td><span class="run-status {{ $order->status }}">{{ $order->statusLabel() }}</span></td>
                                         <td class="subtle">{{ $qty($planned) }}</td>
-                                        <td>{{ $qty($actual) }}</td>
-                                        <td class="{{ $variance < 0 ? 'stock-status low' : ($variance > 0 ? 'stock-status ok' : '') }}">{{ $variance > 0 ? '+' : '' }}{{ $qty($variance) }}@if ($variancePct !== null) <span class="subtle">({{ $variance > 0 ? '+' : '' }}{{ $variancePct }}%)</span>@endif</td>
-                                        <td>{{ $tenant->currency_code }} {{ $money($order->unit_cost_minor) }}</td>
-                                        <td>{{ $tenant->currency_code }} {{ $money($order->total_cost_minor) }}</td>
+                                        @if ($order->isCompleted())
+                                            <td>{{ $qty($actual) }}</td>
+                                            <td class="{{ $variance < 0 ? 'stock-status low' : ($variance > 0 ? 'stock-status ok' : '') }}">{{ $variance > 0 ? '+' : '' }}{{ $qty($variance) }}@if ($variancePct !== null) <span class="subtle">({{ $variance > 0 ? '+' : '' }}{{ $variancePct }}%)</span>@endif</td>
+                                            <td>{{ $tenant->currency_code }} {{ $money($order->unit_cost_minor) }}</td>
+                                            <td>{{ $tenant->currency_code }} {{ $money($order->total_cost_minor) }}</td>
+                                        @else
+                                            {{-- Nothing came out yet (or ever), so there is no yield or cost to report. --}}
+                                            <td class="subtle">—</td><td class="subtle">—</td><td class="subtle">—</td><td class="subtle">—</td>
+                                        @endif
                                         <td class="subtle">{{ $order->sourceLocation?->name }}@if ($order->output_location_id !== $order->source_location_id) → {{ $order->outputLocation?->name }}@endif</td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="7" class="subtle">No production recorded yet.</td></tr>
+                                    <tr><td colspan="8" class="subtle">No production recorded yet.</td></tr>
                                 @endforelse
                             </tbody>
                         </table>
@@ -198,10 +246,98 @@
         @media (max-width: 900px) { .ing-row { grid-template-columns: 1fr 1fr; } }
     </style>
 
+    <style>
+        .runs-panel { border: 2px solid #fec84b; margin-bottom: 16px; }
+        .run-count { display: inline-block; margin-left: 6px; padding: 1px 9px; border-radius: 999px; background: #fef0c7; color: #b54708; font-size: .8rem; font-weight: 800; vertical-align: 2px; }
+        .run-row { display: flex; justify-content: space-between; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0f1f4; }
+        .run-row:last-child { border-bottom: 0; }
+        .run-title { font-weight: 800; font-size: 1.05rem; }
+        .run-held { font-size: .8rem; color: #475467; margin-top: 3px; }
+        .run-actions { display: flex; gap: 8px; align-items: center; }
+        .run-actions form { margin: 0; }
+        .run-status { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .74rem; font-weight: 800; background: #dcfae6; color: #067647; white-space: nowrap; }
+        .run-status.in_progress { background: #fef0c7; color: #b54708; }
+        .run-status.cancelled { background: #f2f4f7; color: #475467; }
+        @media (max-width: 720px) { .run-row { flex-direction: column; align-items: flex-start; } }
+    </style>
+
     @include('inventory::admin.production.partials.recipe-dialog')
     @if ($recipe)
         @include('inventory::admin.production.partials.produce-dialog', ['recipe' => $recipe])
     @endif
+
+    @foreach ($inProgress as $run)
+        @php $runUnit = $recipe?->yieldUnit?->code ?: 'pc'; @endphp
+        <dialog class="dialog" id="complete-run-{{ $run->id }}">
+            <div class="dialog-header">
+                <div>
+                    <h2 class="panel-title">Complete production</h2>
+                    <p class="subtle">
+                        {{ $qty($run->planned_quantity) }} {{ $runUnit }} planned, started {{ $run->started_at?->format('M j, H:i') }}.
+                        Enter what actually came out and what was actually used — the held ingredients are released and those amounts deducted.
+                    </p>
+                </div>
+                <button class="icon-btn" type="button" data-dialog-close aria-label="Close">✕</button>
+            </div>
+            <div class="dialog-body">
+                <form class="mini-form" method="POST" action="{{ route('admin.inventory.production.runs.complete', $run) }}">
+                    @csrf
+                    <input type="hidden" name="tenant" value="{{ $tenantParam }}">
+                    <div class="form-grid">
+                        <div class="field">
+                            <label>Expected yield ({{ $runUnit }})</label>
+                            <input type="text" value="{{ $qty($run->planned_quantity) }}" disabled style="background:#f2f4f7; color:#475467; cursor:not-allowed;">
+                        </div>
+                        <div class="field">
+                            <label for="run-yield-{{ $run->id }}">Actual yield ({{ $runUnit }})</label>
+                            <input id="run-yield-{{ $run->id }}" name="actual_yield_quantity" type="number" step="any" min="0.0001" required
+                                   value="{{ rtrim(rtrim(number_format((float) $run->planned_quantity, 4, '.', ''), '0'), '.') }}">
+                        </div>
+                        <div class="field full">
+                            <label>Put finished goods in</label>
+                            <select name="output_location_id">
+                                @foreach ($locations as $location)
+                                    <option value="{{ $location->id }}" @selected($location->id === $run->output_location_id)>{{ $location->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+
+                    <h3 class="panel-title" style="margin: 16px 0 8px;">Ingredients actually used</h3>
+                    <div style="overflow-x:auto;">
+                        <table class="table">
+                            <thead><tr><th>Ingredient</th><th>Planned (held)</th><th>Actual used</th></tr></thead>
+                            <tbody>
+                                @foreach ($run->items as $item)
+                                    <tr>
+                                        <td>{{ $variantLabel($item->componentVariant) }}</td>
+                                        <td class="subtle">{{ $qty($item->planned_quantity) }} {{ $item->unit?->code }}</td>
+                                        <td>
+                                            <div style="display:flex; align-items:center; gap:6px;">
+                                                <input name="items[{{ $item->id }}][actual_quantity]" type="number" step="any" min="0" required style="max-width:130px;"
+                                                       value="{{ rtrim(rtrim(number_format((float) $item->planned_quantity, 4, '.', ''), '0'), '.') }}">
+                                                <span class="subtle">{{ $item->unit?->code }}</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="field full" style="margin-top: 12px;">
+                        <label>Notes</label>
+                        <input name="notes" placeholder="optional — e.g. 2 burnt">
+                    </div>
+
+                    <div class="dialog-actions" style="margin-top: 16px;">
+                        <button class="btn" type="button" data-dialog-close>Not yet</button>
+                        <button class="btn primary" type="submit">Complete &amp; deduct ingredients</button>
+                    </div>
+                </form>
+            </div>
+        </dialog>
+    @endforeach
 
     <script>
         (function () {
