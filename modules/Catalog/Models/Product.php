@@ -22,6 +22,8 @@ final class Product extends Model
 
     protected $guarded = [];
 
+    protected $hidden = ['suppliers', 'supplier_references'];
+
     protected static function booted(): void
     {
         self::saving(function (Product $product): void {
@@ -97,6 +99,27 @@ final class Product extends Model
     public function images(): HasMany
     {
         return $this->hasMany(ProductImage::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    /** Internal suppliers used to source this product. Never exposed by storefront queries. */
+    public function suppliers(): BelongsToMany
+    {
+        return $this->belongsToMany(\Modules\Procurement\Models\Vendor::class, 'product_supplier')
+            ->withPivot('tenant_id')
+            ->withTimestamps()
+            ->orderBy('vendors.name');
+    }
+
+    /** Internal links to this exact product on a supplier's site. */
+    public function supplierReferences(): HasMany
+    {
+        return $this->hasMany(ProductSupplierReference::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    /** Remote product images used only when no uploaded product image exists. */
+    public function externalImages(): HasMany
+    {
+        return $this->hasMany(ProductExternalImage::class)->orderBy('sort_order')->orderBy('id');
     }
 
     public function tags(): BelongsToMany

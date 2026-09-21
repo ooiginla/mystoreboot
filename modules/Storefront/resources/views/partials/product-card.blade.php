@@ -22,8 +22,14 @@
     $showFromPrice = $product->has_variants && $variantPrices->count() > 1;
     $requiresVariantSelection = $product->has_variants && $activeVariants->count() > 1;
     $requiresPersonalizationChoice = (bool) data_get($product->personalization_settings, 'enabled', false);
-    $imagePath = $variant?->image_path ?: $product->image_path;
-    $image = $imagePath ? '/storage/'.ltrim($imagePath, '/') : null;
+    $imagePath = collect([$variant?->image_path, $product->image_path])
+        ->merge($product->images->pluck('image_path'))
+        ->merge($product->variants->pluck('image_path'))
+        ->filter()
+        ->first();
+    $image = $imagePath
+        ? '/storage/'.ltrim((string) $imagePath, '/')
+        : $product->externalImages->first()?->url;
     $payload = [
         'id' => 'product-'.$product->id.($variant ? '-variant-'.$variant->id : ''),
         'productVariantId' => $variant?->id,

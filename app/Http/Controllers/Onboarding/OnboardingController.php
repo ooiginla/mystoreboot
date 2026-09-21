@@ -217,6 +217,7 @@ final class OnboardingController extends Controller
             'supported_payment_methods' => ['Transfer'],
             'status' => 'active',
         ]);
+        $tenant->refresh();
 
         // 2. The Paystack settlement subaccount (direct settlement for online sales).
         $existingCode = $store->payment_settings['settlement_bank_account']['subaccount_code'] ?? null;

@@ -141,6 +141,10 @@
         .catalog-inline-create-form { margin-top: 12px; }
         .catalog-inline-heading { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
         .catalog-inline-add-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+        .catalog-supplier-create-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+        .catalog-reference-link-row { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(280px, 1.7fr) auto; gap: 10px; align-items: end; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fff; }
+        .catalog-reference-link-row + .catalog-reference-link-row { margin-top: 10px; }
+        .catalog-reference-link-row > .catalog-reference-link-url:only-of-type { grid-column: 1 / 3; }
         .catalog-value-tag-input { min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; border: 1px solid #d4ddd8; border-radius: var(--radius-sm); background: #fff; padding: 5px 7px; cursor: text; transition: border-color .15s, box-shadow .15s; }
         .catalog-value-tag-input:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3.5px var(--brand-ring); }
         .catalog-value-tag-input input { flex: 1 1 120px; width: auto; min-width: 100px; border: 0; border-radius: 0; padding: 4px 3px; box-shadow: none; }
@@ -247,6 +251,7 @@
             .variant-grid { grid-template-columns: 1fr; }
             .check-grid { grid-template-columns: 1fr; }
             .catalog-inline-add-row { grid-template-columns: 1fr; }
+            .catalog-supplier-create-grid, .catalog-reference-link-row { grid-template-columns: 1fr; }
             .detail-grid { grid-template-columns: 1fr; }
             .catalog-badge-form-layout { grid-template-columns: 1fr; }
             .catalog-basic-identity { grid-template-columns: 180px minmax(0, 1fr); }
@@ -2421,6 +2426,82 @@
             });
 
             document.addEventListener('click', async (event) => {
+                const addSupplierReference = event.target.closest('[data-add-supplier-reference]');
+                if (addSupplierReference) {
+                    const editor = addSupplierReference.closest('[data-supplier-references]');
+                    const list = editor?.querySelector('[data-supplier-reference-list]');
+                    if (! editor || ! list) return;
+
+                    const index = Number(editor.dataset.nextIndex || list.querySelectorAll('[data-supplier-reference-row]').length);
+                    editor.dataset.nextIndex = String(index + 1);
+                    const row = document.createElement('div');
+                    row.className = 'catalog-reference-link-row';
+                    row.dataset.supplierReferenceRow = '';
+                    row.innerHTML = `
+                        <div class="field catalog-reference-link-url">
+                            <label>Supplier Product Reference link</label>
+                            <input name="supplier_references[${index}][url]" type="url" inputmode="url" maxlength="2048" placeholder="https://supplier.example/products/this-product">
+                        </div>
+                        <button class="btn danger" type="button" data-remove-supplier-reference>Remove</button>`;
+                    list.appendChild(row);
+                    row.querySelector('input')?.focus();
+                    return;
+                }
+
+                const removeSupplierReference = event.target.closest('[data-remove-supplier-reference]');
+                if (removeSupplierReference) {
+                    const row = removeSupplierReference.closest('[data-supplier-reference-row]');
+                    const list = row?.closest('[data-supplier-reference-list]');
+                    if (! row || ! list) return;
+
+                    if (list.querySelectorAll('[data-supplier-reference-row]').length === 1) {
+                        row.querySelectorAll('input').forEach((input) => { input.value = ''; });
+                    } else {
+                        row.remove();
+                    }
+                    return;
+                }
+
+                const addExternalImage = event.target.closest('[data-add-external-image]');
+                if (addExternalImage) {
+                    const editor = addExternalImage.closest('[data-external-images]');
+                    const list = editor?.querySelector('[data-external-image-list]');
+                    if (! editor || ! list) return;
+
+                    const index = Number(editor.dataset.nextIndex || list.querySelectorAll('[data-external-image-row]').length);
+                    editor.dataset.nextIndex = String(index + 1);
+                    const row = document.createElement('div');
+                    row.className = 'catalog-reference-link-row';
+                    row.dataset.externalImageRow = '';
+                    row.innerHTML = `
+                        <div class="field">
+                            <label>Image URL</label>
+                            <input name="external_images[${index}][url]" type="url" inputmode="url" maxlength="2048" placeholder="https://cdn.supplier.example/images/product.jpg">
+                        </div>
+                        <div class="field">
+                            <label>Image description <span class="subtle">(optional)</span></label>
+                            <input name="external_images[${index}][alt_text]" maxlength="180" placeholder="e.g. Blue shirt, front view">
+                        </div>
+                        <button class="btn danger" type="button" data-remove-external-image>Remove</button>`;
+                    list.appendChild(row);
+                    row.querySelector('input')?.focus();
+                    return;
+                }
+
+                const removeExternalImage = event.target.closest('[data-remove-external-image]');
+                if (removeExternalImage) {
+                    const row = removeExternalImage.closest('[data-external-image-row]');
+                    const list = row?.closest('[data-external-image-list]');
+                    if (! row || ! list) return;
+
+                    if (list.querySelectorAll('[data-external-image-row]').length === 1) {
+                        row.querySelectorAll('input').forEach((input) => { input.value = ''; });
+                    } else {
+                        row.remove();
+                    }
+                    return;
+                }
+
                 const quickStockButton = event.target.closest('[data-quick-stock-action]');
                 if (quickStockButton) {
                     const quickStock = quickStockButton.closest('[data-quick-stock]');

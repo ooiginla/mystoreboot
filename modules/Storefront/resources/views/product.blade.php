@@ -25,12 +25,14 @@
     $variant = $variants->first();
     $priceMinor = (int) ($variant?->selling_price_minor ?? $product->base_price_minor);
     $compareMinor = (int) ($variant?->compare_at_price_minor ?? $product->compare_at_price_minor ?? 0);
-    $gallery = collect([$product->image_path])
+    $uploadedGallery = collect([$product->image_path])
         ->merge($product->images->pluck('image_path'))
         ->merge($product->variants->pluck('image_path'))
         ->filter()
-        ->unique()
-        ->map(fn ($path) => '/storage/'.ltrim($path, '/'))
+        ->unique();
+    $gallery = ($uploadedGallery->isNotEmpty()
+        ? $uploadedGallery->map(fn ($path) => '/storage/'.ltrim($path, '/'))
+        : $product->externalImages->pluck('url')->filter()->unique())
         ->values();
     $primaryImage = $gallery->first();
     $optionGroups = $variants

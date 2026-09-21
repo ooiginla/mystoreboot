@@ -82,6 +82,7 @@ final class StorefrontController extends Controller
                     ->with([
                         'badges',
                         'category',
+                        'externalImages',
                         'images',
                         'tenant',
                         'variants' => fn ($variantQuery) => $variantQuery
@@ -1017,6 +1018,7 @@ final class StorefrontController extends Controller
                 'tenant',
                 'badges' => fn ($query) => $query->where('is_visible', true),
                 'category',
+                'externalImages',
                 'images',
                 'variants' => fn ($query) => $query
                     ->where('status', ProductStatus::Active->value)
@@ -1044,6 +1046,7 @@ final class StorefrontController extends Controller
         $product->load([
             'badges' => fn ($query) => $query->where('is_visible', true),
             'category',
+            'externalImages',
             'images',
             'variants' => fn ($query) => $query
                 ->where('status', ProductStatus::Active->value)
@@ -1073,9 +1076,14 @@ final class StorefrontController extends Controller
         }
 
         $seo = app(\Modules\Catalog\Support\ProductSeo::class)->forProduct($product, $store);
-        $seoImage = $product->image_path
-            ? url('/storage/'.ltrim($product->image_path, '/'))
-            : null;
+        $uploadedImagePath = collect([$product->image_path])
+            ->merge($product->images->pluck('image_path'))
+            ->merge($product->variants->pluck('image_path'))
+            ->filter()
+            ->first();
+        $seoImage = $uploadedImagePath
+            ? url('/storage/'.ltrim((string) $uploadedImagePath, '/'))
+            : $product->externalImages->first()?->url;
 
         return view('storefront::product', [
             'store' => $store,

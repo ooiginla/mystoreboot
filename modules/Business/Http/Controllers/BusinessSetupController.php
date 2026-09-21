@@ -35,6 +35,7 @@ use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Business\Models\Department;
 use Modules\Business\Models\OnlineStore;
 use Modules\Business\Support\BankAccountNameVerification;
+use Modules\Business\Support\BusinessBankAccountOptions;
 use Modules\Business\Support\OnlineStoreContentDefaults;
 use Modules\Business\Support\PaystackDirectory;
 use Modules\Business\Support\SafeRichText;
@@ -1063,27 +1064,14 @@ final class BusinessSetupController extends Controller
             return [];
         }
 
-        $tenant = Tenant::query()->find($tenantId);
-        $account = collect($tenant?->settings['bank_details'] ?? [])
-            ->filter(fn ($account): bool => is_array($account))
-            ->filter(fn (array $account): bool => ($account['status'] ?? 'active') === 'active')
-            ->map(fn (array $account): array => [
-                'bank_name' => trim((string) ($account['bank_name'] ?? '')),
-                'account_name' => trim((string) ($account['account_name'] ?? '')),
-                'account_number' => trim((string) ($account['account_number'] ?? '')),
-            ])
-            ->filter(fn (array $account): bool => $account['bank_name'] !== '' && $account['account_number'] !== '')
-            ->first(fn (array $account): bool => $this->bankAccountKey($account) === $selectedKey);
+        $account = BusinessBankAccountOptions::forTenant(Tenant::query()->find($tenantId))
+            ->firstWhere('key', $selectedKey);
 
-        return $account ? [$account] : [];
-    }
-
-    /**
-     * @param  array{bank_name: string, account_name: string, account_number: string}  $account
-     */
-    private function bankAccountKey(array $account): string
-    {
-        return sha1(implode('|', [$account['bank_name'], $account['account_name'], $account['account_number']]));
+        return $account ? [[
+            'bank_name' => $account['bank_name'],
+            'account_name' => $account['account_name'],
+            'account_number' => $account['account_number'],
+        ]] : [];
     }
 
     private function businessPaymentAccounts(Tenant $tenant): EloquentCollection

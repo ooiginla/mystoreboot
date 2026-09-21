@@ -9,6 +9,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use Modules\Business\Models\OnlineStore;
+use Modules\Business\Support\BusinessBankAccountOptions;
 use Modules\Tenancy\Models\Tenant;
 
 final class OnlineStoreRequest extends FormRequest
@@ -159,15 +160,7 @@ final class OnlineStoreRequest extends FormRequest
 
             $selectedKey = (string) $this->input('bank_account_key', '');
             $tenant = Tenant::query()->find($this->string('tenant_id')->toString());
-            $validKeys = collect($tenant?->settings['bank_details'] ?? [])
-                ->filter(fn ($account): bool => is_array($account) && ($account['status'] ?? 'active') === 'active')
-                ->map(fn (array $account): array => [
-                    'bank_name' => trim((string) ($account['bank_name'] ?? '')),
-                    'account_name' => trim((string) ($account['account_name'] ?? '')),
-                    'account_number' => trim((string) ($account['account_number'] ?? '')),
-                ])
-                ->filter(fn (array $account): bool => $account['bank_name'] !== '' && $account['account_number'] !== '')
-                ->map(fn (array $account): string => sha1(implode('|', [$account['bank_name'], $account['account_name'], $account['account_number']])));
+            $validKeys = BusinessBankAccountOptions::forTenant($tenant)->pluck('key');
 
             if ($selectedKey === '' || ! $validKeys->contains($selectedKey)) {
                 $validator->errors()->add('bank_account_key', 'Select an active business bank account for Pay via Transfer.');

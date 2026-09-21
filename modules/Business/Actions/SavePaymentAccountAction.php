@@ -92,7 +92,56 @@ final class SavePaymentAccountAction
             'status' => $status,
         ])->save();
 
-        return $paymentAccount->refresh();
+        $paymentAccount = $paymentAccount->refresh();
+        $this->syncTenantPaymentSettings($tenant);
+
+        return $paymentAccount;
+    }
+
+    private function syncTenantPaymentSettings(Tenant $tenant): void
+    {
+        $accounts = BusinessPaymentAccount::query()
+            ->with('financeAccount')
+            ->where('tenant_id', $tenant->id)
+            ->where('status', 'active')
+            ->orderBy('identifier')
+            ->get();
+        $methods = collect(['Cash'])
+            ->merge($tenant->settings['payment_methods'] ?? [])
+            ->merge($accounts->flatMap(fn (BusinessPaymentAccount $account): array => $account->supported_payment_methods ?? []))
+            ->map(fn (string $method): string => $this->canonicalPaymentMethod($method))
+            ->unique()
+            ->values()
+            ->all();
+        $bankDetails = $accounts
+            ->filter(fn (BusinessPaymentAccount $account): bool => $account->supports('Transfer'))
+            ->map(fn (BusinessPaymentAccount $account): array => [
+                'bank_name' => $account->provider_name,
+                'account_name' => $account->account_name ?: $account->identifier,
+                'account_number' => $account->account_number ?: '',
+                'status' => $account->status,
+                'asset_account_code' => $account->financeAccount?->code,
+            ])
+            ->values()
+            ->all();
+
+        $tenant->settings = array_merge($tenant->settings ?? [], [
+            'payment_methods' => $methods,
+            'bank_details' => $bankDetails,
+        ]);
+        $tenant->save();
+    }
+
+    private function canonicalPaymentMethod(string $method): string
+    {
+        $method = strtolower(trim($method));
+
+        return match (true) {
+            str_contains($method, 'card'), str_contains($method, 'pos') => 'Card',
+            str_contains($method, 'cheque'), str_contains($method, 'check') => 'Cheque',
+            str_contains($method, 'transfer'), str_contains($method, 'bank') => 'Transfer',
+            default => 'Cash',
+        };
     }
 
     private function nextPaymentFinanceAccountCode(string $tenantId): string

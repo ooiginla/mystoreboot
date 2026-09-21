@@ -17,6 +17,7 @@ use Modules\Catalog\Models\ProductOption;
 use Modules\Catalog\Models\ProductTag;
 use Modules\Catalog\Models\ProductTax;
 use Modules\Catalog\Models\ProductVariant;
+use Modules\Procurement\Models\Vendor;
 
 final class SaveProductAction
 {
@@ -104,10 +105,100 @@ final class SaveProductAction
             );
             $product->taxes()->sync($data['tax_behavior'] === 'taxable' ? collect($data['tax_ids'] ?? [])->map(fn (mixed $id): int => (int) $id)->unique()->values()->all() : []);
             $product->attributeValues()->sync($attributeValueIds);
+            $this->syncSuppliers($product, $data);
+            $this->syncSupplierReferences($product, $data);
+            $this->syncExternalImages($product, $data);
             $this->syncProductImages($product, $data);
 
-            return $product->refresh()->load(['badges', 'category', 'collections', 'images', 'options.values', 'variants.optionValues.option', 'tags', 'taxes', 'attributeValues.definition']);
+            return $product->refresh()->load(['badges', 'category', 'collections', 'images', 'options.values', 'variants.optionValues.option', 'tags', 'taxes', 'attributeValues.definition', 'suppliers', 'supplierReferences', 'externalImages']);
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function syncSuppliers(Product $product, array $data): void
+    {
+        $supplierIds = collect($data['supplier_ids'] ?? [])
+            ->map(fn (mixed $id): int => (int) $id)
+            ->filter()
+            ->unique();
+        $newSupplier = (array) ($data['new_supplier'] ?? []);
+        $newSupplierName = trim((string) ($newSupplier['name'] ?? ''));
+
+        if ($newSupplierName !== '') {
+            $supplier = Vendor::query()
+                ->where('tenant_id', $product->tenant_id)
+                ->whereRaw('lower(name) = ?', [strtolower($newSupplierName)])
+                ->first();
+
+            if (! $supplier) {
+                $supplier = Vendor::query()->create([
+                    'tenant_id' => $product->tenant_id,
+                    'name' => $newSupplierName,
+                    'email' => $newSupplier['email'] ?? null,
+                    'phone' => $newSupplier['phone'] ?? null,
+                    'status' => 'active',
+                ]);
+            }
+
+            $supplierIds->push($supplier->id);
+        }
+
+        $product->suppliers()->sync(
+            $supplierIds
+                ->unique()
+                ->mapWithKeys(fn (int $id): array => [$id => ['tenant_id' => $product->tenant_id]])
+                ->all()
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function syncSupplierReferences(Product $product, array $data): void
+    {
+        $links = collect((array) ($data['supplier_references'] ?? []))
+            ->map(fn (array $link): array => [
+                'url' => trim((string) ($link['url'] ?? '')),
+            ])
+            ->filter(fn (array $link): bool => $link['url'] !== '')
+            ->values();
+
+        $product->supplierReferences()->delete();
+
+        foreach ($links as $sortOrder => $link) {
+            $product->supplierReferences()->create([
+                'tenant_id' => $product->tenant_id,
+                'url' => $link['url'],
+                'sort_order' => $sortOrder,
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function syncExternalImages(Product $product, array $data): void
+    {
+        $images = collect((array) ($data['external_images'] ?? []))
+            ->map(fn (array $image): array => [
+                'url' => trim((string) ($image['url'] ?? '')),
+                'alt_text' => trim((string) ($image['alt_text'] ?? '')) ?: null,
+            ])
+            ->filter(fn (array $image): bool => $image['url'] !== '')
+            ->values();
+
+        $product->externalImages()->delete();
+
+        foreach ($images as $sortOrder => $image) {
+            $product->externalImages()->create([
+                'tenant_id' => $product->tenant_id,
+                'url' => $image['url'],
+                'alt_text' => $image['alt_text'],
+                'sort_order' => $sortOrder,
+            ]);
+        }
     }
 
     /**

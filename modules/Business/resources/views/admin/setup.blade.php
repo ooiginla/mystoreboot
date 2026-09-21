@@ -38,16 +38,7 @@
         trim((string) ($account['account_name'] ?? '')),
         trim((string) ($account['account_number'] ?? '')),
     ]));
-    $businessBankAccountOptions = collect($tenant?->settings['bank_details'] ?? [])
-        ->filter(fn ($account) => is_array($account) && ($account['status'] ?? 'active') === 'active')
-        ->map(fn (array $account) => [
-            'key' => $bankAccountKey($account),
-            'bank_name' => trim((string) ($account['bank_name'] ?? '')),
-            'account_name' => trim((string) ($account['account_name'] ?? '')),
-            'account_number' => trim((string) ($account['account_number'] ?? '')),
-        ])
-        ->filter(fn (array $account) => $account['bank_name'] !== '' && $account['account_number'] !== '')
-        ->values();
+    $businessBankAccountOptions = \Modules\Business\Support\BusinessBankAccountOptions::forTenant($tenant);
     $storedOnlineBankAccount = collect($onlineStore?->bank_accounts ?? [])->first();
     $storedOnlineBankAccountKey = is_array($storedOnlineBankAccount) ? $bankAccountKey($storedOnlineBankAccount) : null;
     $selectedOnlineBankAccountKey = old('bank_account_key', $onlineStore?->payment_settings['bank_account_key'] ?? $storedOnlineBankAccountKey);

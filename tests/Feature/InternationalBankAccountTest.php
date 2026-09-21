@@ -11,6 +11,7 @@ use Modules\Business\Actions\SavePaymentAccountAction;
 use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Business\Models\OnlineStore;
 use Modules\Business\Support\BankAccountNameVerification;
+use Modules\Business\Support\BusinessBankAccountOptions;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 use Tests\TestCase;
@@ -157,6 +158,24 @@ class InternationalBankAccountTest extends TestCase
             'account_number' => 'GH12-34567890',
             'account_name' => 'Accra Shop Limited',
         ]);
+        $tenant->refresh();
+        $this->assertSame([
+            'bank_name' => 'International Bank',
+            'account_name' => 'Accra Shop Limited',
+            'account_number' => 'GH12-34567890',
+            'status' => 'active',
+            'asset_account_code' => 'PMT-1001',
+        ], $tenant->settings['bank_details'][0]);
+        $this->assertContains('Transfer', $tenant->settings['payment_methods']);
+        $this->assertSame(4, $tenant->settings['onboarding']['step']);
+
+        $settings = $tenant->settings;
+        unset($settings['bank_details']);
+        $tenant->update(['settings' => $settings]);
+        $this->assertSame(
+            'GH12-34567890',
+            BusinessBankAccountOptions::forTenant($tenant->refresh())->first()['account_number'],
+        );
         Http::assertNothingSent();
     }
 }

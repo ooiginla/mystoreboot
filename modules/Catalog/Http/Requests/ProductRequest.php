@@ -96,6 +96,23 @@ final class ProductRequest extends FormRequest
                     'values' => $this->cleanCommaList($attribute['values'] ?? ''),
                 ])
                 ->all(),
+            'supplier_ids' => array_values((array) $this->input('supplier_ids', [])),
+            'new_supplier' => [
+                'name' => trim((string) $this->input('new_supplier.name')),
+                'email' => trim((string) $this->input('new_supplier.email')),
+                'phone' => trim((string) $this->input('new_supplier.phone')),
+            ],
+            'supplier_references' => collect((array) $this->input('supplier_references', []))
+                ->map(fn (array $link): array => [
+                    'url' => trim((string) ($link['url'] ?? '')),
+                ])
+                ->all(),
+            'external_images' => collect((array) $this->input('external_images', []))
+                ->map(fn (array $image): array => [
+                    'url' => trim((string) ($image['url'] ?? '')),
+                    'alt_text' => trim((string) ($image['alt_text'] ?? '')),
+                ])
+                ->all(),
         ]);
     }
 
@@ -170,6 +187,20 @@ final class ProductRequest extends FormRequest
             'new_attributes' => ['nullable', 'array', 'max:10'],
             'new_attributes.*.name' => ['nullable', 'string', 'max:120'],
             'new_attributes.*.values' => ['nullable', 'string', 'max:2000'],
+            'supplier_ids' => ['nullable', 'array', 'max:50'],
+            'supplier_ids.*' => [
+                'integer',
+                Rule::exists('vendors', 'id')->where('tenant_id', $this->string('tenant_id')->toString()),
+            ],
+            'new_supplier' => ['nullable', 'array'],
+            'new_supplier.name' => ['nullable', 'string', 'max:180'],
+            'new_supplier.email' => ['nullable', 'email', 'max:160'],
+            'new_supplier.phone' => ['nullable', 'string', 'max:60'],
+            'supplier_references' => ['nullable', 'array', 'max:20'],
+            'supplier_references.*.url' => ['nullable', 'url:http,https', 'max:2048'],
+            'external_images' => ['nullable', 'array', 'max:20'],
+            'external_images.*.url' => ['nullable', 'url:http,https', 'max:2048'],
+            'external_images.*.alt_text' => ['nullable', 'string', 'max:180'],
             'sku' => [
                 'nullable',
                 'string',

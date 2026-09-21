@@ -28,6 +28,9 @@
     $selectedTagIds = collect(old('tag_ids', $product?->tags?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id);
     $selectedTaxIds = collect(old('tax_ids', $product?->taxes?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id);
     $selectedAttributeValueIds = collect(old('attribute_value_ids', $product?->attributeValues?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id);
+    $selectedSupplierIds = collect(old('supplier_ids', $product?->suppliers?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id);
+    $supplierReferenceRows = old('supplier_references');
+    $externalImageRows = old('external_images');
     $pendingNewTags = collect(explode(',', (string) old('new_tags')))
         ->map(fn ($value) => trim($value))
         ->filter()
@@ -109,6 +112,28 @@
             'compare_at_price' => '',
             'status' => \Modules\Catalog\Enums\ProductStatus::Active->value,
         ]];
+    }
+
+    if (! is_array($supplierReferenceRows)) {
+        $supplierReferenceRows = $product?->supplierReferences
+            ->map(fn ($link): array => ['url' => $link->url])
+            ->values()
+            ->all() ?? [];
+    }
+
+    if (! is_array($externalImageRows)) {
+        $externalImageRows = $product?->externalImages
+            ->map(fn ($image): array => ['url' => $image->url, 'alt_text' => $image->alt_text])
+            ->values()
+            ->all() ?? [];
+    }
+
+    if ($supplierReferenceRows === [] && ! $isService) {
+        $supplierReferenceRows = [['url' => '']];
+    }
+
+    if ($externalImageRows === [] && ! $isService) {
+        $externalImageRows = [['url' => '', 'alt_text' => '']];
     }
 @endphp
 
@@ -335,6 +360,94 @@
                             @endforeach
                         </select>
                     </div>
+                    @unless ($isService)
+                        <div class="field full">
+                            <div class="catalog-inline-box" data-product-suppliers>
+                                <div class="catalog-inline-heading">
+                                    <div>
+                                        <strong>Product suppliers</strong>
+                                        <div class="subtle">Internal sourcing information. Suppliers are never shown on the storefront.</div>
+                                    </div>
+                                    <span class="badge neutral">Private</span>
+                                </div>
+                                <div class="check-grid">
+                                    @forelse ($catalogVendors as $supplier)
+                                        <label class="inline-check">
+                                            <input type="checkbox" name="supplier_ids[]" value="{{ $supplier->id }}" @checked($selectedSupplierIds->contains($supplier->id))>
+                                            <span>{{ $supplier->name }} @if ($supplier->email)<span class="subtle">· {{ $supplier->email }}</span>@endif @if ($supplier->status !== 'active')<span class="badge neutral">Inactive</span>@endif</span>
+                                        </label>
+                                    @empty
+                                        <span class="subtle">No suppliers have been added yet. Create one below.</span>
+                                    @endforelse
+                                </div>
+                                <details class="catalog-inline-create">
+                                    <summary class="catalog-inline-create-link">+ Create and assign a supplier</summary>
+                                    <div class="catalog-supplier-create-grid catalog-inline-create-form">
+                                        <div class="field">
+                                            <label>Supplier name</label>
+                                            <input name="new_supplier[name]" value="{{ old('new_supplier.name') }}" maxlength="180" placeholder="e.g. Lagos Wholesale Hub">
+                                        </div>
+                                        <div class="field">
+                                            <label>Email <span class="subtle">(optional)</span></label>
+                                            <input name="new_supplier[email]" type="email" value="{{ old('new_supplier.email') }}" maxlength="160">
+                                        </div>
+                                        <div class="field">
+                                            <label>Phone <span class="subtle">(optional)</span></label>
+                                            <input name="new_supplier[phone]" value="{{ old('new_supplier.phone') }}" maxlength="60">
+                                        </div>
+                                    </div>
+                                </details>
+                            </div>
+                        </div>
+                        <div class="field full">
+                            <div class="catalog-inline-box" data-supplier-references data-next-index="{{ count($supplierReferenceRows) }}">
+                                <div class="catalog-inline-heading">
+                                    <div>
+                                        <strong>Supplier Product Reference link</strong>
+                                        <div class="subtle">Add the URL for this exact product on the supplier's website. This is private and never shown on the storefront.</div>
+                                    </div>
+                                    <button class="btn secondary" type="button" data-add-supplier-reference>Add reference</button>
+                                </div>
+                                <div class="list" data-supplier-reference-list>
+                                    @foreach ($supplierReferenceRows as $linkIndex => $link)
+                                        <div class="catalog-reference-link-row" data-supplier-reference-row>
+                                            <div class="field catalog-reference-link-url">
+                                                <label>Supplier Product Reference link</label>
+                                                <input name="supplier_references[{{ $linkIndex }}][url]" type="url" inputmode="url" value="{{ $link['url'] ?? '' }}" maxlength="2048" placeholder="https://supplier.example/products/this-product">
+                                            </div>
+                                            <button class="btn danger" type="button" data-remove-supplier-reference>Remove</button>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field full">
+                            <div class="catalog-inline-box" data-external-images data-next-index="{{ count($externalImageRows) }}">
+                                <div class="catalog-inline-heading">
+                                    <div>
+                                        <strong>Product image links</strong>
+                                        <div class="subtle">Add direct image URLs. The storefront uses these only when this product has no uploaded main, gallery, or variant images.</div>
+                                    </div>
+                                    <button class="btn secondary" type="button" data-add-external-image>Add image link</button>
+                                </div>
+                                <div class="list" data-external-image-list>
+                                    @foreach ($externalImageRows as $imageIndex => $image)
+                                        <div class="catalog-reference-link-row" data-external-image-row>
+                                            <div class="field">
+                                                <label>Image URL</label>
+                                                <input name="external_images[{{ $imageIndex }}][url]" type="url" inputmode="url" value="{{ $image['url'] ?? '' }}" maxlength="2048" placeholder="https://cdn.supplier.example/images/product.jpg">
+                                            </div>
+                                            <div class="field">
+                                                <label>Image description <span class="subtle">(optional)</span></label>
+                                                <input name="external_images[{{ $imageIndex }}][alt_text]" value="{{ $image['alt_text'] ?? '' }}" maxlength="180" placeholder="e.g. Blue shirt, front view">
+                                            </div>
+                                            <button class="btn danger" type="button" data-remove-external-image>Remove</button>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        </div>
+                    @endunless
                     <div class="field">
                         <label>Compare at price</label>
                         <input name="compare_at_price" type="text" inputmode="decimal" data-money-input value="{{ old('compare_at_price', ($product?->compare_at_price_minor ?? $product?->discount_price_minor) ? $minorToMoney($product->compare_at_price_minor ?? $product->discount_price_minor) : '') }}">

@@ -1,7 +1,13 @@
 @php
     $variant = $product->variants->first();
-    $imagePath = $variant?->image_path ?: $product->image_path;
-    $image = $imagePath ? '/storage/'.ltrim($imagePath, '/') : null;
+    $imagePath = collect([$variant?->image_path, $product->image_path])
+        ->merge($product->images->pluck('image_path'))
+        ->merge($product->variants->pluck('image_path'))
+        ->filter()
+        ->first();
+    $image = $imagePath
+        ? '/storage/'.ltrim((string) $imagePath, '/')
+        : $product->externalImages->first()?->url;
     $detailRouteName = $detailRouteName ?? 'products.show';
     $detailsUrl = $storefrontRoute($store, $detailRouteName, [
         $detailRouteName === 'services.show' ? 'serviceSlug' : 'productSlug' => $product->slug,
