@@ -1,5 +1,6 @@
 @php
     $variant = $item->variants->first();
+    $supplierNames = $item->suppliers->pluck('name')->filter()->join(', ');
     $primaryPrice = $variant?->selling_price_minor ?? $item->base_price_minor;
     $comparePrice = $variant?->compare_at_price_minor ?? $item->compare_at_price_minor;
     $availability = $item->product_type === \Modules\Catalog\Enums\ProductType::Service
@@ -29,6 +30,8 @@
             <dd><span class="badge">{{ $availability }}</span></dd>
             <dt>SKU</dt>
             <dd>{{ $variant?->sku ?? 'Pending' }}</dd>
+            <dt>Supplier</dt>
+            <dd data-product-detail-suppliers>{{ $supplierNames ?: 'Not set' }}</dd>
             <dt>Barcode</dt>
             <dd>{{ $variant?->barcode ?? 'Not set' }}</dd>
             <dt>Category</dt>

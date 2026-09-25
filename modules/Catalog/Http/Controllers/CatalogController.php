@@ -11,12 +11,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use Illuminate\View\View;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
 use Modules\Catalog\Actions\CreateCategoryAction;
+use Modules\Catalog\Actions\DeleteCategoryAction;
 use Modules\Catalog\Actions\GenerateProductContentAction;
 use Modules\Catalog\Actions\GenerateProductImageAction;
 use Modules\Catalog\Actions\ImportProductsFromImagesAction;
@@ -45,16 +46,19 @@ use Modules\Catalog\Models\ProductCategory;
 use Modules\Catalog\Models\ProductCollection;
 use Modules\Catalog\Models\ProductCustomDefinition;
 use Modules\Catalog\Models\ProductTag;
+use Modules\Catalog\Models\ProductTax;
+use Modules\Catalog\Models\ProductVariant;
+use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Inventory\Models\InventoryStockLevel;
+use Modules\Inventory\Models\UnitCategory;
+use Modules\Inventory\Support\ReorderLevels;
 use Modules\Procurement\Models\Vendor;
-use Modules\Subscriptions\Support\TenantModuleAccess;
-use Modules\Catalog\Models\ProductTax;
-use Modules\Catalog\Models\ProductVariant;
 use Modules\Sales\Enums\DiscountType;
 use Modules\Sales\Models\SalesCoupon;
+use Modules\Subscriptions\Support\TenantModuleAccess;
 use Modules\Tenancy\Models\Tenant;
 
 final class CatalogController extends Controller
@@ -104,6 +108,7 @@ final class CatalogController extends Controller
             ->values();
 
         $categories = ProductCategory::query()
+            ->with('parent')
             ->where('tenant_id', $tenant->id)
             ->orderBy('name')
             ->get();
@@ -145,8 +150,8 @@ final class CatalogController extends Controller
             'categoryTypes' => CategoryType::options(),
             'discountTypes' => DiscountType::cases(),
             'productTypes' => ProductType::options(),
-            'unitCategories' => \Modules\Inventory\Models\UnitCategory::query()->where('tenant_id', $tenant->id)->orderByDesc('is_default')->orderBy('name')->get(),
-            'prepStations' => \Modules\Inventory\Models\InventoryLocation::query()->where('tenant_id', $tenant->id)->where('is_prep_station', true)->orderBy('name')->get(),
+            'unitCategories' => UnitCategory::query()->where('tenant_id', $tenant->id)->orderByDesc('is_default')->orderBy('name')->get(),
+            'prepStations' => InventoryLocation::query()->where('tenant_id', $tenant->id)->where('is_prep_station', true)->orderBy('name')->get(),
             'productStatuses' => ProductStatus::cases(),
             'taxBehaviors' => TaxBehavior::options(),
             'stats' => [
@@ -415,7 +420,7 @@ final class CatalogController extends Controller
         }
 
         // Guarantee at least one inventory location so the Inventory tab always works.
-        app(\Modules\Inventory\Actions\EnsureInventoryLocationsAction::class)->forTenant($tenant);
+        app(EnsureInventoryLocationsAction::class)->forTenant($tenant);
 
         $locations = InventoryLocation::query()
             ->where('tenant_id', $tenant->id)
@@ -435,8 +440,8 @@ final class CatalogController extends Controller
                 ->get()
                 ->groupBy('product_variant_id'),
             'defaultLocationId' => $defaultLocationId,
-            'reorderUnits' => \Modules\Inventory\Support\ReorderLevels::unitsFor($tenant->id),
-            'reorderLevels' => \Modules\Inventory\Support\ReorderLevels::levelsFor($tenant->id),
+            'reorderUnits' => ReorderLevels::unitsFor($tenant->id),
+            'reorderLevels' => ReorderLevels::levelsFor($tenant->id),
         ];
     }
 
@@ -500,6 +505,41 @@ final class CatalogController extends Controller
             ->with('status', "Category {$category->name} created.");
     }
 
+    public function updateCategory(ProductCategoryRequest $request, ProductCategory $category): RedirectResponse
+    {
+        $data = $request->validated();
+        $this->authorizeTenantIdAccess($request->user(), $category->tenant_id);
+        abort_unless($data['tenant_id'] === $category->tenant_id, 403);
+        abort_unless($data['category_type'] === $category->category_type->value, 422);
+
+        $category->update([
+            'parent_id' => $data['parent_id'] ?? null,
+            'name' => $data['name'],
+            'slug' => $data['slug'],
+            'description' => $data['description'] ?? null,
+        ]);
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $category->tenant_id]).'#categories')
+            ->with('status', "Category {$category->name} updated.");
+    }
+
+    public function destroyCategory(
+        Request $request,
+        ProductCategory $category,
+        DeleteCategoryAction $action,
+    ): RedirectResponse {
+        $this->authorizeTenantIdAccess($request->user(), $category->tenant_id);
+
+        $tenantId = $category->tenant_id;
+        $name = $category->name;
+        $reassignedProducts = $action->execute($category);
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $tenantId]).'#categories')
+            ->with('status', "Category {$name} deleted. {$reassignedProducts} item(s) moved to Uncategorized.");
+    }
+
     public function storeTag(ProductTagRequest $request): RedirectResponse
     {
         $data = $request->validated();
@@ -525,6 +565,20 @@ final class CatalogController extends Controller
             ->to(route('admin.catalog.index', ['tenant' => $tag->tenant_id]).'#tags-attributes')
             ->with('catalog_accordion', 'tags')
             ->with('status', "Tag {$tag->name} updated.");
+    }
+
+    public function destroyTag(Request $request, ProductTag $tag): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $tag->tenant_id);
+
+        $tenantId = $tag->tenant_id;
+        $name = $tag->name;
+        $tag->delete();
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $tenantId]).'#tags-attributes')
+            ->with('catalog_accordion', 'tags')
+            ->with('status', "Tag {$name} deleted.");
     }
 
     public function storeBadge(ProductBadgeRequest $request): RedirectResponse

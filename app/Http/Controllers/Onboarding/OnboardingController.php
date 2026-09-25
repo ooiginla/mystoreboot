@@ -27,7 +27,7 @@ use Modules\Tenancy\Models\Tenant;
 
 final class OnboardingController extends Controller
 {
-    private const LAST_STEP = 5;
+    private const LAST_STEP = 6;
 
     public function index(Request $request): RedirectResponse
     {
@@ -55,7 +55,7 @@ final class OnboardingController extends Controller
             return redirect()->route('onboarding.step', ['step' => $state['step'] ?? 1]);
         }
 
-        $store = $this->store($tenant);
+        $store = $this->store($tenant, $request->user()?->email);
 
         return view('onboarding.wizard', [
             'tenant' => $tenant,
@@ -324,6 +324,41 @@ final class OnboardingController extends Controller
         return $this->advance($tenant, 5);
     }
 
+    public function saveSocials(Request $request): RedirectResponse
+    {
+        $tenant = $this->tenant($request);
+        $store = $this->store($tenant, $request->user()?->email);
+
+        if ($request->boolean('skip')) {
+            return $this->advance($tenant, 6);
+        }
+
+        $data = $request->validate([
+            'instagram' => ['nullable', 'string', 'max:255'],
+            'tiktok' => ['nullable', 'string', 'max:255'],
+            'whatsapp' => ['nullable', 'string', 'max:40'],
+        ]);
+        $socialAccounts = $store->social_accounts ?? [];
+
+        foreach (['instagram', 'tiktok', 'whatsapp'] as $network) {
+            $value = trim((string) ($data[$network] ?? ''));
+
+            if ($value === '') {
+                unset($socialAccounts[$network]);
+            } else {
+                $socialAccounts[$network] = $value;
+            }
+        }
+
+        $store->forceFill([
+            'social_accounts' => $socialAccounts,
+            'store_whatsapp' => $socialAccounts['whatsapp'] ?? null,
+            'site_email' => $store->site_email ?: $request->user()?->email,
+        ])->save();
+
+        return $this->advance($tenant, 6);
+    }
+
     public function complete(Request $request): RedirectResponse
     {
         $tenant = $this->tenant($request);
@@ -387,17 +422,25 @@ final class OnboardingController extends Controller
         $tenant->save();
     }
 
-    private function store(Tenant $tenant): OnlineStore
+    private function store(Tenant $tenant, ?string $siteEmail = null): OnlineStore
     {
-        return OnlineStore::query()->firstOrCreate(
+        $siteEmail = trim((string) ($siteEmail ?: $tenant->email));
+        $store = OnlineStore::query()->firstOrCreate(
             ['tenant_id' => $tenant->id],
             [
                 'store_name' => $tenant->name,
                 'username' => $this->uniqueUsername($tenant->name),
                 'description' => $tenant->name.' online store.',
+                'site_email' => $siteEmail ?: null,
                 'is_active' => true,
             ],
         );
+
+        if (! filled($store->site_email) && $siteEmail !== '') {
+            $store->forceFill(['site_email' => $siteEmail])->save();
+        }
+
+        return $store;
     }
 
     /**

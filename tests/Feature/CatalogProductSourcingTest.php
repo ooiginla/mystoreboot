@@ -32,6 +32,7 @@ final class CatalogProductSourcingTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('admin.catalog.products.store'), $this->payload($tenant, [
+                'sku' => 'SOURCE-001',
                 'supplier_ids' => [$supplier->id],
                 'new_supplier' => [
                     'name' => 'New Wholesale Source',
@@ -79,6 +80,9 @@ final class CatalogProductSourcingTest extends TestCase
             ->assertSee('Supplier Product Reference link')
             ->assertSee('Product image links')
             ->assertSee('Existing Supplier')
+            ->assertSee('<span data-product-card-sku>SKU: <strong>SOURCE-001</strong></span>', false)
+            ->assertSee('<span data-product-card-suppliers>Supplier: <strong>Existing Supplier, New Wholesale Source</strong></span>', false)
+            ->assertSee('<dd data-product-detail-suppliers>Existing Supplier, New Wholesale Source</dd>', false)
             ->assertSee('https://supplier.example/products/blue-shirt', false)
             ->assertSee('https://cdn.supplier.example/images/blue-shirt-front.jpg', false);
     }

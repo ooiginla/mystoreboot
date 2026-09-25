@@ -457,9 +457,17 @@
                                     <div class="item-title">{{ $category->name }}</div>
                                     <div class="subtle">{{ $category->parent?->name ? 'Under '.$category->parent->name : 'Top-level category' }}</div>
                                 </div>
-                                <div style="display: flex; align-items: center; gap: 8px;">
+                                <div class="catalog-row-actions">
                                     <span class="badge category-type-pill">{{ $category->category_type->label() }}</span>
                                     <span class="badge neutral">{{ $category->status }}</span>
+                                    <button class="btn secondary" type="button" data-dialog-open="category-edit-{{ $category->id }}">Edit</button>
+                                    @if (Str::lower($category->name) !== 'uncategorized')
+                                        <form method="POST" action="{{ route('admin.catalog.categories.destroy', $category) }}" onsubmit="return confirm('Delete this category? Its products will be moved to Uncategorized.');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button class="btn danger" type="submit">Delete</button>
+                                        </form>
+                                    @endif
                                 </div>
                             </div>
                         @empty
@@ -508,6 +516,11 @@
                                         </div>
                                         <div class="catalog-row-actions">
                                             <button class="btn secondary" type="button" data-dialog-open="tag-edit-{{ $tag->id }}">Edit</button>
+                                            <form method="POST" action="{{ route('admin.catalog.tags.destroy', $tag) }}" onsubmit="return confirm('Delete this tag? It will be removed from every product using it.');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button class="btn danger" type="submit">Delete</button>
+                                            </form>
                                         </div>
                                     </div>
                                 @empty
@@ -907,6 +920,50 @@
             </form>
         </div>
     </dialog>
+
+    @foreach ($categories as $category)
+        <dialog class="dialog" id="category-edit-{{ $category->id }}">
+            <div class="dialog-header">
+                <div>
+                    <h2 class="panel-title">Edit category</h2>
+                    <p class="subtle">Update this {{ Str::lower($category->category_type->label()) }}.</p>
+                </div>
+                <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
+            </div>
+            <div class="dialog-body">
+                <form class="mini-form" method="POST" action="{{ route('admin.catalog.categories.update', $category) }}">
+                    @csrf
+                    @method('PUT')
+                    <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                    <input type="hidden" name="category_type" value="{{ $category->category_type->value }}">
+                    <div class="form-grid">
+                        <div class="field">
+                            <label>Category type</label>
+                            <input value="{{ $category->category_type->label() }}" disabled>
+                        </div>
+                        <div class="field"><label>Name</label><input name="name" value="{{ $category->name }}" required></div>
+                        <div class="field"><label>Slug</label><input name="slug" value="{{ $category->slug }}" required></div>
+                        <div class="field">
+                            <label>Parent category</label>
+                            <select name="parent_id">
+                                <option value="">Top-level category</option>
+                                @foreach ($categories as $parentCategory)
+                                    @if ($parentCategory->id !== $category->id && $parentCategory->category_type === $category->category_type)
+                                        <option value="{{ $parentCategory->id }}" @selected($category->parent_id === $parentCategory->id)>{{ $parentCategory->name }}</option>
+                                    @endif
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                    <div class="field"><label>Description</label><textarea name="description">{{ $category->description }}</textarea></div>
+                    <div class="button-row">
+                        <button class="btn secondary" type="button" data-dialog-close>Cancel</button>
+                        <button class="btn primary" type="submit">Save category</button>
+                    </div>
+                </form>
+            </div>
+        </dialog>
+    @endforeach
 
     <dialog class="dialog" id="tag-dialog">
         <div class="dialog-header">

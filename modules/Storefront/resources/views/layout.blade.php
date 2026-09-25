@@ -167,9 +167,9 @@
         .store-card { background: var(--store-surface); border: 1px solid var(--store-line); border-radius: 8px; box-shadow: 0 16px 40px rgba(15, 23, 42, .05); }
         .store-product-card { display: flex; height: 100%; flex-direction: column; }
         .store-product-card-body { display: flex; flex: 1; flex-direction: column; }
-        .store-product-card-title { height: 56px; }
+        .store-product-card-title { height: 56px; font-weight: 700; }
         .store-product-card-price { min-height: 48px; flex-wrap: wrap; align-content: flex-start; column-gap: 12px; row-gap: 0; }
-        .store-product-card-price strong { white-space: nowrap; }
+        .store-product-card-price strong { font-weight: 700; white-space: nowrap; }
         .store-product-card-action { min-height: 44px; margin-top: auto; }
         .store-input { width: 100%; border: 1px solid var(--store-line); border-radius: 8px; background: #fff; padding: 12px 14px; outline: none; transition: border-color .16s ease, box-shadow .16s ease; }
         .store-input:focus { border-color: var(--store-primary); box-shadow: 0 0 0 4px color-mix(in srgb, var(--store-primary) 15%, transparent); }

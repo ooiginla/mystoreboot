@@ -5,7 +5,8 @@
         2 => ['title' => 'Your look', 'short' => 'Branding', 'sub' => 'Add your logo and brand colours.'],
         3 => ['title' => 'Get paid', 'short' => 'Payments', 'sub' => 'Set up your settlement account.'],
         4 => ['title' => 'First product', 'short' => 'Product', 'sub' => 'Add something to sell.'],
-        5 => ['title' => 'All set!', 'short' => 'Finish', 'sub' => 'Your store is live.'],
+        5 => ['title' => 'Your socials', 'short' => 'Socials', 'sub' => 'Help customers find and contact your business.'],
+        6 => ['title' => 'All set!', 'short' => 'Finish', 'sub' => 'Your store is live.'],
     ];
 @endphp
 <!doctype html>
@@ -47,7 +48,7 @@
         .lead { color:var(--muted); font-size:14.5px; margin:0 0 22px; }
         .field { display:grid; gap:6px; margin-bottom:15px; position:relative; }
         label { font-size:13px; font-weight:650; color:var(--ink-soft); }
-        input[type=text], input[type=number], textarea, select { width:100%; padding:11px 13px; border:1px solid #d4ddd8; border-radius:10px; font:inherit; color:var(--ink); background:#fff; }
+        input[type=text], input[type=number], input[type=tel], textarea, select { width:100%; padding:11px 13px; border:1px solid #d4ddd8; border-radius:10px; font:inherit; color:var(--ink); background:#fff; }
         input:focus, textarea:focus, select:focus { outline:none; border-color:var(--brand); box-shadow:0 0 0 3.5px var(--brand-ring); }
         textarea { min-height:88px; resize:vertical; }
         .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
@@ -116,7 +117,7 @@
 
     <main class="main">
         <div class="card">
-            <div class="eyebrow">Step {{ min($step, 4) }} of 4</div>
+            <div class="eyebrow">Step {{ min($step, 5) }} of 5</div>
             <h1>{{ $stepMeta[$step]['title'] }}</h1>
             <p class="lead">{{ $stepMeta[$step]['sub'] }}</p>
 
@@ -234,11 +235,35 @@
                     </div>
                     <div class="field"><label>Description</label><textarea name="description" placeholder="Tell customers about this product…">{{ old('description') }}</textarea></div>
                     <div class="field"><label>Tags <span class="hint">comma separated</span></label><input type="text" name="tags" value="{{ old('tags') }}" placeholder="leather, handmade, gift"></div>
-                    <div class="actions"><button class="btn primary" type="submit">Finish setup →</button></div>
+                    <div class="actions"><button class="btn primary" type="submit">Continue →</button></div>
                 </form>
 
-            {{-- STEP 5: CONGRATS --}}
+            {{-- STEP 5: SOCIALS --}}
             @elseif ($step === 5)
+                @php $onboardingSocials = $store->social_accounts ?? []; @endphp
+                <form method="POST" action="{{ route('onboarding.socials') }}">
+                    @csrf
+                    <div class="field">
+                        <label>Instagram <span class="hint">(optional)</span></label>
+                        <input type="text" name="instagram" value="{{ old('instagram', $onboardingSocials['instagram'] ?? '') }}" placeholder="@yourstore or profile link">
+                    </div>
+                    <div class="field">
+                        <label>TikTok <span class="hint">(optional)</span></label>
+                        <input type="text" name="tiktok" value="{{ old('tiktok', $onboardingSocials['tiktok'] ?? '') }}" placeholder="@yourstore or profile link">
+                    </div>
+                    <div class="field">
+                        <label>WhatsApp <span class="hint">(optional)</span></label>
+                        <input type="tel" name="whatsapp" value="{{ old('whatsapp', $onboardingSocials['whatsapp'] ?? $store->store_whatsapp ?? $tenant->phone) }}" placeholder="e.g. +2348012345678">
+                        <span class="hint">This will also become your Store WhatsApp Number.</span>
+                    </div>
+                    <div class="actions">
+                        <button class="btn primary" type="submit">Continue →</button>
+                        <button class="skip" type="submit" name="skip" value="1" formnovalidate>Skip for now →</button>
+                    </div>
+                </form>
+
+            {{-- STEP 6: CONGRATS --}}
+            @elseif ($step === 6)
                 <div class="congrats">
                     <div class="big">🎉</div>
                     <h1 style="font-size:26px;">Your store is live!</h1>

@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Mail;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
+use Modules\Business\Models\OnlineStore;
 use Modules\Finance\Models\FinanceExpenseCategory;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
@@ -140,6 +141,65 @@ class TenantSignupTest extends TestCase
         $this->assertSame(4, $tenant->refresh()->settings['onboarding']['step']);
     }
 
+    public function test_socials_step_populates_store_socials_whatsapp_and_signup_email(): void
+    {
+        $user = User::factory()->create(['email' => 'owner@social-shop.test']);
+        $tenant = Tenant::query()->create([
+            'name' => 'Social Shop',
+            'slug' => 'social-shop',
+            'status' => TenantStatus::Trialing,
+            'business_type' => 'retail',
+            'phone' => '+2348011111111',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+            'settings' => ['onboarding' => ['completed' => false, 'step' => 5]],
+        ]);
+        TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $user->id,
+            'status' => MembershipStatus::Active,
+        ]);
+        $store = OnlineStore::query()->create([
+            'tenant_id' => $tenant->id,
+            'username' => 'social-shop',
+            'store_name' => 'Social Shop',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('onboarding.step', ['step' => 5]))
+            ->assertOk()
+            ->assertSee('Your socials')
+            ->assertSee('name="instagram"', false)
+            ->assertSee('name="tiktok"', false)
+            ->assertSee('name="whatsapp"', false)
+            ->assertSee('Skip for now')
+            ->assertSee('+2348011111111');
+
+        $this->post(route('onboarding.socials'), [
+            'instagram' => '@socialshop',
+            'tiktok' => '@socialshoptok',
+            'whatsapp' => '+2348099999999',
+        ])->assertRedirect(route('onboarding.step', ['step' => 6]));
+
+        $store->refresh();
+
+        $this->assertSame('@socialshop', $store->social_accounts['instagram']);
+        $this->assertSame('@socialshoptok', $store->social_accounts['tiktok']);
+        $this->assertSame('+2348099999999', $store->social_accounts['whatsapp']);
+        $this->assertSame('+2348099999999', $store->store_whatsapp);
+        $this->assertSame('owner@social-shop.test', $store->site_email);
+        $this->assertSame(6, $tenant->refresh()->settings['onboarding']['step']);
+
+        $this->post(route('onboarding.socials'), ['skip' => '1'])
+            ->assertRedirect(route('onboarding.step', ['step' => 6]));
+
+        $store->refresh();
+        $this->assertSame('@socialshop', $store->social_accounts['instagram']);
+        $this->assertSame('+2348099999999', $store->store_whatsapp);
+    }
+
     public function test_new_tenant_can_sign_up_and_verify_email(): void
     {
         Mail::fake();
@@ -175,6 +235,7 @@ class TenantSignupTest extends TestCase
         $this->assertSame('retail', $tenant->business_type);
         $this->assertSame('Lagos', $tenant->settings['city']);
         $this->assertSame('+2348012345678', $tenant->phone);
+        $this->assertSame('owner@bootup.test', $tenant->email);
         $this->assertNull($user->email_verified_at);
         $this->assertTrue(TenantMembership::query()->where('tenant_id', $tenant->id)->where('user_id', $user->id)->exists());
         $this->assertDatabaseHas(Branch::class, [

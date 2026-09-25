@@ -1,9 +1,11 @@
 @php
     $variant = $item->variants->first();
+    $supplierNames = $item->suppliers->pluck('name')->filter()->join(', ');
     $searchText = strtolower(collect([
         $item->name,
         $item->brand,
         $item->category?->name,
+        $supplierNames,
         $variant?->sku,
         $variant?->barcode,
         $item->variants->pluck('sku')->implode(' '),
@@ -64,6 +66,8 @@
             @endif
         </div>
         <div class="product-meta">
+            <span data-product-card-sku>SKU: <strong>{{ $variant?->sku ?? 'Pending' }}</strong></span>
+            <span data-product-card-suppliers>Supplier: <strong>{{ $supplierNames ?: 'Not set' }}</strong></span>
             @if ($item->brand)
                 <span>Brand: <strong>{{ $item->brand }}</strong></span>
             @endif

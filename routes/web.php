@@ -66,5 +66,6 @@ Route::middleware('auth')->prefix('onboarding')->name('onboarding.')->group(func
     Route::post('/bank', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'saveBank'])->name('bank');
     Route::post('/product/photo', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'productFromPhoto'])->name('product.photo');
     Route::post('/product', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'saveProduct'])->name('product');
+    Route::post('/socials', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'saveSocials'])->name('socials');
     Route::post('/complete', [\App\Http\Controllers\Onboarding\OnboardingController::class, 'complete'])->name('complete');
 });

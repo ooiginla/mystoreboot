@@ -25,8 +25,11 @@ Route::patch('/products/{product}/status', [CatalogController::class, 'updatePro
 Route::delete('/products/{product}', [CatalogController::class, 'destroyProduct'])->name('products.destroy');
 Route::post('/custom-definitions', [CatalogController::class, 'storeCustomDefinition'])->name('custom-definitions.store');
 Route::post('/categories', [CatalogController::class, 'storeCategory'])->name('categories.store');
+Route::put('/categories/{category}', [CatalogController::class, 'updateCategory'])->name('categories.update');
+Route::delete('/categories/{category}', [CatalogController::class, 'destroyCategory'])->name('categories.destroy');
 Route::post('/tags', [CatalogController::class, 'storeTag'])->name('tags.store');
 Route::put('/tags/{tag}', [CatalogController::class, 'updateTag'])->name('tags.update');
+Route::delete('/tags/{tag}', [CatalogController::class, 'destroyTag'])->name('tags.destroy');
 Route::post('/badges', [CatalogController::class, 'storeBadge'])->name('badges.store');
 Route::put('/badges/{badge}', [CatalogController::class, 'updateBadge'])->name('badges.update');
 Route::post('/product-collections', [CatalogController::class, 'storeProductCollection'])->name('product-collections.store');

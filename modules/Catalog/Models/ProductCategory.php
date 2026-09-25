@@ -8,11 +8,13 @@ use App\Shared\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Catalog\Enums\CategoryType;
 
 final class ProductCategory extends Model
 {
     use BelongsToTenant;
+    use SoftDeletes;
 
     protected $guarded = [];
 

@@ -640,6 +640,14 @@ final class BusinessSetupController extends Controller
         $selectedBankAccountKey = in_array('bank_account', $data['payment_methods'] ?? [], true)
             ? ($data['bank_account_key'] ?? null)
             : null;
+        $socialAccounts = $data['socials'] ?? [];
+        $storeWhatsapp = $data['store_whatsapp'] ?? null;
+
+        if (($data['online_store_section'] ?? null) === 'online-store-socials') {
+            $storeWhatsapp = filled($socialAccounts['whatsapp'] ?? null)
+                ? trim((string) $socialAccounts['whatsapp'])
+                : null;
+        }
         $pages = $data['pages'] ?? ($store->pages ?? []);
         $faqs = $data['faqs'] ?? ($store->faqs ?? []);
 
@@ -680,7 +688,7 @@ final class BusinessSetupController extends Controller
             'country' => $data['country'] ?? null,
             'site_email' => $data['site_email'] ?? null,
             'store_phone' => $data['store_phone'] ?? null,
-            'store_whatsapp' => $data['store_whatsapp'] ?? null,
+            'store_whatsapp' => $storeWhatsapp,
             'hero_image_text' => $data['hero_image_text'] ?? null,
             'hero_image_description' => $data['hero_image_description'] ?? null,
             'hero_image_tag' => $data['hero_image_tag'] ?? null,
@@ -705,7 +713,7 @@ final class BusinessSetupController extends Controller
             ],
             'bank_accounts' => $this->selectedBusinessBankAccount($data['tenant_id'], $selectedBankAccountKey),
             'shipping_options' => $this->onlineStoreShippingOptions($data['shipping_options'] ?? []),
-            'social_accounts' => $data['socials'] ?? [],
+            'social_accounts' => $socialAccounts,
             'pages' => $pages,
             'faqs' => $this->onlineStoreFaqs($faqs),
             'is_active' => true,

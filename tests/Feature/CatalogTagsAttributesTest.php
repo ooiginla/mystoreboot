@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Modules\Business\Models\OnlineStore;
 use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
@@ -163,14 +164,30 @@ class CatalogTagsAttributesTest extends TestCase
             ->assertSee('data-accordion-icon="coupons"', false)
             ->assertSee('VAT')
             ->assertSee('SAVE10')
-            ->assertDontSee('SKU: <strong', false)
+            ->assertSee('SKU: <strong', false)
             ->assertSee('product-tag-pill', false)
+            ->assertSee(route('admin.catalog.tags.destroy', $tag), false)
             ->assertSee('data-catalog-button-icon', false)
             ->assertSee('Add tag')
             ->assertSee('Save attribute')
             ->assertSee('50% Off')
             ->assertSee('Color')
             ->assertSee('— Shirts');
+
+        $this->actingAs($user)
+            ->delete(route('admin.catalog.tags.destroy', $tag))
+            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#tags-attributes')
+            ->assertSessionHas('catalog_accordion', 'tags');
+
+        $this->assertDatabaseMissing('product_tags', ['id' => $tag->id]);
+        $this->assertDatabaseMissing('product_product_tag', [
+            'product_id' => $product->id,
+            'product_tag_id' => $tag->id,
+        ]);
+        $this->assertDatabaseHas('products', [
+            'id' => $product->id,
+            'deleted_at' => null,
+        ]);
     }
 
     public function test_tags_and_attributes_can_be_created_inline_while_saving_product(): void
@@ -252,6 +269,12 @@ class CatalogTagsAttributesTest extends TestCase
             'currency_code' => 'NGN',
         ]);
         $user = User::factory()->create(['is_platform_admin' => true]);
+        $store = OnlineStore::query()->create([
+            'tenant_id' => $tenant->id,
+            'username' => 'inline-category-store',
+            'store_name' => 'Inline Category Store',
+            'is_active' => true,
+        ]);
 
         $this->actingAs($user)
             ->postJson(route('admin.catalog.categories.store'), [
@@ -270,6 +293,15 @@ class CatalogTagsAttributesTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame('new-arrivals', $category->slug);
+        $this->assertTrue($store->categories()->whereKey($category->id)->exists());
+
+        $this->actingAs($user)
+            ->get(route('admin.business.online-store.index', [
+                'tenant' => $tenant->id,
+                'online_store_section' => 'online-store-theme',
+            ]))
+            ->assertOk()
+            ->assertSee('value="'.$category->id.'" checked', false);
 
         $this->actingAs($user)
             ->get(route('admin.catalog.index', ['tenant' => $tenant->id]))

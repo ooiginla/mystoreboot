@@ -396,6 +396,8 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('From ₦1,200.00')
             ->assertSee('data-variant-price-mode="from"', false)
             ->assertSee('store-product-card', false)
+            ->assertSee('.store-product-card-title { height: 56px; font-weight: 700; }', false)
+            ->assertSee('.store-product-card-price strong { font-weight: 700;', false)
             ->assertSee('store-product-card-price', false)
             ->assertSee('store-product-card-action', false)
             ->assertSee('Choose options')

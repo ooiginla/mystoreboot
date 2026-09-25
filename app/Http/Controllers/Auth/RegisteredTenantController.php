@@ -76,6 +76,7 @@ final class RegisteredTenantController extends Controller
                 'status' => TenantStatus::Trialing,
                 'business_type' => $data['business_category'],
                 'phone' => $data['phone'],
+                'email' => Str::lower($data['email']),
                 'country_code' => $data['country'],
                 'timezone' => $this->timezoneFor($data['country']),
                 'currency_code' => $this->currencyFor($data['country']),

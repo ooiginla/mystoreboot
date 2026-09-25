@@ -130,7 +130,7 @@ final class OnlineStoreRequest extends FormRequest
             'socials.facebook' => ['nullable', 'string', 'max:255'],
             'socials.twitter' => ['nullable', 'string', 'max:255'],
             'socials.youtube' => ['nullable', 'string', 'max:255'],
-            'socials.whatsapp' => ['nullable', 'string', 'max:80'],
+            'socials.whatsapp' => ['nullable', 'string', 'max:40'],
             'pages.about_us' => ['nullable', 'string', 'max:5000'],
             'pages.terms_of_use' => ['nullable', 'string', 'max:5000'],
             'pages.return_policy' => ['nullable', 'string', 'max:5000'],

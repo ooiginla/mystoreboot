@@ -352,6 +352,54 @@ class BusinessOnlineStoreTest extends TestCase
         $this->assertMatchesRegularExpression('/data-paystack-settlement-bank-fields[^>]*\shidden/', $response->getContent());
     }
 
+    public function test_saving_social_whatsapp_also_updates_store_contact_whatsapp(): void
+    {
+        $tenant = Tenant::query()->create([
+            'name' => 'Social Settings Shop',
+            'slug' => 'social-settings-shop',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+        ]);
+        $store = OnlineStore::query()->create([
+            'tenant_id' => $tenant->id,
+            'username' => 'social-settings-shop',
+            'store_name' => 'Social Settings Shop',
+            'theme_primary_color' => '#006554',
+            'theme_secondary_color' => '#f59e0b',
+            'store_whatsapp' => '+2348000000000',
+            'is_active' => true,
+        ]);
+        $user = User::factory()->create(['is_platform_admin' => true]);
+
+        $this->actingAs($user)
+            ->post(route('admin.business.online-store.save'), [
+                'tenant_id' => $tenant->id,
+                'online_store_section' => 'online-store-socials',
+                'username' => $store->username,
+                'store_name' => $store->store_name,
+                'theme_primary_color' => $store->theme_primary_color,
+                'theme_secondary_color' => $store->theme_secondary_color,
+                'paystack_method' => 'none',
+                'socials' => [
+                    'instagram' => '@settingsshop',
+                    'tiktok' => '@settingsshoptok',
+                    'whatsapp' => '+2348099999999',
+                ],
+            ])
+            ->assertRedirect(route('admin.business.online-store.index', [
+                'tenant' => $tenant->id,
+                'online_store_section' => 'online-store-socials',
+            ]).'#online-store');
+
+        $store->refresh();
+
+        $this->assertSame('+2348099999999', $store->social_accounts['whatsapp']);
+        $this->assertSame('+2348099999999', $store->store_whatsapp);
+    }
+
     public function test_new_online_store_gets_default_policies_and_removable_generic_faqs(): void
     {
         $tenant = Tenant::query()->create([
