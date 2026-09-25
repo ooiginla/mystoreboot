@@ -29,6 +29,7 @@ final class StorebootPlanSeeder extends Seeder
             ['name' => 'Customer-Facing Storefront', 'slug' => 'storefront', 'is_core' => false],
             ['name' => 'F&B / Advanced Inventory', 'slug' => 'fnb', 'is_core' => false],
             ['name' => 'Restaurant POS', 'slug' => 'restaurant', 'is_core' => false],
+            ['name' => 'Reseller Store', 'slug' => 'reseller', 'is_core' => false],
             ['name' => 'Recommendation Engine', 'slug' => 'recommendations', 'is_core' => false],
         ];
 

@@ -5,7 +5,9 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Modules\Catalog\Http\Controllers\CatalogController;
 use Modules\Catalog\Http\Controllers\RawMaterialController;
+use Modules\Catalog\Http\Middleware\RequireStandardCommerceMode;
 
+Route::middleware(RequireStandardCommerceMode::class)->group(function (): void {
 Route::get('/', [CatalogController::class, 'index'])->name('index');
 
 // Raw materials (separate catalog — never sold)
@@ -32,6 +34,7 @@ Route::put('/tags/{tag}', [CatalogController::class, 'updateTag'])->name('tags.u
 Route::delete('/tags/{tag}', [CatalogController::class, 'destroyTag'])->name('tags.destroy');
 Route::post('/badges', [CatalogController::class, 'storeBadge'])->name('badges.store');
 Route::put('/badges/{badge}', [CatalogController::class, 'updateBadge'])->name('badges.update');
+Route::delete('/badges/{badge}', [CatalogController::class, 'destroyBadge'])->name('badges.destroy');
 Route::post('/product-collections', [CatalogController::class, 'storeProductCollection'])->name('product-collections.store');
 Route::put('/product-collections/{collection}', [CatalogController::class, 'updateProductCollection'])->name('product-collections.update');
 Route::post('/taxes', [CatalogController::class, 'storeTax'])->name('taxes.store');
@@ -39,3 +42,4 @@ Route::put('/taxes/{tax}', [CatalogController::class, 'updateTax'])->name('taxes
 Route::delete('/taxes/{tax}', [CatalogController::class, 'destroyTax'])->name('taxes.destroy');
 Route::post('/attributes', [CatalogController::class, 'storeAttribute'])->name('attributes.store');
 Route::put('/attributes/{attribute}', [CatalogController::class, 'updateAttribute'])->name('attributes.update');
+});

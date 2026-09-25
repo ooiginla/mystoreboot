@@ -12,6 +12,7 @@ use Modules\Access\Models\Role;
 use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
 use Modules\Business\Models\Department;
+use Modules\Tenancy\Enums\CommerceMode;
 use Modules\Tenancy\Enums\TenantStatus;
 
 final class Tenant extends Model
@@ -21,6 +22,10 @@ final class Tenant extends Model
 
     protected $guarded = [];
 
+    protected $attributes = [
+        'commerce_mode' => 'standard',
+    ];
+
     protected function casts(): array
     {
         return [
@@ -29,7 +34,13 @@ final class Tenant extends Model
             'trial_ends_at' => 'datetime',
             'default_tax_rate' => 'decimal:2',
             'status' => TenantStatus::class,
+            'commerce_mode' => CommerceMode::class,
         ];
+    }
+
+    public function isReseller(): bool
+    {
+        return $this->commerce_mode === CommerceMode::Reseller;
     }
 
     public function branches(): HasMany

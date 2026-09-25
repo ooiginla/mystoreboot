@@ -365,6 +365,7 @@
                     ->value('plans.slug')
                 : null;
             $isStarterPlan = $activeTenantPlanSlug === 'starter';
+            $isResellerCommerce = ($activeBranchTenant?->isReseller() ?? false) && $hasTenantModule('reseller');
             $pendingOrderCount = ($activeBranchTenant && $hasTenantModule('sales'))
                 ? \Modules\Sales\Models\SalesOrder::query()
                     ->where('tenant_id', $activeBranchTenant->id)
@@ -445,10 +446,33 @@
                     @if (\Illuminate\Support\Facades\Gate::any(['catalog.view', 'storefront.manage', 'inventory.view', 'procurement.view', 'customers.view', 'sales.create', 'sales.view']))
                         <div class="nav-group">Operations</div>
                     @endif
-                    @if ($hasTenantModule('catalog'))
+                    @if ($hasTenantModule('catalog') && ! $isResellerCommerce)
                         @permission('catalog.view')
                         <a class="{{ request()->routeIs('admin.catalog.*') && ! request()->routeIs('admin.catalog.raw-materials.*') ? 'active' : '' }}" href="{{ route('admin.catalog.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-package"/></svg><span>Product &amp; Services</span></a>
                         @endpermission
+                    @endif
+                    @if ($hasTenantModule('reseller'))
+                        @if ($isResellerCommerce && \Illuminate\Support\Facades\Gate::any(['catalog.view', 'storefront.manage', 'sales.view']))
+                            @php $resellerNavActive = request()->routeIs('admin.reseller.*'); @endphp
+                            <details class="nav-fold {{ $resellerNavActive ? 'has-active' : '' }}" @if($resellerNavActive) open @endif>
+                                <summary><svg viewBox="0 0 24 24"><use href="#i-cart"/></svg><span>Reseller Store</span><svg class="chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+                                <div class="nav-sub">
+                                    @permission('catalog.view')
+                                    <a class="{{ request()->routeIs('admin.reseller.suppliers.*') ? 'active' : '' }}" href="{{ route('admin.reseller.suppliers.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-store"/></svg><span>Supplier Websites</span></a>
+                                    <a class="{{ request()->routeIs('admin.reseller.products.*') ? 'active' : '' }}" href="{{ route('admin.reseller.products.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-package"/></svg><span>Sourced Products</span></a>
+                                    @endpermission
+                                    @permission('sales.view')
+                                    <a class="{{ request()->routeIs('admin.reseller.orders.*') ? 'active' : '' }}" href="{{ route('admin.reseller.orders.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-receipt"/></svg><span>Orders</span></a>
+                                    <a class="{{ request()->routeIs('admin.reseller.payments.*') ? 'active' : '' }}" href="{{ route('admin.reseller.payments.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-wallet"/></svg><span>Payments</span></a>
+                                    @endpermission
+                                    @permission('storefront.manage')
+                                    <a class="{{ request()->routeIs('admin.reseller.settings.*') ? 'active' : '' }}" href="{{ route('admin.reseller.settings.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-sliders"/></svg><span>Settings</span></a>
+                                    @endpermission
+                                </div>
+                            </details>
+                        @elseif (\Illuminate\Support\Facades\Gate::any(['catalog.view', 'storefront.manage']))
+                            <a class="{{ request()->routeIs('admin.reseller.*') ? 'active' : '' }}" href="{{ route('admin.reseller.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-cart"/></svg><span>Reseller Setup</span></a>
+                        @endif
                     @endif
                     @if ($hasTenantModule('storefront'))
                         @permission('storefront.manage')
@@ -528,12 +552,12 @@
                         <a class="{{ request()->routeIs('admin.customers.*') ? 'active' : '' }}" href="{{ route('admin.customers.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-users"/></svg><span>Customers &amp; Support</span></a>
                         @endpermission
                     @endif
-                    @if ($hasTenantModule('retail-pos'))
+                    @if ($hasTenantModule('retail-pos') && ! $isResellerCommerce)
                         @permission('sales.create')
                         <a class="{{ request()->routeIs('admin.sales.retail-pos') ? 'active' : '' }}" href="{{ route('admin.sales.retail-pos', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-pos"/></svg><span>Retail POS</span></a>
                         @endpermission
                     @endif
-                    @if ($hasTenantModule('sales'))
+                    @if ($hasTenantModule('sales') && ! $isResellerCommerce)
                         @permission('sales.create')
                         <a class="{{ request()->routeIs('admin.sales.index') ? 'active' : '' }}" href="{{ route('admin.sales.index', $activeTenantRouteParams) }}#pos"><svg viewBox="0 0 24 24"><use href="#i-cart"/></svg><span>Record Sale</span></a>
                         @endpermission

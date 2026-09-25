@@ -50,7 +50,9 @@ final class TenantModuleAccess
             }
 
             // Legacy tenants without a subscription retain their existing access.
-            $enabled = $subscription ? $planModules->has($module->id) : true;
+            // Reseller is intentionally opt-in because enabling it can replace the
+            // tenant's native catalogue and order workflow.
+            $enabled = $subscription ? $planModules->has($module->id) : $module->slug !== 'reseller';
 
             return ['module' => $module, 'enabled' => $enabled, 'source' => 'plan'];
         })->values();

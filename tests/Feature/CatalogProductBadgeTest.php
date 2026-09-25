@@ -84,6 +84,7 @@ class CatalogProductBadgeTest extends TestCase
             ->assertSee('data-badge-preview', false)
             ->assertSee('Storefront preview')
             ->assertSee('Sample product')
+            ->assertSee(route('admin.catalog.badges.destroy', $badges->first()), false)
             ->assertSee('You can assign several; the store displays the first two.');
 
         $this->get(route('storefront.storefront.store.home', $store))
@@ -118,5 +119,18 @@ class CatalogProductBadgeTest extends TestCase
             ->firstOrFail();
 
         $this->assertTrue($product->badges()->whereKey($inlineBadge->id)->exists());
+
+        $this->actingAs($user)
+            ->delete(route('admin.catalog.badges.destroy', $inlineBadge))
+            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]).'#badges-collections')
+            ->assertSessionHas('catalog_accordion', 'badges')
+            ->assertSessionHas('status', 'Badge Spotlight deleted.');
+
+        $this->assertDatabaseMissing('product_badges', ['id' => $inlineBadge->id]);
+        $this->assertDatabaseMissing('product_badge_product', [
+            'product_id' => $product->id,
+            'product_badge_id' => $inlineBadge->id,
+        ]);
+        $this->assertDatabaseHas('products', ['id' => $product->id]);
     }
 }

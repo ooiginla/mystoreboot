@@ -324,6 +324,7 @@ final class RegisteredTenantController extends Controller
             'hrpayroll' => 'HR & Payroll',
             'analytics' => 'Analytics Dashboard',
             'storefront' => 'Customer-Facing Storefront',
+            'reseller' => 'Reseller Store',
         ];
 
         foreach ((array) config('modules.registry', []) as $moduleName => $definition) {

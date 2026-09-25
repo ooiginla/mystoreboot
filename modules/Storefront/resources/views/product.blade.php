@@ -328,8 +328,14 @@
                 </div>
 
                 <div class="mt-7 flex flex-col gap-3 sm:flex-row">
-                    <button type="button" class="store-btn store-btn-secondary flex-1" data-add-to-cart data-variant-cart-button data-use-detail-quantity="true" data-product='@json($payload)' @disabled(! $variant)>Add to Cart</button>
-                    <button type="button" class="store-btn store-btn-primary flex-1" data-add-to-cart data-variant-cart-button data-use-detail-quantity="true" data-product='@json($payload)' @disabled(! $variant)>Buy It Now</button>
+                    <button type="button" class="store-btn store-btn-secondary flex-1" data-add-to-cart data-variant-cart-button data-use-detail-quantity="true" data-product='@json($payload)' @disabled(! $variant)>
+                        @include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5 shrink-0'])
+                        Add to Cart
+                    </button>
+                    <button type="button" class="store-btn store-btn-primary flex-1" data-add-to-cart data-variant-cart-button data-use-detail-quantity="true" data-product='@json($payload)' @disabled(! $variant)>
+                        @include('storefront::partials.icon', ['name' => 'bolt', 'class' => 'h-5 w-5 shrink-0'])
+                        Buy It Now
+                    </button>
                 </div>
             </div>
         </div>

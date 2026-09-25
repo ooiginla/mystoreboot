@@ -13,6 +13,7 @@ use Modules\Logistics\Providers\LogisticsServiceProvider;
 use Modules\Platform\Providers\PlatformServiceProvider;
 use Modules\Procurement\Providers\ProcurementServiceProvider;
 use Modules\Recommendations\Providers\RecommendationsServiceProvider;
+use Modules\Reseller\Providers\ResellerServiceProvider;
 use Modules\Sales\Providers\SalesServiceProvider;
 use Modules\Storefront\Providers\StorefrontServiceProvider;
 use Modules\Subscriptions\Providers\SubscriptionsServiceProvider;
@@ -60,6 +61,11 @@ return [
             'provider' => CatalogServiceProvider::class,
             'depends_on' => ['Business'],
         ],
+        'Reseller' => [
+            'enabled' => true,
+            'provider' => ResellerServiceProvider::class,
+            'depends_on' => ['Business', 'Customers', 'Sales'],
+        ],
         'Inventory' => [
             'enabled' => true,
             'provider' => InventoryServiceProvider::class,
@@ -103,7 +109,7 @@ return [
         'Storefront' => [
             'enabled' => true,
             'provider' => StorefrontServiceProvider::class,
-            'depends_on' => ['Business', 'Catalog', 'Sales', 'Customers'],
+            'depends_on' => ['Business', 'Catalog', 'Sales', 'Customers', 'Reseller'],
         ],
         'Recommendations' => [
             'enabled' => false,

@@ -608,6 +608,20 @@ final class CatalogController extends Controller
             ->with('status', "Badge {$badge->name} updated.");
     }
 
+    public function destroyBadge(Request $request, ProductBadge $badge): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $badge->tenant_id);
+
+        $tenantId = $badge->tenant_id;
+        $name = $badge->name;
+        $badge->delete();
+
+        return redirect()
+            ->to(route('admin.catalog.index', ['tenant' => $tenantId]).'#badges-collections')
+            ->with('catalog_accordion', 'badges')
+            ->with('status', "Badge {$name} deleted.");
+    }
+
     public function storeProductCollection(
         ProductCollectionRequest $request,
         SaveProductCollectionAction $action,

@@ -5,11 +5,12 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Modules\Storefront\Http\Controllers\StorefrontController;
 use Modules\Storefront\Http\Middleware\ShowOnlineStoreMaintenancePage;
+use Modules\Reseller\Http\Middleware\UseResellerStorefront;
 
 $routes = function (): void {
-    Route::get('/sitemap.xml', [StorefrontController::class, 'sitemap'])->name('sitemap');
+    Route::get('/sitemap.xml', [StorefrontController::class, 'sitemap'])->middleware(UseResellerStorefront::class)->name('sitemap');
 
-    Route::middleware(ShowOnlineStoreMaintenancePage::class)->group(function (): void {
+    Route::middleware([UseResellerStorefront::class, ShowOnlineStoreMaintenancePage::class])->group(function (): void {
         Route::get('/', [StorefrontController::class, 'home'])->name('home');
         Route::get('/categories/{categorySlug}', [StorefrontController::class, 'category'])->name('categories.show');
         Route::get('/collections/{collectionSlug}', [StorefrontController::class, 'collection'])->name('collections.show');
@@ -32,7 +33,7 @@ $routes = function (): void {
     Route::post('/personalization/photo', [StorefrontController::class, 'uploadPersonalizationPhoto'])
         ->middleware('throttle:20,1')
         ->name('personalization.photo');
-    Route::post('/checkout', [StorefrontController::class, 'checkout'])->name('checkout');
+    Route::post('/checkout', [StorefrontController::class, 'checkout'])->middleware(UseResellerStorefront::class)->name('checkout');
     Route::post('/checkout/{order}/paystack/initialize', [StorefrontController::class, 'initializePaystackPayment'])->name('checkout.paystack.initialize');
     Route::get('/checkout/{order}/paystack/verify', [StorefrontController::class, 'verifyPaystackPayment'])->name('checkout.paystack.verify');
     Route::get('/paystack/callback', [StorefrontController::class, 'verifyPaystackStoreCallback'])->name('paystack.callback');

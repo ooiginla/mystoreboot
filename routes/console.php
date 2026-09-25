@@ -13,3 +13,6 @@ Schedule::command('sales:expire-reservations')->everyFiveMinutes()->withoutOverl
 
 // Keep product SEO metadata fresh once a day (new/changed products only).
 Schedule::command('catalog:refresh-product-seo')->dailyAt('02:30')->withoutOverlapping();
+
+// Dispatch tenant supplier sites that are due for daily or twice-daily product recovery.
+Schedule::command('reseller:recover-products')->hourly()->withoutOverlapping();

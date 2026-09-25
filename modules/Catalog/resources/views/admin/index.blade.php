@@ -659,6 +659,11 @@
                                         <div class="catalog-row-actions">
                                             <span class="badge {{ $badge->is_visible ? 'success' : 'neutral' }}">{{ $badge->is_visible ? 'Visible' : 'Hidden' }}</span>
                                             <button class="btn secondary" type="button" data-dialog-open="badge-edit-{{ $badge->id }}">Edit</button>
+                                            <form method="POST" action="{{ route('admin.catalog.badges.destroy', $badge) }}" onsubmit="return confirm('Delete this badge? It will be removed from every product using it.');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button class="btn danger" type="submit">Delete</button>
+                                            </form>
                                         </div>
                                     </div>
                                 @empty
