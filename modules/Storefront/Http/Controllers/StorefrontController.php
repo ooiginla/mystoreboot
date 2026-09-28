@@ -7,6 +7,7 @@ namespace Modules\Storefront\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Mail\OnlineOrderConfirmationMail;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -50,12 +51,13 @@ final class StorefrontController extends Controller
     public function home(OnlineStore $store, Request $request): View
     {
         $store = $this->preparedStore($store);
+        $filters = $this->productFilters($request);
         $selectedCategorySlug = $request->string('category')->toString();
         $search = Str::limit(trim($request->string('search')->toString()), 100, '');
         $selectedCategory = $store->categories
             ->first(fn ($category): bool => $category->slug === $selectedCategorySlug);
 
-        $products = $this->productsFor($store, ProductType::Product)
+        $productsQuery = $this->productsFor($store, ProductType::Product)
             ->when($selectedCategorySlug !== '', function ($query) use ($selectedCategorySlug): void {
                 $query->whereHas('category', fn ($category) => $category->where('slug', $selectedCategorySlug));
             })
@@ -72,7 +74,9 @@ final class StorefrontController extends Controller
                                 ->whereLike('sku', '%'.$search.'%')
                                 ->orWhereLike('barcode', '%'.$search.'%')));
                 });
-            })
+            });
+        $this->applyProductFilters($productsQuery, $store, $filters);
+        $products = $productsQuery
             ->latest()
             ->paginate(16)
             ->withQueryString();
@@ -125,18 +129,21 @@ final class StorefrontController extends Controller
             'selectedCategoryName' => $selectedCategory?->name,
             'selectedCollection' => null,
             'search' => $search,
+            'filters' => $filters,
+            'priceBounds' => $this->productPriceBounds($store),
             'metaDescription' => $selectedCategory
                 ? "Shop {$selectedCategory->name} from {$store->store_name}. Browse available products and order online."
                 : $seo['description'],
             'metaKeywords' => $seo['keywords'],
             'canonical' => $canonical,
-            'robots' => $search !== '' ? 'noindex, follow' : null,
+            'robots' => $search !== '' || $this->hasProductFilters($filters) ? 'noindex, follow' : null,
         ]);
     }
 
-    public function category(OnlineStore $store, string $categorySlug): View
+    public function category(OnlineStore $store, string $categorySlug, Request $request): View
     {
         $store = $this->preparedStore($store);
+        $filters = $this->productFilters($request);
         $category = $store->categories
             ->first(fn ($item): bool => $item->slug === $categorySlug
                 && $item->status === 'active'
@@ -144,10 +151,13 @@ final class StorefrontController extends Controller
 
         abort_unless($category, 404);
 
-        $products = $this->productsFor($store, ProductType::Product)
-            ->where('category_id', $category->id)
+        $productsQuery = $this->productsFor($store, ProductType::Product)
+            ->where('category_id', $category->id);
+        $this->applyProductFilters($productsQuery, $store, $filters);
+        $products = $productsQuery
             ->latest()
-            ->paginate(16);
+            ->paginate(16)
+            ->withQueryString();
         $canonical = StorefrontUrl::route($store, 'categories.show', ['categorySlug' => $category->slug]);
         if ($products->currentPage() > 1) {
             $canonical .= '?page='.$products->currentPage();
@@ -161,24 +171,30 @@ final class StorefrontController extends Controller
             'selectedCategoryName' => $category->name,
             'selectedCollection' => null,
             'search' => '',
+            'filters' => $filters,
+            'priceBounds' => $this->productPriceBounds($store),
             'metaDescription' => "Shop {$category->name} from {$store->store_name}. Browse available products and order online.",
             'canonical' => $canonical,
-            'robots' => $products->isEmpty() ? 'noindex, follow' : null,
+            'robots' => $products->isEmpty() || $this->hasProductFilters($filters) ? 'noindex, follow' : null,
         ]);
     }
 
-    public function collection(OnlineStore $store, string $collectionSlug): View
+    public function collection(OnlineStore $store, string $collectionSlug, Request $request): View
     {
         $store = $this->preparedStore($store);
+        $filters = $this->productFilters($request);
         $collection = $store->productCollections
             ->first(fn (ProductCollection $item): bool => ($item->slug ?: (string) $item->id) === $collectionSlug);
 
         abort_unless($collection, 404);
 
-        $products = $this->productsFor($store, ProductType::Product)
-            ->whereHas('collections', fn ($query) => $query->whereKey($collection->id))
+        $productsQuery = $this->productsFor($store, ProductType::Product)
+            ->whereHas('collections', fn ($query) => $query->whereKey($collection->id));
+        $this->applyProductFilters($productsQuery, $store, $filters);
+        $products = $productsQuery
             ->latest()
-            ->paginate(16);
+            ->paginate(16)
+            ->withQueryString();
         $canonical = StorefrontUrl::route($store, 'collections.show', ['collectionSlug' => $collection->slug ?: $collection->id]);
         if ($products->currentPage() > 1) {
             $canonical .= '?page='.$products->currentPage();
@@ -192,9 +208,12 @@ final class StorefrontController extends Controller
             'selectedCategoryName' => null,
             'selectedCollection' => $collection,
             'search' => '',
+            'filters' => $filters,
+            'priceBounds' => $this->productPriceBounds($store),
             'metaDescription' => trim(strip_tags((string) $collection->description))
                 ?: "Shop the {$collection->name} collection from {$store->store_name}.",
             'canonical' => $canonical,
+            'robots' => $this->hasProductFilters($filters) ? 'noindex, follow' : null,
         ]);
     }
 
@@ -1009,6 +1028,130 @@ final class StorefrontController extends Controller
                 'exception' => $exception->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * @return array{min_price: ?float, max_price: ?float, in_stock: bool, on_sale: bool}
+     */
+    private function productFilters(Request $request): array
+    {
+        $number = static function (mixed $value): ?float {
+            if ($value === null || $value === '' || ! is_numeric($value)) {
+                return null;
+            }
+
+            return max(0, round((float) $value, 2));
+        };
+
+        $minPrice = $number($request->input('min_price'));
+        $maxPrice = $number($request->input('max_price'));
+
+        if ($minPrice !== null && $maxPrice !== null && $minPrice > $maxPrice) {
+            [$minPrice, $maxPrice] = [$maxPrice, $minPrice];
+        }
+
+        return [
+            'min_price' => $minPrice,
+            'max_price' => $maxPrice,
+            'in_stock' => $request->boolean('in_stock'),
+            'on_sale' => $request->boolean('on_sale'),
+        ];
+    }
+
+    /**
+     * @param  array{min_price: ?float, max_price: ?float, in_stock: bool, on_sale: bool}  $filters
+     */
+    private function applyProductFilters(Builder $query, OnlineStore $store, array $filters): void
+    {
+        $effectivePrice = 'COALESCE((SELECT MIN(storefront_variants.selling_price_minor) FROM product_variants AS storefront_variants WHERE storefront_variants.product_id = products.id AND storefront_variants.deleted_at IS NULL AND storefront_variants.status = ?), products.base_price_minor, 0)';
+
+        if ($filters['min_price'] !== null) {
+            $query->whereRaw($effectivePrice.' >= ?', [ProductStatus::Active->value, (int) round($filters['min_price'] * 100)]);
+        }
+
+        if ($filters['max_price'] !== null) {
+            $query->whereRaw($effectivePrice.' <= ?', [ProductStatus::Active->value, (int) round($filters['max_price'] * 100)]);
+        }
+
+        if ($filters['on_sale']) {
+            $query->where(function (Builder $saleQuery): void {
+                $saleQuery
+                    ->where(function (Builder $basePriceQuery): void {
+                        $basePriceQuery
+                            ->whereNotNull('compare_at_price_minor')
+                            ->whereColumn('compare_at_price_minor', '>', 'base_price_minor');
+                    })
+                    ->orWhereHas('variants', fn (Builder $variantQuery) => $variantQuery
+                        ->where('status', ProductStatus::Active->value)
+                        ->whereNotNull('compare_at_price_minor')
+                        ->whereColumn('compare_at_price_minor', '>', 'selling_price_minor'));
+            });
+        }
+
+        if (! $filters['in_stock'] || ! app(TenantModuleAccess::class)->allows($store->tenant, 'inventory') || ! $store->fulfilment_branch_id) {
+            return;
+        }
+
+        $locationId = app(AdjustInventoryReservationAction::class)->resolveActiveLocationId(
+            $store->tenant_id,
+            (int) $store->fulfilment_branch_id,
+        );
+
+        if (! $locationId) {
+            return;
+        }
+
+        $query->where(function (Builder $stockQuery) use ($locationId): void {
+            $stockQuery
+                ->where('track_inventory', false)
+                ->orWhereExists(fn ($stockExists) => $stockExists
+                    ->selectRaw('1')
+                    ->from('product_variants as stock_variants')
+                    ->join('inventory_stock_levels as storefront_stock', 'storefront_stock.product_variant_id', '=', 'stock_variants.id')
+                    ->whereColumn('stock_variants.product_id', 'products.id')
+                    ->whereNull('stock_variants.deleted_at')
+                    ->where('stock_variants.status', ProductStatus::Active->value)
+                    ->where('storefront_stock.inventory_location_id', $locationId)
+                    ->whereColumn('storefront_stock.quantity_on_hand', '>', 'storefront_stock.quantity_reserved'));
+        });
+    }
+
+    /**
+     * @return array{min: float, max: float}
+     */
+    private function productPriceBounds(OnlineStore $store): array
+    {
+        $products = Product::query()
+            ->where('tenant_id', $store->tenant_id)
+            ->where('status', ProductStatus::Active->value)
+            ->where('product_type', ProductType::Product->value);
+        $baseMin = (int) ((clone $products)->min('base_price_minor') ?? 0);
+        $baseMax = (int) ((clone $products)->max('base_price_minor') ?? 0);
+        $variants = ProductVariant::query()
+            ->where('tenant_id', $store->tenant_id)
+            ->where('status', ProductStatus::Active->value)
+            ->whereHas('product', fn (Builder $productQuery) => $productQuery
+                ->where('status', ProductStatus::Active->value)
+                ->where('product_type', ProductType::Product->value));
+        $variantMin = (int) ((clone $variants)->min('selling_price_minor') ?? 0);
+        $variantMax = (int) ((clone $variants)->max('selling_price_minor') ?? 0);
+        $positiveMinimums = array_filter([$baseMin, $variantMin], fn (int $price): bool => $price > 0);
+
+        return [
+            'min' => $positiveMinimums === [] ? 0 : floor(min($positiveMinimums) / 100),
+            'max' => ceil(max($baseMax, $variantMax, 0) / 100),
+        ];
+    }
+
+    /**
+     * @param  array{min_price: ?float, max_price: ?float, in_stock: bool, on_sale: bool}  $filters
+     */
+    private function hasProductFilters(array $filters): bool
+    {
+        return $filters['min_price'] !== null
+            || $filters['max_price'] !== null
+            || $filters['in_stock']
+            || $filters['on_sale'];
     }
 
     private function productsFor(OnlineStore $store, ProductType $type)

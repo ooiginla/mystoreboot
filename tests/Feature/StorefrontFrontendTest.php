@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Modules\Business\Models\Branch;
 use Modules\Business\Models\OnlineStore;
 use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Enums\ProductStatus;
@@ -21,6 +22,8 @@ use Modules\Catalog\Models\ProductVariant;
 use Modules\Customers\Models\Customer;
 use Modules\Customers\Models\CustomerAddress;
 use Modules\Customers\Models\SupportTicket;
+use Modules\Inventory\Models\InventoryLocation;
+use Modules\Inventory\Models\InventoryStockLevel;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Storefront\Http\Controllers\StorefrontController;
 use Modules\Tenancy\Enums\TenantStatus;
@@ -323,6 +326,137 @@ class StorefrontFrontendTest extends TestCase
             ->assertDontSee('Uncategorised Product')
             ->assertDontSee('<section class="store-hero', false)
             ->assertDontSee('<div class="relative mt-8" data-collection-carousel>', false);
+    }
+
+    public function test_storefront_sidebar_filters_products_by_effective_price_and_sale_status(): void
+    {
+        [$tenant, $store] = $this->storeFixture();
+        $matching = Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Matching Sale Item',
+            'slug' => 'matching-sale-item',
+            'status' => ProductStatus::Active->value,
+            'has_variants' => true,
+            'base_price_minor' => 999999,
+        ]);
+        ProductVariant::query()->create([
+            'tenant_id' => $tenant->id,
+            'product_id' => $matching->id,
+            'variant_name' => 'Default',
+            'sku' => 'MATCH-SALE',
+            'selling_price_minor' => 250000,
+            'compare_at_price_minor' => 300000,
+            'status' => ProductStatus::Active->value,
+        ]);
+        Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Below Price Item',
+            'slug' => 'below-price-item',
+            'status' => ProductStatus::Active->value,
+            'base_price_minor' => 150000,
+        ]);
+        Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Expensive Sale Item',
+            'slug' => 'expensive-sale-item',
+            'status' => ProductStatus::Active->value,
+            'base_price_minor' => 500000,
+            'compare_at_price_minor' => 600000,
+        ]);
+
+        $response = $this->get(route('storefront.storefront.store.home', [
+            'store' => $store,
+            'min_price' => 2000,
+            'max_price' => 3000,
+            'on_sale' => 1,
+        ]))
+            ->assertOk()
+            ->assertSee('Matching Sale Item')
+            ->assertDontSee('Below Price Item')
+            ->assertDontSee('Expensive Sale Item')
+            ->assertSee('name="min_price"', false)
+            ->assertSee('value="2000"', false)
+            ->assertSee('name="on_sale" value="1" checked', false)
+            ->assertSee('data-storefront-filters', false);
+
+        $this->assertLessThan(
+            strpos($response->getContent(), 'data-filter-section="category"'),
+            strpos($response->getContent(), 'data-filter-section="price"'),
+        );
+    }
+
+    public function test_storefront_in_stock_filter_uses_available_stock_at_the_fulfilment_branch(): void
+    {
+        [$tenant, $store] = $this->storeFixture();
+        $branch = Branch::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Online Branch',
+            'code' => 'ONLINE',
+            'status' => 'active',
+            'is_primary' => true,
+        ]);
+        $location = InventoryLocation::query()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'name' => 'Online Stock',
+            'code' => 'ONLINE-STOCK',
+            'status' => 'active',
+        ]);
+        $store->update(['fulfilment_branch_id' => $branch->id]);
+
+        $available = Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Available Item',
+            'slug' => 'available-item',
+            'status' => ProductStatus::Active->value,
+            'track_inventory' => true,
+            'base_price_minor' => 200000,
+        ]);
+        $availableVariant = ProductVariant::query()->create([
+            'tenant_id' => $tenant->id,
+            'product_id' => $available->id,
+            'variant_name' => 'Default',
+            'sku' => 'AVAILABLE',
+            'selling_price_minor' => 200000,
+            'status' => ProductStatus::Active->value,
+        ]);
+        InventoryStockLevel::query()->create([
+            'tenant_id' => $tenant->id,
+            'inventory_location_id' => $location->id,
+            'product_variant_id' => $availableVariant->id,
+            'quantity_on_hand' => 5,
+            'quantity_reserved' => 2,
+        ]);
+
+        $soldOut = Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Sold Out Item',
+            'slug' => 'sold-out-item',
+            'status' => ProductStatus::Active->value,
+            'track_inventory' => true,
+            'base_price_minor' => 200000,
+        ]);
+        $soldOutVariant = ProductVariant::query()->create([
+            'tenant_id' => $tenant->id,
+            'product_id' => $soldOut->id,
+            'variant_name' => 'Default',
+            'sku' => 'SOLD-OUT',
+            'selling_price_minor' => 200000,
+            'status' => ProductStatus::Active->value,
+        ]);
+        InventoryStockLevel::query()->create([
+            'tenant_id' => $tenant->id,
+            'inventory_location_id' => $location->id,
+            'product_variant_id' => $soldOutVariant->id,
+            'quantity_on_hand' => 2,
+            'quantity_reserved' => 2,
+        ]);
+
+        $this->get(route('storefront.storefront.store.home', ['store' => $store, 'in_stock' => 1]))
+            ->assertOk()
+            ->assertSee('Available Item')
+            ->assertDontSee('Sold Out Item')
+            ->assertSee('name="in_stock" value="1" checked', false);
     }
 
     public function test_storefront_search_filters_visible_products_and_preserves_the_query(): void

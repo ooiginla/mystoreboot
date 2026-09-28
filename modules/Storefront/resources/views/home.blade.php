@@ -29,6 +29,19 @@
     }
 
     $productCategories = $store->categories->filter(fn ($category) => ($category->category_type?->value ?? (string) $category->category_type) === 'product');
+    $filters = $filters ?? ['min_price' => null, 'max_price' => null, 'in_stock' => false, 'on_sale' => false];
+    $priceBounds = $priceBounds ?? ['min' => 0, 'max' => 0];
+    $filterCategoryIds = $productCategories->modelKeys();
+    $filterRootCategories = $productCategories
+        ->filter(fn ($category) => ! $category->parent_id || ! in_array($category->parent_id, $filterCategoryIds, true))
+        ->values();
+    $productFilterQuery = array_filter([
+        'min_price' => $filters['min_price'],
+        'max_price' => $filters['max_price'],
+        'in_stock' => $filters['in_stock'] ? 1 : null,
+        'on_sale' => $filters['on_sale'] ? 1 : null,
+    ], fn ($value) => $value !== null && $value !== false && $value !== '');
+    $productFilterUrl = fn (string $url): string => $productFilterQuery === [] ? $url : $url.'?'.http_build_query($productFilterQuery);
 @endphp
 
 @push('styles')
@@ -154,29 +167,48 @@
             </div>
             @if ($productCategories->isNotEmpty())
                 <div class="mt-6 flex w-full gap-2 overflow-x-auto pb-1" data-product-category-tags>
-                    <a href="{{ $storefrontRoute($store) }}#products" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === '' && ! $selectedCollection ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">All</a>
+                    <a href="{{ $productFilterUrl($storefrontRoute($store)) }}#products" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === '' && ! $selectedCollection ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">All</a>
                     @foreach ($productCategories as $category)
-                        <a href="{{ $storefrontRoute($store, 'categories.show', ['categorySlug' => $category->slug]) }}" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === $category->slug ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">{{ $category->name }}</a>
+                        <a href="{{ $productFilterUrl($storefrontRoute($store, 'categories.show', ['categorySlug' => $category->slug])) }}#products" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === $category->slug ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">{{ $category->name }}</a>
                     @endforeach
                 </div>
             @endif
 
-            <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                @forelse ($products as $product)
-                    @include('storefront::partials.product-card', ['product' => $product, 'detailRouteName' => 'products.show'])
-                @empty
-                    <div class="store-card col-span-full p-10 text-center">
-                        <h3 class="sf-headline-lg-mobile">{{ $search !== '' ? 'No products found' : 'No products available yet' }}</h3>
-                        <p class="sf-body-md mt-2 text-[var(--store-muted)]">{{ $search !== '' ? 'Try another product name, category, tag, SKU, or barcode.' : 'Please check back soon for new arrivals.' }}</p>
+            <div class="mt-8 grid items-start gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
+                <aside>
+                    <details class="store-card lg:hidden">
+                        <summary class="sf-label-md flex cursor-pointer list-none items-center justify-between px-5 py-4 uppercase">
+                            Filter products
+                            @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5 rotate-90'])
+                        </summary>
+                        <div class="border-t border-[var(--store-line)]">
+                            @include('storefront::partials.product-filters')
+                        </div>
+                    </details>
+                    <div class="store-card hidden overflow-hidden lg:sticky lg:top-28 lg:block">
+                        @include('storefront::partials.product-filters')
                     </div>
-                @endforelse
-            </div>
+                </aside>
 
-            @if ($products->hasPages())
-                <div class="mt-10">
-                    {{ $products->fragment('products')->links() }}
+                <div class="min-w-0">
+                    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                        @forelse ($products as $product)
+                            @include('storefront::partials.product-card', ['product' => $product, 'detailRouteName' => 'products.show'])
+                        @empty
+                            <div class="store-card col-span-full p-10 text-center">
+                                <h3 class="sf-headline-lg-mobile">{{ $search !== '' ? 'No products found' : 'No products available yet' }}</h3>
+                                <p class="sf-body-md mt-2 text-[var(--store-muted)]">{{ $search !== '' ? 'Try another product name, category, tag, SKU, or barcode.' : 'Please check back soon for new arrivals.' }}</p>
+                            </div>
+                        @endforelse
+                    </div>
+
+                    @if ($products->hasPages())
+                        <div class="mt-10">
+                            {{ $products->fragment('products')->links() }}
+                        </div>
+                    @endif
                 </div>
-            @endif
+            </div>
         </section>
     @endif
 @endsection
