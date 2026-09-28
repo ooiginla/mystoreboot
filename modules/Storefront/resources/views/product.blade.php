@@ -337,6 +337,44 @@
                         Buy It Now
                     </button>
                 </div>
+
+                @unless ($isService)
+                    <section class="mt-5 rounded-lg border border-[var(--store-line)] bg-[var(--store-soft)] p-4" aria-labelledby="buyer-protection-title" data-buyer-protection>
+                        <div class="flex items-center gap-2 text-[var(--store-primary)]">
+                            @include('storefront::partials.icon', ['name' => 'shield_check', 'class' => 'h-5 w-5 shrink-0'])
+                            <h2 id="buyer-protection-title" class="sf-body-md font-bold">Buyer Protection</h2>
+                        </div>
+                        <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                            <div class="flex items-center gap-3 sm:block">
+                                <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[var(--store-secondary)] shadow-sm">
+                                    @include('storefront::partials.icon', ['name' => 'shield_check', 'class' => 'h-5 w-5'])
+                                </span>
+                                <div class="sm:mt-2">
+                                    <p class="sf-label-md text-[var(--store-ink)]">Secure Payment</p>
+                                    <p class="sf-caption mt-0.5 text-[var(--store-muted)]">Protected checkout</p>
+                                </div>
+                            </div>
+                            <a href="{{ $storefrontRoute($store, 'refunds') }}" class="flex items-center gap-3 rounded-md sm:block" aria-label="Read the return and refund policy">
+                                <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[var(--store-secondary)] shadow-sm">
+                                    @include('storefront::partials.icon', ['name' => 'refresh', 'class' => 'h-5 w-5'])
+                                </span>
+                                <div class="sm:mt-2">
+                                    <p class="sf-label-md text-[var(--store-ink)]">Easy Returns</p>
+                                    <p class="sf-caption mt-0.5 text-[var(--store-muted)]">View return policy</p>
+                                </div>
+                            </a>
+                            <a href="{{ $storefrontRoute($store, 'shipping') }}" class="flex items-center gap-3 rounded-md sm:block" aria-label="Read the shipping information">
+                                <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[var(--store-secondary)] shadow-sm">
+                                    @include('storefront::partials.icon', ['name' => 'local_shipping', 'class' => 'h-5 w-5'])
+                                </span>
+                                <div class="sm:mt-2">
+                                    <p class="sf-label-md text-[var(--store-ink)]">Speedy Delivery</p>
+                                    <p class="sf-caption mt-0.5 text-[var(--store-muted)]">View delivery details</p>
+                                </div>
+                            </a>
+                        </div>
+                    </section>
+                @endunless
             </div>
         </div>
     </section>

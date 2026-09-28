@@ -597,6 +597,11 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('"priceMinor":240000', false)
             ->assertSee('"compareMinor":200000', false)
             ->assertSee('data-variant-cart-button', false)
+            ->assertSee('Buyer Protection')
+            ->assertSee('Secure Payment')
+            ->assertSee('Easy Returns')
+            ->assertSee('Speedy Delivery')
+            ->assertSee('data-buyer-protection', false)
             ->assertDontSee('SHIRT-X')
             ->assertDontSee('"priceMinor":50000', false)
             ->assertDontSee('₦9,999.99');
