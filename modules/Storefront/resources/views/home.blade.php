@@ -69,11 +69,20 @@
         .store-collection-control:disabled { cursor: default; opacity: .35; }
         .store-collection-control-prev { left: 8px; }
         .store-collection-control-next { right: 8px; }
+        .store-products-layout { display: grid; align-items: start; gap: 1.5rem; }
+        .store-products-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+        [data-product-filter-mobile] { display: block; }
+        [data-product-filter-desktop] { display: none; }
         @media (min-width: 640px) {
             .store-collection-track { grid-auto-columns: calc((100% - 1.5rem) / 2); }
+            .store-products-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @media (min-width: 1024px) {
             .store-collection-track { grid-auto-columns: calc((100% - 6rem) / 5); }
+            .store-products-layout { grid-template-columns: 240px minmax(0, 1fr); }
+            .store-products-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+            [data-product-filter-mobile] { display: none; }
+            [data-product-filter-desktop] { position: sticky; top: 7rem; display: block; }
         }
         @media (max-width: 767px) {
             .store-hero-overlay { background: linear-gradient(90deg, rgba(255,255,255,.94), rgba(255,255,255,.8)); }
@@ -174,9 +183,9 @@
                 </div>
             @endif
 
-            <div class="mt-8 grid items-start gap-6 lg:grid-cols-[240px_minmax(0,1fr)]" data-product-results-layout>
+            <div class="store-products-layout mt-8" data-product-results-layout>
                 <aside data-product-filter-sidebar>
-                    <details class="store-card lg:hidden">
+                    <details class="store-card" data-product-filter-mobile>
                         <summary class="sf-label-md flex cursor-pointer list-none items-center justify-between px-5 py-4 uppercase">
                             Filter products
                             @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5 rotate-90'])
@@ -185,13 +194,13 @@
                             @include('storefront::partials.product-filters')
                         </div>
                     </details>
-                    <div class="store-card hidden overflow-hidden lg:sticky lg:top-28 lg:block">
+                    <div class="store-card overflow-hidden" data-product-filter-desktop>
                         @include('storefront::partials.product-filters')
                     </div>
                 </aside>
 
                 <div class="min-w-0">
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4" data-product-results-grid>
+                    <div class="store-products-grid" data-product-results-grid>
                         @forelse ($products as $product)
                             @include('storefront::partials.product-card', ['product' => $product, 'detailRouteName' => 'products.show'])
                         @empty
