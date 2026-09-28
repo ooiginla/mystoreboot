@@ -174,8 +174,8 @@
                 </div>
             @endif
 
-            <div class="mt-8 grid items-start gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
-                <aside>
+            <div class="mt-8 grid items-start gap-6 lg:grid-cols-[240px_minmax(0,1fr)]" data-product-results-layout>
+                <aside data-product-filter-sidebar>
                     <details class="store-card lg:hidden">
                         <summary class="sf-label-md flex cursor-pointer list-none items-center justify-between px-5 py-4 uppercase">
                             Filter products
@@ -191,7 +191,7 @@
                 </aside>
 
                 <div class="min-w-0">
-                    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4" data-product-results-grid>
                         @forelse ($products as $product)
                             @include('storefront::partials.product-card', ['product' => $product, 'detailRouteName' => 'products.show'])
                         @empty

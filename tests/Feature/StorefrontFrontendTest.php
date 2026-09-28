@@ -377,7 +377,9 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('name="min_price"', false)
             ->assertSee('value="2000"', false)
             ->assertSee('name="on_sale" value="1" checked', false)
-            ->assertSee('data-storefront-filters', false);
+            ->assertSee('data-storefront-filters', false)
+            ->assertSee('class="mt-8 grid items-start gap-6 lg:grid-cols-[240px_minmax(0,1fr)]" data-product-results-layout', false)
+            ->assertSee('class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4" data-product-results-grid', false);
 
         $this->assertLessThan(
             strpos($response->getContent(), 'data-filter-section="category"'),
