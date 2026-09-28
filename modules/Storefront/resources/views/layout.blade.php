@@ -186,6 +186,10 @@
         .store-search-button { display: grid; margin: 5px; place-items: center; border: 0; border-radius: 9px; background: var(--store-soft); color: var(--store-muted); transition: background .16s ease, color .16s ease; }
         .store-search-button:hover { background: color-mix(in srgb, var(--store-primary) 10%, white); color: var(--store-primary); }
         .store-visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
+        .store-category-submenu { position: absolute; top: -8px; left: calc(100% - 2px); z-index: 60; width: 288px; visibility: hidden; pointer-events: none; opacity: 0; transform: translateX(8px); transition: visibility .15s ease, opacity .15s ease, transform .15s ease; }
+        .store-category-flyout:hover > .store-category-submenu,
+        .store-category-flyout:focus-within > .store-category-submenu { visibility: visible; pointer-events: auto; opacity: 1; transform: translateX(0); }
+        [data-category-menu-parent][open] > summary [data-category-menu-chevron] { transform: rotate(90deg); }
         .store-cart-toast { position: fixed; z-index: 120; top: 20px; left: 50%; display: flex; width: max-content; max-width: calc(100vw - 32px); align-items: center; gap: 10px; border: 1px solid color-mix(in srgb, var(--store-secondary) 35%, white); border-radius: 10px; background: #fff; padding: 12px 16px; color: var(--store-ink); box-shadow: 0 18px 44px rgba(15, 23, 42, .2); opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, -12px); transition: opacity .2s ease, transform .2s ease, visibility .2s ease; }
         .store-cart-toast.is-visible { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
         .store-cart-toast-icon { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border-radius: 999px; background: var(--store-secondary); color: #fff; }

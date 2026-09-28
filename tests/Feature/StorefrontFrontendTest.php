@@ -185,7 +185,9 @@ class StorefrontFrontendTest extends TestCase
 
         // The menu is rendered once for desktop and once for mobile.
         $this->assertSame(2, substr_count($html, 'data-category-menu-parent="'.$parent->id.'"'));
-        $this->assertSame(2, substr_count($html, 'data-category-menu-chevron'));
+        $this->assertSame(2, substr_count($html, 'data-category-menu-chevron>'));
+        $this->assertSame(1, substr_count($html, 'class="store-category-flyout relative"'));
+        $this->assertSame(1, substr_count($html, 'class="store-category-submenu store-card'));
         $this->assertSame(2, substr_count($html, 'data-category-menu-children="'.$parent->id.'"'));
         $this->assertSame(2, substr_count($html, 'data-category-menu-root="'.$parent->id.'"'));
         $this->assertSame(0, substr_count($html, 'data-category-menu-root="'.$child->id.'"'));

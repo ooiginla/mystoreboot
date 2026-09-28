@@ -7,15 +7,37 @@
     $categoryUrl = $storefrontRoute($store, 'categories.show', ['categorySlug' => $category->slug]);
 @endphp
 
-@if ($children->isNotEmpty())
+@if ($children->isNotEmpty() && ! $mobile)
+    <div
+        class="store-category-flyout relative"
+        data-category-menu-parent="{{ $category->id }}"
+        @if ($depth === 0) data-category-menu-root="{{ $category->id }}" @endif
+    >
+        <a href="{{ $categoryUrl }}" class="sf-body-md flex items-center justify-between rounded-md px-3 py-2 font-semibold text-[var(--store-muted)] hover:bg-[var(--store-soft)] hover:text-[var(--store-primary)]">
+            <span>{{ $category->name }}</span>
+            <span data-category-menu-chevron>
+                @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
+            </span>
+        </a>
+        <div class="store-category-submenu store-card grid gap-1 p-2" data-category-menu-children="{{ $category->id }}">
+            @foreach ($children as $child)
+                @include('storefront::partials.category-menu-item', [
+                    'category' => $child,
+                    'allCategories' => $allCategories,
+                    'depth' => $depth + 1,
+                    'mobile' => false,
+                ])
+            @endforeach
+        </div>
+    </div>
+@elseif ($children->isNotEmpty())
     <details
-        class="group/category"
         data-category-menu-parent="{{ $category->id }}"
         @if ($depth === 0) data-category-menu-root="{{ $category->id }}" @endif
     >
         <summary class="sf-body-md flex cursor-pointer list-none items-center justify-between rounded-md px-3 py-2 font-semibold text-[var(--store-muted)] hover:bg-[var(--store-soft)] hover:text-[var(--store-primary)]">
             <span>{{ $category->name }}</span>
-            <span class="transition-transform group-open/category:rotate-90" data-category-menu-chevron>
+            <span class="transition-transform" data-category-menu-chevron>
                 @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
             </span>
         </summary>
