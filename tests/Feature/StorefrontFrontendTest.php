@@ -153,6 +153,46 @@ class StorefrontFrontendTest extends TestCase
         );
     }
 
+    public function test_storefront_category_menu_nests_children_and_only_marks_parents_as_expandable(): void
+    {
+        [$tenant, $store] = $this->storeFixture();
+        $parent = ProductCategory::query()->create([
+            'tenant_id' => $tenant->id,
+            'category_type' => CategoryType::Product->value,
+            'name' => 'Clothing',
+            'slug' => 'clothing',
+            'status' => 'active',
+        ]);
+        $child = ProductCategory::query()->create([
+            'tenant_id' => $tenant->id,
+            'parent_id' => $parent->id,
+            'category_type' => CategoryType::Product->value,
+            'name' => 'Shirts',
+            'slug' => 'shirts',
+            'status' => 'active',
+        ]);
+        $standalone = ProductCategory::query()->create([
+            'tenant_id' => $tenant->id,
+            'category_type' => CategoryType::Product->value,
+            'name' => 'Accessories',
+            'slug' => 'accessories',
+            'status' => 'active',
+        ]);
+        $store->categories()->attach([$parent->id, $child->id, $standalone->id]);
+
+        $response = $this->get(route('storefront.storefront.store.home', $store))->assertOk();
+        $html = $response->getContent();
+
+        // The menu is rendered once for desktop and once for mobile.
+        $this->assertSame(2, substr_count($html, 'data-category-menu-parent="'.$parent->id.'"'));
+        $this->assertSame(2, substr_count($html, 'data-category-menu-chevron'));
+        $this->assertSame(2, substr_count($html, 'data-category-menu-children="'.$parent->id.'"'));
+        $this->assertSame(2, substr_count($html, 'data-category-menu-root="'.$parent->id.'"'));
+        $this->assertSame(0, substr_count($html, 'data-category-menu-root="'.$child->id.'"'));
+        $this->assertSame(2, substr_count($html, 'data-category-menu-root="'.$standalone->id.'"'));
+        $this->assertSame(2, substr_count($html, 'data-category-menu-leaf="'.$standalone->id.'"'));
+    }
+
     public function test_checkout_customer_lookup_is_scoped_to_the_store_tenant(): void
     {
         [$tenant, $store] = $this->storeFixture();

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\Role;
@@ -350,6 +351,146 @@ class BusinessOnlineStoreTest extends TestCase
             ->assertOk()
             ->assertSee('Settlement bank');
         $this->assertMatchesRegularExpression('/data-paystack-settlement-bank-fields[^>]*\shidden/', $response->getContent());
+    }
+
+    public function test_saving_unrelated_or_unchanged_store_settings_does_not_sync_the_paystack_subaccount(): void
+    {
+        Http::fake();
+
+        $tenant = Tenant::query()->create([
+            'name' => 'Quiet Paystack Shop',
+            'slug' => 'quiet-paystack-shop',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+        ]);
+        $store = OnlineStore::query()->create([
+            'tenant_id' => $tenant->id,
+            'username' => 'quiet-paystack-shop',
+            'store_name' => 'Quiet Paystack Shop',
+            'theme_primary_color' => '#006554',
+            'theme_secondary_color' => '#f59e0b',
+            'payment_methods' => ['storeboot_paystack'],
+            'payment_settings' => [
+                'settlement_bank_account' => [
+                    'bank_name' => 'Test Bank',
+                    'bank_code' => '001',
+                    'account_number' => '1234567890',
+                    'account_name' => 'QUIET PAYSTACK SHOP',
+                    'subaccount_code' => 'ACCT_existing',
+                ],
+            ],
+            'is_active' => true,
+        ]);
+        $user = User::factory()->create(['is_platform_admin' => true]);
+        $payload = [
+            'tenant_id' => $tenant->id,
+            'username' => $store->username,
+            'store_name' => $store->store_name,
+            'theme_primary_color' => '#006554',
+            'theme_secondary_color' => '#f59e0b',
+            'payment_methods' => ['storeboot_paystack'],
+            'paystack_method' => 'storeboot_paystack',
+            'settlement_bank_account' => [
+                'bank_name' => 'Test Bank',
+                'bank_code' => '001',
+                'account_number' => '1234567890',
+                'account_name' => 'QUIET PAYSTACK SHOP',
+            ],
+        ];
+
+        foreach (['online-store-theme', 'online-store-payments'] as $section) {
+            $this->actingAs($user)
+                ->post(route('admin.business.online-store.save'), [...$payload, 'online_store_section' => $section])
+                ->assertRedirect(route('admin.business.online-store.index', [
+                    'tenant' => $tenant->id,
+                    'online_store_section' => $section,
+                ]).'#online-store');
+        }
+
+        Http::assertNothingSent();
+        $this->assertSame(
+            'ACCT_existing',
+            $store->fresh()->payment_settings['settlement_bank_account']['subaccount_code'],
+        );
+    }
+
+    public function test_changing_the_settlement_account_from_the_payment_section_syncs_paystack(): void
+    {
+        config()->set('services.paystack.secret_key', 'sk_test_storeboot');
+        config()->set('services.paystack.base_url', 'https://api.paystack.test');
+        Http::fake([
+            'https://api.paystack.test/bank/resolve*' => Http::response([
+                'status' => true,
+                'data' => ['account_name' => 'CHANGED BANK SHOP'],
+            ]),
+            'https://api.paystack.test/bank*' => Http::response([
+                'status' => true,
+                'data' => [['name' => 'Test Bank', 'code' => '001']],
+            ]),
+            'https://api.paystack.test/subaccount/ACCT_existing' => Http::response([
+                'status' => true,
+                'data' => ['subaccount_code' => 'ACCT_updated'],
+            ]),
+        ]);
+
+        $tenant = Tenant::query()->create([
+            'name' => 'Changed Bank Shop',
+            'slug' => 'changed-bank-shop',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+        ]);
+        $store = OnlineStore::query()->create([
+            'tenant_id' => $tenant->id,
+            'username' => 'changed-bank-shop',
+            'store_name' => 'Changed Bank Shop',
+            'theme_primary_color' => '#006554',
+            'theme_secondary_color' => '#f59e0b',
+            'payment_methods' => ['storeboot_paystack'],
+            'payment_settings' => [
+                'settlement_bank_account' => [
+                    'bank_name' => 'Test Bank',
+                    'bank_code' => '001',
+                    'account_number' => '1234567890',
+                    'account_name' => 'CHANGED BANK SHOP',
+                    'subaccount_code' => 'ACCT_existing',
+                ],
+            ],
+            'is_active' => true,
+        ]);
+        $user = User::factory()->create(['is_platform_admin' => true]);
+
+        $this->actingAs($user)
+            ->post(route('admin.business.online-store.save'), [
+                'tenant_id' => $tenant->id,
+                'online_store_section' => 'online-store-payments',
+                'username' => $store->username,
+                'store_name' => $store->store_name,
+                'theme_primary_color' => '#006554',
+                'theme_secondary_color' => '#f59e0b',
+                'payment_methods' => ['storeboot_paystack'],
+                'paystack_method' => 'storeboot_paystack',
+                'settlement_bank_account' => [
+                    'bank_name' => 'Test Bank',
+                    'bank_code' => '001',
+                    'account_number' => '0987654321',
+                    'account_name' => 'CHANGED BANK SHOP',
+                ],
+            ])
+            ->assertRedirect();
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'PUT'
+            && $request->url() === 'https://api.paystack.test/subaccount/ACCT_existing'
+            && $request['account_number'] === '0987654321');
+        $this->assertSame(
+            'ACCT_updated',
+            $store->fresh()->payment_settings['settlement_bank_account']['subaccount_code'],
+        );
     }
 
     public function test_saving_social_whatsapp_also_updates_store_contact_whatsapp(): void

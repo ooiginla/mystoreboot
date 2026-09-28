@@ -530,17 +530,35 @@ final class BusinessSetupController extends Controller
         $user = $request->user();
         $this->authorizeTenantIdAccess($user, $data['tenant_id']);
 
-        $settlement = (array) ($data['settlement_bank_account'] ?? []);
         $tenant = Tenant::query()->findOrFail($data['tenant_id']);
+        $existingStore = OnlineStore::query()->where('tenant_id', $data['tenant_id'])->first();
+        $existingSettlement = (array) ($existingStore?->payment_settings['settlement_bank_account'] ?? []);
+        $existingCode = $existingSettlement['subaccount_code'] ?? null;
+        $settlement = (array) ($data['settlement_bank_account'] ?? []);
+        $isPaymentSection = ($data['online_store_section'] ?? null) === 'online-store-payments';
+        $usesStorebootPaystack = ($data['paystack_method'] ?? null) === 'storeboot_paystack';
+        $bankDetailsChanged = trim((string) ($settlement['bank_code'] ?? '')) !== trim((string) ($existingSettlement['bank_code'] ?? ''))
+            || trim((string) ($settlement['account_number'] ?? '')) !== trim((string) ($existingSettlement['account_number'] ?? ''));
         $verifyAccountName = BankAccountNameVerification::required($tenant);
-        if (! $verifyAccountName && filled($settlement['account_number'] ?? null)) {
+
+        // The subaccount code is not rendered as a form field, so carry it forward on
+        // ordinary store saves instead of accidentally erasing it.
+        $settlement['subaccount_code'] = $existingCode;
+        $data['settlement_bank_account'] = $settlement;
+
+        if ($isPaymentSection && $usesStorebootPaystack && ! $verifyAccountName && filled($settlement['account_number'] ?? null)) {
             if (trim((string) ($settlement['account_name'] ?? '')) === '') {
                 return back()->withErrors(['settlement_bank_account.account_name' => 'Enter the settlement account name.'])->withInput();
             }
             $data['settlement_bank_account'] = $settlement;
         }
 
-        if (filled($settlement['bank_code'] ?? null)
+        $shouldSyncSubaccount = $isPaymentSection
+            && $usesStorebootPaystack
+            && ($bankDetailsChanged || blank($existingCode));
+
+        if ($shouldSyncSubaccount
+            && filled($settlement['bank_code'] ?? null)
             && ($verifyAccountName
                 ? preg_match('/^[0-9]{10}$/', (string) ($settlement['account_number'] ?? ''))
                 : filled($settlement['account_number'] ?? null))) {
@@ -564,9 +582,6 @@ final class BusinessSetupController extends Controller
 
             // Create/update the Paystack subaccount so Paystack settles the merchant's
             // share directly to this bank (direct settlement).
-            $existingStore = OnlineStore::query()->where('tenant_id', $data['tenant_id'])->first();
-            $existingCode = $existingStore?->payment_settings['settlement_bank_account']['subaccount_code'] ?? null;
-
             $subaccount = $paystack->createOrUpdateSubaccount([
                 'business_name' => (string) ($data['store_name'] ?? Tenant::query()->whereKey($data['tenant_id'])->value('name') ?? 'Merchant'),
                 'bank_code' => (string) $settlement['bank_code'],
@@ -578,7 +593,9 @@ final class BusinessSetupController extends Controller
             if ($subaccount['ok']) {
                 $settlement['subaccount_code'] = $subaccount['subaccount_code'];
             } else {
-                $settlement['subaccount_code'] = $existingCode;
+                // Never associate newly entered bank details with the old bank's
+                // subaccount code when Paystack could not apply the change.
+                $settlement['subaccount_code'] = $bankDetailsChanged ? null : $existingCode;
                 session()->flash('payout_warning', 'Storeboot could not set up direct settlement yet: '.($subaccount['message'] ?? 'please try again').'.');
             }
 

@@ -44,7 +44,13 @@
         ->where('status', ProductStatus::Active->value)
         ->where('product_type', ProductType::Service->value)
         ->exists();
-    $menuCategories = $store->categories->filter(fn ($category) => ($category->category_type?->value ?? (string) $category->category_type) === 'product');
+    $menuCategories = $store->categories
+        ->filter(fn ($category) => ($category->category_type?->value ?? (string) $category->category_type) === 'product' && $category->status === 'active')
+        ->values();
+    $menuCategoryIds = $menuCategories->modelKeys();
+    $menuRootCategories = $menuCategories
+        ->filter(fn ($category) => ! $category->parent_id || ! in_array($category->parent_id, $menuCategoryIds, true))
+        ->values();
     $menuCollections = $store->productCollections;
     $navLinks = [
         ['label' => 'Products', 'href' => $storefrontRoute($store)],
@@ -226,11 +232,13 @@
                             All Categories
                         </button>
                         <div class="store-card invisible absolute left-0 top-9 z-50 w-72 translate-y-2 p-2 opacity-0 transition" data-categories-menu>
-                            @forelse ($menuCategories as $category)
-                                <a href="{{ $storefrontRoute($store, 'categories.show', ['categorySlug' => $category->slug]) }}" class="sf-body-md flex items-center justify-between rounded-md px-3 py-2 font-semibold hover:bg-[var(--store-soft)]">
-                                    {{ $category->name }}
-                                    @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
-                                </a>
+                            @forelse ($menuRootCategories as $category)
+                                @include('storefront::partials.category-menu-item', [
+                                    'category' => $category,
+                                    'allCategories' => $menuCategories,
+                                    'depth' => 0,
+                                    'mobile' => false,
+                                ])
                             @empty
                                 <span class="sf-body-md block px-3 py-2 text-[var(--store-muted)]">No categories yet</span>
                             @endforelse
@@ -286,8 +294,13 @@
                         @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5 rotate-90'])
                     </summary>
                     <div class="grid gap-1 pb-2 pl-4">
-                        @forelse ($menuCategories as $category)
-                            <a href="{{ $storefrontRoute($store, 'categories.show', ['categorySlug' => $category->slug]) }}" class="sf-body-md rounded-lg px-3 py-2 font-semibold text-[var(--store-muted)] hover:bg-[var(--store-soft)] hover:text-[var(--store-primary)]">{{ $category->name }}</a>
+                        @forelse ($menuRootCategories as $category)
+                            @include('storefront::partials.category-menu-item', [
+                                'category' => $category,
+                                'allCategories' => $menuCategories,
+                                'depth' => 0,
+                                'mobile' => true,
+                            ])
                         @empty
                             <span class="sf-body-md px-3 py-2 text-[var(--store-muted)]">No categories yet</span>
                         @endforelse

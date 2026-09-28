@@ -972,7 +972,7 @@ final class StorefrontController extends Controller
 
         return $store->loadMissing([
             'tenant',
-            'categories.children',
+            'categories',
             'fulfilmentBranch',
             'productCollections' => fn ($query) => $query
                 ->where('collection_type', 'manual')
