@@ -54,12 +54,14 @@
         @endif
     </a>
     <div class="store-product-card-body px-2 pb-2">
-        <a href="{{ $detailsUrl }}" class="sf-body-md store-product-card-title mt-2 block line-clamp-2 font-bold text-[var(--store-ink)] hover:text-[var(--store-primary)]">{{ $product->name }}</a>
-        <div class="store-product-card-price mt-2 flex items-center">
-            <strong class="sf-body-md font-bold text-[var(--store-secondary)]" @if ($showFromPrice) data-variant-price-mode="from" @endif>{{ $showFromPrice ? 'From ' : '' }}{{ $currencySymbol }}{{ $money($priceMinor) }}</strong>
-            @if ($compareMinor && $compareMinor > $priceMinor)
-                <span class="sf-body-md text-[var(--store-muted)] line-through">{{ $currencySymbol }}{{ $money($compareMinor) }}</span>
-            @endif
+        <div class="store-product-card-info">
+            <a href="{{ $detailsUrl }}" class="sf-body-md store-product-card-title mt-2 block line-clamp-2 font-bold text-[var(--store-ink)] hover:text-[var(--store-primary)]">{{ $product->name }}</a>
+            <div class="store-product-card-price flex items-center">
+                <strong class="sf-body-md font-bold text-[var(--store-secondary)]" @if ($showFromPrice) data-variant-price-mode="from" @endif>{{ $showFromPrice ? 'From ' : '' }}{{ $currencySymbol }}{{ $money($priceMinor) }}</strong>
+                @if ($compareMinor && $compareMinor > $priceMinor)
+                    <span class="sf-body-md text-[var(--store-muted)] line-through">{{ $currencySymbol }}{{ $money($compareMinor) }}</span>
+                @endif
+            </div>
         </div>
         @if ($requiresVariantSelection || $requiresPersonalizationChoice)
             <a href="{{ $detailsUrl }}" class="sf-label-md store-product-card-action flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--store-secondary)] py-3 uppercase text-white transition-colors hover:brightness-90">

@@ -164,7 +164,7 @@
             .sf-display-xl { font-size: 24px; line-height: 32px; letter-spacing: 0; font-weight: 600; }
             .sf-headline-lg { font-size: 24px; line-height: 32px; letter-spacing: 0; }
         }
-        .store-shell { max-width: 1280px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+        .store-shell { width: 100%; max-width: none; margin: 0; padding-left: 16px; padding-right: 16px; }
         @media (min-width: 768px) { .store-shell { padding-left: 48px; padding-right: 48px; } }
         .store-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 8px; padding: 10px 18px; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; line-height: 20px; letter-spacing: 0.05em; font-weight: 600; text-transform: uppercase; transition: transform .16s ease, box-shadow .16s ease, opacity .16s ease; }
         .store-btn:active { transform: scale(.98); }
@@ -173,8 +173,9 @@
         .store-card { background: var(--store-surface); border: 1px solid var(--store-line); border-radius: 8px; box-shadow: 0 16px 40px rgba(15, 23, 42, .05); }
         .store-product-card { display: flex; height: 100%; flex-direction: column; }
         .store-product-card-body { display: flex; flex: 1; flex-direction: column; }
-        .store-product-card-title { height: 56px; font-weight: 700; }
-        .store-product-card-price { min-height: 48px; flex-wrap: wrap; align-content: flex-start; column-gap: 12px; row-gap: 0; }
+        .store-product-card-info { display: grid; gap: 4px; }
+        .store-product-card-title { height: auto; min-height: 0; font-weight: 700; }
+        .store-product-card-price { min-height: 24px; flex-wrap: wrap; align-content: flex-start; column-gap: 12px; row-gap: 0; }
         .store-product-card-price strong { font-weight: 700; white-space: nowrap; }
         .store-product-card-action { min-height: 44px; margin-top: auto; }
         .store-input { width: 100%; border: 1px solid var(--store-line); border-radius: 8px; background: #fff; padding: 12px 14px; outline: none; transition: border-color .16s ease, box-shadow .16s ease; }
