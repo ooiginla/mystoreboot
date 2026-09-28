@@ -146,22 +146,20 @@
         @endif
 
         <section id="products" class="store-shell py-14">
-            <div class="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-                <div>
-                    <h2 class="sf-headline-lg text-[var(--store-primary)]">{{ $search !== '' ? 'Search results for “'.$search.'”' : ($selectedCollection?->name ?? $selectedCategoryName ?? 'Our Products') }}</h2>
-                    <p class="sf-body-md mt-2 text-[var(--store-muted)]">
-                        {{ $search !== '' ? $products->total().' '.Str::plural('product', $products->total()).' found.' : ($selectedCollection ? 'Browse all products in this collection.' : ($selectedCategoryName ? 'Browse all products in this category.' : 'Browse items available from '.$store->store_name.'.')) }}
-                    </p>
-                </div>
-                @if ($productCategories->isNotEmpty())
-                    <div class="flex gap-2 overflow-x-auto pb-1">
-                        <a href="{{ $storefrontRoute($store) }}#products" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === '' && ! $selectedCollection ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">All</a>
-                        @foreach ($productCategories as $category)
-                            <a href="{{ $storefrontRoute($store, 'categories.show', ['categorySlug' => $category->slug]) }}" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === $category->slug ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">{{ $category->name }}</a>
-                        @endforeach
-                    </div>
-                @endif
+            <div>
+                <h2 class="sf-headline-lg text-[var(--store-primary)]">{{ $search !== '' ? 'Search results for “'.$search.'”' : ($selectedCollection?->name ?? $selectedCategoryName ?? 'Our Products') }}</h2>
+                <p class="sf-body-md mt-2 text-[var(--store-muted)]">
+                    {{ $search !== '' ? $products->total().' '.Str::plural('product', $products->total()).' found.' : ($selectedCollection ? 'Browse all products in this collection.' : ($selectedCategoryName ? 'Browse all products in this category.' : 'Browse items available from '.$store->store_name.'.')) }}
+                </p>
             </div>
+            @if ($productCategories->isNotEmpty())
+                <div class="mt-6 flex w-full gap-2 overflow-x-auto pb-1" data-product-category-tags>
+                    <a href="{{ $storefrontRoute($store) }}#products" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === '' && ! $selectedCollection ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">All</a>
+                    @foreach ($productCategories as $category)
+                        <a href="{{ $storefrontRoute($store, 'categories.show', ['categorySlug' => $category->slug]) }}" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === $category->slug ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">{{ $category->name }}</a>
+                    @endforeach
+                </div>
+            @endif
 
             <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                 @forelse ($products as $product)

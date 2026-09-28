@@ -126,6 +126,7 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('data-store-hero-slider', false)
             ->assertSee('data-store-hero-next', false)
             ->assertSee('Our Products')
+            ->assertSee('class="mt-6 flex w-full gap-2 overflow-x-auto pb-1" data-product-category-tags', false)
             ->assertSee('City Runner')
             ->assertSee('Powered by storeboot.com')
             ->assertSee('href="https://storeboot.com"', false)
