@@ -60,11 +60,16 @@
                             $shippingDescription = trim((string) ($option['description'] ?? ''));
                         @endphp
                         <label class="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--store-line)] p-3 hover:bg-[var(--store-soft)]">
-                            <span class="flex items-center gap-3">
+                            <span class="flex min-w-0 items-start gap-3">
                                 <input type="radio" name="shipping_option" data-price-minor="{{ $priceMinor }}" value="{{ $option['location'] ?? '' }}">
-                                <span class="sf-body-md font-semibold">{{ $shippingLocation }}@if ($shippingDescription !== '') ({{ $shippingDescription }})@endif</span>
+                                <span class="min-w-0">
+                                    <strong class="sf-body-md block font-bold text-[var(--store-text)]">{{ $shippingLocation }}</strong>
+                                    @if ($shippingDescription !== '')
+                                        <span class="sf-body-sm mt-0.5 block text-[var(--store-muted)]">{{ $shippingDescription }}</span>
+                                    @endif
+                                </span>
                             </span>
-                            <span class="sf-body-md font-bold">{{ $currencySymbol }}{{ number_format(((float) ($option['price'] ?? 0)), 2) }}</span>
+                            <span class="sf-body-md shrink-0 font-bold">{{ $currencySymbol }}{{ number_format(((float) ($option['price'] ?? 0)), 2) }}</span>
                         </label>
                     @empty
                         <label class="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--store-line)] p-3">
