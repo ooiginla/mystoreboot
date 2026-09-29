@@ -1,6 +1,25 @@
 @extends('marketing.layout')
 
-@section('title', 'Storeboot — Run your whole business from one place')
+@section('title', 'Storeboot — Business Management Software for Nigerian SMEs')
+@section('meta_description', 'Run sales, inventory, POS, online orders, customers, suppliers, branches, payroll and accounting with Storeboot—the all-in-one platform for Nigerian businesses.')
+@section('og_image', asset('media/seo/small-business-software.webp'))
+
+@push('head')
+    <script type="application/ld+json">{!! json_encode([
+        '@context' => 'https://schema.org',
+        '@type' => 'SoftwareApplication',
+        'name' => 'Storeboot',
+        'applicationCategory' => 'BusinessApplication',
+        'operatingSystem' => 'Web browser',
+        'url' => route('home'),
+        'description' => 'All-in-one business management software for Nigerian SMEs, including online stores, POS, inventory, customers, procurement, payroll, accounting and reporting.',
+        'areaServed' => ['@type' => 'Country', 'name' => 'Nigeria'],
+        'offers' => [
+            ['@type' => 'Offer', 'name' => 'Basic', 'price' => '0', 'priceCurrency' => 'NGN'],
+            ['@type' => 'Offer', 'name' => 'Enterprise', 'price' => '5000', 'priceCurrency' => 'NGN'],
+        ],
+    ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}</script>
+@endpush
 
 @section('content')
 
@@ -27,17 +46,17 @@
                         <span class="sb-pulse-ring absolute inline-flex h-full w-full rounded-full bg-brand-500"></span>
                         <span class="relative inline-flex h-2 w-2 rounded-full bg-brand-500"></span>
                     </span>
-                    Built for African SMEs
+                    Business software built for Nigerian SMEs
                 </span>
 
                 <h1 class="sb-reveal mt-6 font-display text-4xl font-bold leading-[1.05] tracking-tight text-zinc-900 sm:text-6xl md:text-[68px] dark:text-white">
-                    Run your <span class="sb-text-gradient">whole business</span><br class="hidden sm:block">
-                    from <span class="font-serif italic font-normal text-brand-600 dark:text-brand-400">one</span> beautiful place
+                    Sell, manage stock and know your numbers<br class="hidden sm:block">
+                    from <span class="sb-text-gradient">one connected place</span>
                 </h1>
 
                 <p class="sb-reveal mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-zinc-600 sm:text-xl dark:text-zinc-400">
-                    Storeboot replaces your notebooks, spreadsheets and scattered apps with one simple platform —
-                    point of sale, inventory, sales, customers, expenses and clear reports that finally make sense.
+                    Storeboot brings your online store, point of sale, inventory, customers, suppliers,
+                    branches, staff and accounts together—so daily work becomes easier and every decision starts with a clearer record.
                 </p>
 
                 <div class="sb-reveal mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -123,8 +142,8 @@
         <div class="sb-container">
             <div class="sb-reveal grid gap-6 rounded-3xl border border-zinc-200/80 bg-gradient-to-br from-zinc-50 to-white p-8 sm:grid-cols-2 lg:grid-cols-4 dark:border-white/10 dark:from-white/[0.04] dark:to-transparent">
                 @foreach ([
-                    ['12+', 'Modules in one system'],
-                    ['3 min', 'Average setup time'],
+                    ['Free', 'Online store to get started'],
+                    ['Unlimited', 'Products and orders on Basic'],
                     ['Offline', 'POS that keeps selling'],
                     ['1 login', 'For all your branches'],
                 ] as [$stat, $label])
@@ -303,8 +322,37 @@
         </div>
     </section>
 
-    {{-- ============================================================= SOLUTIONS / OFFLINE --}}
-    <section id="solutions" class="sb-section scroll-mt-24">
+    {{-- ============================================================= SOLUTION PATHS --}}
+    <section id="solutions" class="sb-section scroll-mt-24 bg-zinc-50/70 dark:bg-ink-900/40">
+        <div class="sb-container">
+            <div class="sb-reveal grid gap-8 lg:grid-cols-[.85fr_1.15fr] lg:items-end">
+                <div>
+                    <span class="sb-eyebrow">Solutions for the way you work</span>
+                    <h2 class="sb-h2 mt-5">Start with the problem your business needs to solve.</h2>
+                </div>
+                <p class="sb-lead lg:pb-1">Storeboot is one connected platform, but you do not have to adopt everything at once. Choose your starting point, understand the workflow in detail, and add more control as your team grows.</p>
+            </div>
+
+            <div class="mt-12 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+                @foreach ($solutionPages as $slug => $solution)
+                    <a href="{{ route('solutions.'.$slug) }}" class="sb-reveal group overflow-hidden rounded-3xl border border-zinc-200/80 bg-white shadow-sm transition duration-300 hover:-translate-y-1.5 hover:border-brand-300 hover:shadow-xl dark:border-white/10 dark:bg-white/[0.03]">
+                        <div class="relative overflow-hidden">
+                            <img src="{{ asset($solution['image']) }}" alt="{{ $solution['image_alt'] }}" loading="lazy" width="1600" height="900" class="aspect-[4/3] w-full object-cover transition duration-500 group-hover:scale-[1.04]">
+                            <span class="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-ink-950/55 to-transparent"></span>
+                        </div>
+                        <div class="p-5">
+                            <h3 class="font-display text-lg font-bold leading-snug text-zinc-900 transition group-hover:text-brand-700 dark:text-white dark:group-hover:text-brand-300">{{ $solution['h1'] }}</h3>
+                            <p class="mt-2 line-clamp-3 text-sm leading-6 text-zinc-600 dark:text-zinc-400">{{ $solution['hero'] }}</p>
+                            <span class="mt-5 inline-flex items-center gap-2 text-sm font-bold text-brand-700 dark:text-brand-300">Explore solution <span class="transition group-hover:translate-x-1" aria-hidden="true">→</span></span>
+                        </div>
+                    </a>
+                @endforeach
+            </div>
+        </div>
+    </section>
+
+    {{-- ============================================================= MULTI-BRANCH / OFFLINE --}}
+    <section id="operations" class="sb-section scroll-mt-24">
         <div class="sb-container">
             <div class="sb-reveal overflow-hidden rounded-[32px] border border-zinc-200/80 bg-ink-950 text-white dark:border-white/10">
                 <div class="grid items-center gap-10 p-8 sm:p-12 lg:grid-cols-2 lg:p-16">
@@ -409,7 +457,7 @@
                     </div>
                 @endforeach
             </div>
-            <p class="sb-reveal mt-8 text-center text-sm text-zinc-500 dark:text-zinc-400">Prices in Naira. Other currencies supported at signup. Need a custom plan for many branches? <a href="#" class="font-semibold text-brand-600 dark:text-brand-400">Talk to us →</a></p>
+            <p class="sb-reveal mt-8 text-center text-sm text-zinc-500 dark:text-zinc-400">Prices in Naira. Other currencies supported at signup. Need help planning several branches? <a href="{{ route('contact') }}" class="font-semibold text-brand-600 dark:text-brand-400">Talk to us →</a></p>
         </div>
     </section>
 
@@ -421,7 +469,7 @@
                     <span class="sb-eyebrow">Questions</span>
                     <h2 class="sb-h2 mt-5">Everything you want to know.</h2>
                     <p class="sb-lead mt-5">Still curious? Our team is a message away and happy to help you get set up.</p>
-                    <a href="#" class="sb-btn sb-btn-dark mt-6">Contact support</a>
+                    <a href="{{ route('contact') }}" class="sb-btn sb-btn-dark mt-6">Contact support</a>
                 </div>
                 <div class="sb-reveal divide-y divide-zinc-200 rounded-3xl border border-zinc-200/80 bg-white dark:divide-white/5 dark:border-white/10 dark:bg-white/[0.03]">
                     @foreach ($faqs as $i => $faq)

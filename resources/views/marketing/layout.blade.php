@@ -4,8 +4,35 @@
     @include('partials.theme-head')
     <title>@yield('title', 'Storeboot — Run your whole business from one place')</title>
     <meta name="description" content="@yield('meta_description', 'Storeboot is the all-in-one platform for African SMEs — point of sale, inventory, sales, customers, procurement, finance and analytics in one beautifully simple system.')">
+    <meta name="robots" content="@yield('robots', 'index, follow, max-image-preview:large')">
+    <link rel="canonical" href="@yield('canonical', url()->current())">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Storeboot">
+    <meta property="og:title" content="@yield('og_title', trim($__env->yieldContent('title', 'Storeboot — Run your whole business from one place')))">
+    <meta property="og:description" content="@yield('og_description', trim($__env->yieldContent('meta_description', 'Storeboot helps African SMEs run sales, inventory, customers and finance in one place.')))">
+    <meta property="og:url" content="@yield('canonical', url()->current())">
+    <meta property="og:image" content="@yield('og_image', asset('media/auth/signup-store-owner.jpg'))">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="@yield('og_title', trim($__env->yieldContent('title', 'Storeboot')))">
+    <meta name="twitter:description" content="@yield('og_description', trim($__env->yieldContent('meta_description', 'Run your business with Storeboot.')))">
+    <meta name="twitter:image" content="@yield('og_image', asset('media/auth/signup-store-owner.jpg'))">
+    @stack('head')
 </head>
 <body class="min-h-screen bg-white font-sans text-zinc-700 antialiased dark:bg-ink-950 dark:text-zinc-300">
+
+    @php
+        $homeAnchor = fn (string $id): string => request()->routeIs('home') ? '#'.$id : route('home').'#'.$id;
+        $solutionMenu = [
+            'online-store' => ['Online Store', 'Sell online with your own storefront'],
+            'inventory-management' => ['Inventory Management', 'Know what is in stock and where'],
+            'pos' => ['Point of Sale', 'Fast, offline-first counter sales'],
+            'restaurant-management' => ['Restaurant Management', 'Tables, kitchen, recipes and bills'],
+            'bakery-management' => ['Bakery Management', 'Ingredients, production and sales'],
+            'lounge-management' => ['Lounge & Bar', 'Tabs, service areas and drink stock'],
+            'retail-management' => ['Retail Management', 'Branches, purchasing and reporting'],
+            'small-business-software' => ['Small Business Software', 'One system for the whole operation'],
+        ];
+    @endphp
 
     {{-- ===================== NAV ===================== --}}
     <header class="fixed inset-x-0 top-0 z-50">
@@ -16,12 +43,29 @@
                 </a>
 
                 <div class="hidden items-center gap-1 lg:flex">
-                    <a href="#features" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Features</a>
-                    <a href="#ai" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">AI</a>
-                    <a href="#solutions" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Solutions</a>
-                    <a href="#showcase" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Product</a>
-                    <a href="#pricing" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Pricing</a>
-                    <a href="#faq" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">FAQ</a>
+                    <a href="{{ $homeAnchor('features') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Features</a>
+                    <a href="{{ $homeAnchor('ai') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">AI</a>
+                    <div class="group relative">
+                        <a href="{{ $homeAnchor('solutions') }}" aria-haspopup="true" class="flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">
+                            Solutions
+                            <svg class="h-3.5 w-3.5 transition group-hover:rotate-180 group-focus-within:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
+                        </a>
+                        <div class="pointer-events-none invisible absolute left-1/2 top-full w-[620px] -translate-x-1/2 pt-3 opacity-0 transition duration-150 group-hover:pointer-events-auto group-hover:visible group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:visible group-focus-within:opacity-100">
+                            <div class="grid grid-cols-2 gap-1 rounded-3xl border border-zinc-200/80 bg-white p-3 shadow-2xl shadow-zinc-950/15 dark:border-white/10 dark:bg-ink-900">
+                                @foreach ($solutionMenu as $slug => [$label, $description])
+                                    <a href="{{ route('solutions.'.$slug) }}" class="group/link flex gap-3 rounded-2xl p-3.5 transition hover:bg-brand-50 focus:bg-brand-50 focus:outline-none dark:hover:bg-white/5 dark:focus:bg-white/5">
+                                        <span class="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-500/10 text-brand-700 transition group-hover/link:bg-brand-600 group-hover/link:text-white dark:text-brand-300">
+                                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-5-5 5 5-5 5"/></svg>
+                                        </span>
+                                        <span><strong class="block text-sm text-zinc-900 dark:text-white">{{ $label }}</strong><span class="mt-0.5 block text-xs leading-5 text-zinc-500 dark:text-zinc-400">{{ $description }}</span></span>
+                                    </a>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                    <a href="{{ $homeAnchor('showcase') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Product</a>
+                    <a href="{{ $homeAnchor('pricing') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Pricing</a>
+                    <a href="{{ $homeAnchor('faq') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">FAQ</a>
                     <a href="{{ route('about') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">About</a>
                     <a href="{{ route('contact') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Contact</a>
                 </div>
@@ -52,13 +96,23 @@
         {{-- Mobile menu --}}
         <div id="sb-mobile-menu" class="hidden lg:hidden">
             <div class="sb-container">
-                <div class="mt-2 space-y-1 rounded-2xl border border-zinc-200/70 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-ink-900">
-                    <a href="#features" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Features</a>
-                    <a href="#ai" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">AI</a>
-                    <a href="#solutions" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Solutions</a>
-                    <a href="#showcase" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Product</a>
-                    <a href="#pricing" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Pricing</a>
-                    <a href="#faq" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">FAQ</a>
+                <div class="mt-2 max-h-[calc(100vh-6rem)] space-y-1 overflow-y-auto rounded-2xl border border-zinc-200/70 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-ink-900">
+                    <a href="{{ $homeAnchor('features') }}" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Features</a>
+                    <a href="{{ $homeAnchor('ai') }}" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">AI</a>
+                    <details class="group rounded-xl">
+                        <summary class="flex cursor-pointer list-none items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Solutions <svg class="h-4 w-4 transition group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg></summary>
+                        <div class="grid gap-1 px-2 pb-2 sm:grid-cols-2">
+                            @foreach ($solutionMenu as $slug => [$label, $description])
+                                <a href="{{ route('solutions.'.$slug) }}" class="rounded-xl px-3 py-2.5 text-sm text-zinc-600 hover:bg-brand-50 hover:text-brand-800 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white">
+                                    <strong class="block text-zinc-800 dark:text-zinc-200">{{ $label }}</strong>
+                                    <span class="mt-0.5 block text-xs">{{ $description }}</span>
+                                </a>
+                            @endforeach
+                        </div>
+                    </details>
+                    <a href="{{ $homeAnchor('showcase') }}" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Product</a>
+                    <a href="{{ $homeAnchor('pricing') }}" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Pricing</a>
+                    <a href="{{ $homeAnchor('faq') }}" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">FAQ</a>
                     <a href="{{ route('about') }}" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">About</a>
                     <a href="{{ route('contact') }}" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Contact</a>
                     <div class="grid grid-cols-2 gap-2 pt-2">
@@ -77,7 +131,7 @@
     {{-- ===================== FOOTER ===================== --}}
     <footer class="border-t border-zinc-200/70 bg-zinc-50 dark:border-white/10 dark:bg-ink-900">
         <div class="sb-container py-16">
-            <div class="grid gap-12 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+            <div class="grid gap-12 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
                 <div>
                     <x-brand-logo />
                     <p class="mt-4 max-w-xs text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
@@ -94,15 +148,16 @@
 
                 @php $waGroup = 'https://chat.whatsapp.com/Iy1epwuwKIC2SAIEVMjAKa?mode=gi_t'; @endphp
                 @foreach ([
-                    'Product' => ['Features' => '#features', 'Point of Sale' => '#solutions', 'Product showcase' => '#showcase', 'Pricing' => '#pricing'],
+                    'Product' => ['Features' => $homeAnchor('features'), 'Point of Sale' => route('solutions.pos'), 'Product showcase' => $homeAnchor('showcase'), 'Pricing' => $homeAnchor('pricing')],
+                    'Solutions' => ['Online store' => route('solutions.online-store'), 'Inventory' => route('solutions.inventory-management'), 'Restaurants' => route('solutions.restaurant-management'), 'Retail' => route('solutions.retail-management')],
                     'Company' => ['About us' => route('about'), 'Contact' => route('contact'), 'Privacy' => route('legal.privacy'), 'Terms' => route('legal.terms')],
-                    'Resources' => ['Help center' => route('contact'), 'FAQ' => '#faq', 'Community' => $waGroup, 'Security' => route('legal.security')],
+                    'Resources' => ['Help center' => route('contact'), 'FAQ' => $homeAnchor('faq'), 'Community' => $waGroup, 'Security' => route('legal.security')],
                 ] as $heading => $links)
                     <div>
                         <h4 class="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500">{{ $heading }}</h4>
                         <ul class="mt-4 space-y-3 text-sm">
                             @foreach ($links as $label => $href)
-                                <li><a href="{{ $href }}" @if(str_starts_with($href, 'http')) target="_blank" rel="noopener" @endif class="text-zinc-600 transition hover:text-brand-600 dark:text-zinc-400 dark:hover:text-brand-400">{{ $label }}</a></li>
+                                <li><a href="{{ $href }}" @if($href === $waGroup) target="_blank" rel="noopener" @endif class="text-zinc-600 transition hover:text-brand-600 dark:text-zinc-400 dark:hover:text-brand-400">{{ $label }}</a></li>
                             @endforeach
                         </ul>
                     </div>

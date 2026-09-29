@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Support\SeoLandingPages;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
@@ -24,12 +26,29 @@ final class MarketingController extends Controller
             'testimonials' => $this->testimonials(),
             'plans' => $this->plans(),
             'faqs' => $this->faqs(),
+            'solutionPages' => SeoLandingPages::pages(),
         ]);
     }
 
     public function about(): View
     {
         return view('marketing.about');
+    }
+
+    public function solution(string $slug): View
+    {
+        return view('marketing.solution', [
+            'page' => SeoLandingPages::get($slug),
+            'pages' => SeoLandingPages::pages(),
+            'plans' => $this->plans(),
+        ]);
+    }
+
+    public function sitemap(): Response
+    {
+        return response()
+            ->view('marketing.sitemap', ['pages' => SeoLandingPages::pages()])
+            ->header('Content-Type', 'application/xml');
     }
 
     /** @return list<array{label: string, icon: string}> */

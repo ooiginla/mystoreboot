@@ -18,6 +18,21 @@ Route::post('/payments/webhook/{provider}', [PaymentWebhookController::class, 'h
 Route::get('/', [MarketingController::class, 'home'])->name('home');
 
 // Public marketing pages
+foreach ([
+    'online-store',
+    'inventory-management',
+    'pos',
+    'restaurant-management',
+    'bakery-management',
+    'lounge-management',
+    'retail-management',
+    'small-business-software',
+] as $solution) {
+    Route::get('/'.$solution, [MarketingController::class, 'solution'])
+        ->defaults('slug', $solution)
+        ->name('solutions.'.$solution);
+}
+Route::get('/sitemap.xml', [MarketingController::class, 'sitemap'])->name('sitemap');
 Route::get('/about', [MarketingController::class, 'about'])->name('about');
 Route::get('/contact', [ContactController::class, 'show'])->name('contact');
 Route::post('/contact', [ContactController::class, 'submit'])->name('contact.submit');
