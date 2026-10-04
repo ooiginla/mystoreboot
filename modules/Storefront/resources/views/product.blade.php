@@ -335,11 +335,11 @@
                 </div>
 
                 <div class="mt-7 flex flex-col gap-3 sm:flex-row">
-                    <button type="button" class="store-btn store-btn-secondary flex-1" data-add-to-cart data-variant-cart-button data-use-detail-quantity="true" data-product='@json($payload)' @disabled(! $variant || ! $initialVariantInStock)>
+                    <button type="button" class="store-btn store-btn-secondary flex-1 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:opacity-75 disabled:shadow-none disabled:hover:brightness-100" data-add-to-cart data-variant-cart-button data-use-detail-quantity="true" data-product='@json($payload)' aria-disabled="{{ ! $variant || ! $initialVariantInStock ? 'true' : 'false' }}" @disabled(! $variant || ! $initialVariantInStock)>
                         @include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5 shrink-0'])
                         Add to Cart
                     </button>
-                    <button type="button" class="store-btn store-btn-primary flex-1" data-add-to-cart data-variant-cart-button data-use-detail-quantity="true" data-product='@json($payload)' @disabled(! $variant || ! $initialVariantInStock)>
+                    <button type="button" class="store-btn store-btn-primary flex-1 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:opacity-75 disabled:shadow-none disabled:hover:brightness-100" data-add-to-cart data-variant-cart-button data-use-detail-quantity="true" data-product='@json($payload)' aria-disabled="{{ ! $variant || ! $initialVariantInStock ? 'true' : 'false' }}" @disabled(! $variant || ! $initialVariantInStock)>
                         @include('storefront::partials.icon', ['name' => 'bolt', 'class' => 'h-5 w-5 shrink-0'])
                         Buy It Now
                     </button>
@@ -489,6 +489,7 @@
                 if (stockStatus) stockStatus.hidden = !variant || inStock;
                 cartButtons.forEach((button) => {
                     button.disabled = !variant || !inStock || personalizationUploading;
+                    button.setAttribute('aria-disabled', button.disabled ? 'true' : 'false');
                 });
 
                 if (!variant) return;

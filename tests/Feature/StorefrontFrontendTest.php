@@ -521,6 +521,9 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('data-variant-stock', false)
             ->assertSee('Out of stock')
             ->assertSee('data-variant-cart-button data-use-detail-quantity="true"', false)
+            ->assertSee('disabled:cursor-not-allowed', false)
+            ->assertSee('aria-disabled="true"', false)
+            ->assertSee("if (add.disabled || add.getAttribute('aria-disabled') === 'true') return;", false)
             ->assertSee('disabled', false)
             ->assertSee('https://schema.org/OutOfStock', false);
     }

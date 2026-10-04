@@ -970,9 +970,10 @@
                     setMobileNav(false);
                 }
 
-                const add = event.target.closest('[data-add-to-cart]');
-                if (add) {
-                    let product = JSON.parse(add.dataset.product);
+            const add = event.target.closest('[data-add-to-cart]');
+            if (add) {
+                if (add.disabled || add.getAttribute('aria-disabled') === 'true') return;
+                let product = JSON.parse(add.dataset.product);
                     if (typeof window.storefrontPrepareCartProduct === 'function') {
                         product = window.storefrontPrepareCartProduct(product, add);
                         if (!product) return;
