@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Sales\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Mail\OnlineOrderProgressMail;
 use App\Models\User;
 use App\Support\ActiveBranchManager;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -36,6 +37,7 @@ use Modules\Sales\Actions\CreateSalesOrderAction;
 use Modules\Sales\Actions\ProcessSalesReturnAction;
 use Modules\Sales\Actions\RecordSalesPaymentAction;
 use Modules\Sales\Actions\RefundCancelledOrderAction;
+use Modules\Sales\Actions\SendOnlineOrderProgressMailAction;
 use Modules\Sales\Enums\DiscountType;
 use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Enums\SalesPaymentStatus;
@@ -948,14 +950,25 @@ final class SalesController extends Controller
         return redirect()->to(route('admin.sales.index', ['tenant' => $tillSession->tenant_id]).'#till')->with('status', $hasVariance ? "Till {$tillSession->session_number} closed and variance booked." : "Till {$tillSession->session_number} closed.");
     }
 
-    public function updateDeliveryStatus(Request $request, SalesOrder $order): RedirectResponse
-    {
+    public function updateDeliveryStatus(
+        Request $request,
+        SalesOrder $order,
+        SendOnlineOrderProgressMailAction $sendProgressMail,
+    ): RedirectResponse {
         $this->authorizeTenantIdAccess($request->user(), $order->tenant_id);
         $data = $request->validate([
             'delivery_status' => ['required', 'in:pending,processing,out_for_delivery,delivered,failed,returned'],
         ]);
 
-        $order->update(['delivery_status' => $data['delivery_status']]);
+        $currentStatus = (string) $order->delivery_status;
+
+        if ($currentStatus !== $data['delivery_status']) {
+            $order->update(['delivery_status' => $data['delivery_status']]);
+
+            if ($data['delivery_status'] === 'out_for_delivery') {
+                $sendProgressMail->execute($order, OnlineOrderProgressMail::OUT_FOR_DELIVERY);
+            }
+        }
 
         return redirect()->to(route('admin.sales.orders.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Delivery status updated for {$order->order_number}.");
     }
@@ -964,6 +977,7 @@ final class SalesController extends Controller
         Request $request,
         SalesOrder $order,
         CompleteSalesOrderAction $completeSalesOrder,
+        SendOnlineOrderProgressMailAction $sendProgressMail,
     ): RedirectResponse {
         $this->authorizeTenantIdAccess($request->user(), $order->tenant_id);
         $data = $request->validate([
@@ -987,6 +1001,10 @@ final class SalesController extends Controller
             $completeSalesOrder->execute($order);
         } elseif ($currentStatus !== $requestedStatus) {
             $order->update(['order_status' => $requestedStatus->value]);
+
+            if ($requestedStatus === SalesOrderStatus::Processing) {
+                $sendProgressMail->execute($order, OnlineOrderProgressMail::PROCESSING);
+            }
         }
 
         return redirect()->to(route('admin.sales.orders.index', ['tenant' => $order->tenant_id]).'#orders')->with('status', "Order status updated for {$order->order_number}.");

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Sales\Actions;
 
 use App\Mail\OnlineOrderConfirmationMail;
+use App\Mail\OnlineOrderPlacedMail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -27,8 +28,8 @@ use Throwable;
  *
  * Fully idempotent: the payment row is keyed by reference, the collected-payment record by
  * (tenant, provider, reference), and the journal entry by (source, event) — so callback +
- * webhook + client verify all firing is safe. The confirmation email is sent only on the
- * transition into Paid, so the customer is emailed exactly once.
+ * webhook + client verify all firing is safe. Order emails are sent only on the transition
+ * into Paid, so both the customer and seller are emailed exactly once.
  */
 final class RecordGatewayPaymentAction
 {
@@ -226,16 +227,17 @@ final class RecordGatewayPaymentAction
     }
 
     /**
-     * Send the order confirmation once payment is verified. A missing customer email or a
-     * transport failure is swallowed so it never blocks the settlement.
+     * Send the customer confirmation and seller notification once payment is verified.
+     * Missing recipient addresses and transport failures never block settlement.
      */
     private function sendConfirmation(SalesOrder $order): void
     {
-        $order->loadMissing(['customer', 'items', 'branch']);
-
-        if (! filled($order->customer?->email)) {
-            return;
-        }
+        $order->loadMissing([
+            'customer',
+            'items.variant.product.images',
+            'items.variant.product.externalImages',
+            'branch',
+        ]);
 
         $store = OnlineStore::query()->where('tenant_id', $order->tenant_id)->first();
 
@@ -243,14 +245,31 @@ final class RecordGatewayPaymentAction
             return;
         }
 
-        try {
-            Mail::to($order->customer->email)->send(new OnlineOrderConfirmationMail($store, $order));
-        } catch (Throwable $exception) {
-            Log::warning('Online order confirmation email could not be sent.', [
-                'sales_order_id' => $order->id,
-                'order_number' => $order->order_number,
-                'exception' => $exception->getMessage(),
-            ]);
+        if (filled($order->customer?->email)) {
+            try {
+                Mail::to($order->customer->email)->send(new OnlineOrderConfirmationMail($store, $order));
+            } catch (Throwable $exception) {
+                Log::warning('Online order confirmation email could not be sent.', [
+                    'sales_order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'exception' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        $store->loadMissing('tenant');
+        $sellerEmail = $store->tenant?->email ?: $store->site_email;
+
+        if (filled($sellerEmail)) {
+            try {
+                Mail::to($sellerEmail)->send(new OnlineOrderPlacedMail($store, $order));
+            } catch (Throwable $exception) {
+                Log::warning('Online order seller notification email could not be sent.', [
+                    'sales_order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'exception' => $exception->getMessage(),
+                ]);
+            }
         }
     }
 }

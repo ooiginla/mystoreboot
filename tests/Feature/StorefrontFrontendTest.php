@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\OnlineOrderConfirmationMail;
+use App\Mail\OnlineOrderPlacedMail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,7 @@ use Modules\Customers\Models\CustomerAddress;
 use Modules\Customers\Models\SupportTicket;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Inventory\Models\InventoryStockLevel;
+use Modules\Sales\Actions\RecordGatewayPaymentAction;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Storefront\Http\Controllers\StorefrontController;
 use Modules\Tenancy\Enums\TenantStatus;
@@ -464,6 +466,63 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('Available Item')
             ->assertDontSee('Sold Out Item')
             ->assertSee('name="in_stock" value="1" checked', false);
+    }
+
+    public function test_storefront_marks_sold_out_products_and_disables_purchase_actions(): void
+    {
+        [$tenant, $store] = $this->storeFixture();
+        $branch = Branch::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Sold Out Branch',
+            'code' => 'SOLDOUT',
+            'status' => 'active',
+            'is_primary' => true,
+        ]);
+        $location = InventoryLocation::query()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'name' => 'Sold Out Stock',
+            'code' => 'SOLDOUT-STOCK',
+            'status' => 'active',
+        ]);
+        $store->update(['fulfilment_branch_id' => $branch->id]);
+        $product = Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Unavailable Trainer',
+            'slug' => 'unavailable-trainer',
+            'status' => ProductStatus::Active->value,
+            'track_inventory' => true,
+            'base_price_minor' => 200000,
+        ]);
+        $variant = ProductVariant::query()->create([
+            'tenant_id' => $tenant->id,
+            'product_id' => $product->id,
+            'variant_name' => 'Default',
+            'sku' => 'UNAVAILABLE',
+            'selling_price_minor' => 200000,
+            'status' => ProductStatus::Active->value,
+        ]);
+        InventoryStockLevel::query()->create([
+            'tenant_id' => $tenant->id,
+            'inventory_location_id' => $location->id,
+            'product_variant_id' => $variant->id,
+            'quantity_on_hand' => 3,
+            'quantity_reserved' => 3,
+        ]);
+
+        $this->get(route('storefront.storefront.store.home', $store))
+            ->assertOk()
+            ->assertSee('Unavailable Trainer')
+            ->assertSee('data-out-of-stock-badge', false)
+            ->assertSee('data-out-of-stock-action', false);
+
+        $this->get(route('storefront.storefront.store.products.show', [$store, $product->slug]))
+            ->assertOk()
+            ->assertSee('data-variant-stock', false)
+            ->assertSee('Out of stock')
+            ->assertSee('data-variant-cart-button data-use-detail-quantity="true"', false)
+            ->assertSee('disabled', false)
+            ->assertSee('https://schema.org/OutOfStock', false);
     }
 
     public function test_storefront_search_filters_visible_products_and_preserves_the_query(): void
@@ -948,6 +1007,7 @@ class StorefrontFrontendTest extends TestCase
             'slug' => 'city-runner',
             'status' => ProductStatus::Active->value,
             'base_price_minor' => 250000,
+            'image_path' => 'tenants/demo/catalog/city-runner.jpg',
             'custom_fields' => [
                 ['key' => 'Unit', 'values' => ['1', '2', '3'], 'is_customer_selectable' => true],
                 ['key' => 'Internal source', 'values' => ['Warehouse A'], 'is_customer_selectable' => false],
@@ -1071,7 +1131,92 @@ class StorefrontFrontendTest extends TestCase
         (new OnlineOrderConfirmationMail($store->load('tenant'), $order))
             ->assertSeeInHtml($order->order_number)
             ->assertSeeInHtml('City Runner')
+            ->assertSeeInHtml(url('/storage/tenants/demo/catalog/city-runner.jpg'))
+            ->assertSeeInHtml('width="72" height="72"', false)
             ->assertSeeInHtml('12 Marina Road, Lagos');
+    }
+
+    public function test_checkout_notifies_the_seller_about_a_new_online_order(): void
+    {
+        Mail::fake();
+        [$tenant, $store] = $this->storeFixture(['site_email' => 'store@example.com']);
+        $tenant->update(['email' => 'seller@example.com']);
+        $product = Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'City Runner',
+            'slug' => 'seller-mail-city-runner',
+            'status' => ProductStatus::Active->value,
+            'base_price_minor' => 200000,
+            'image_path' => 'tenants/demo/catalog/seller-city-runner.jpg',
+        ]);
+        $variant = ProductVariant::query()->create([
+            'tenant_id' => $tenant->id,
+            'product_id' => $product->id,
+            'variant_name' => 'Default',
+            'sku' => 'CITY-RUNNER',
+            'selling_price_minor' => 200000,
+            'cost_price_minor' => 120000,
+            'status' => ProductStatus::Active->value,
+        ]);
+        $customer = Customer::query()->create([
+            'tenant_id' => $tenant->id,
+            'first_name' => 'Ada',
+            'last_name' => 'Lovelace',
+            'email' => 'ada@example.com',
+            'phone' => '08030000000',
+        ]);
+        $order = SalesOrder::query()->create([
+            'tenant_id' => $tenant->id,
+            'customer_id' => $customer->id,
+            'source' => 'online',
+            'order_number' => 'SO-SELLER-001',
+            'invoice_number' => 'INV-SELLER-001',
+            'receipt_number' => 'RCT-SELLER-001',
+            'order_status' => 'pending',
+            'payment_status' => 'pending',
+            'payment_method' => 'pay_on_delivery',
+            'order_date' => now()->toDateString(),
+            'subtotal_minor' => 200000,
+            'shipping_minor' => 150000,
+            'total_minor' => 350000,
+            'delivery_address' => '12 Marina Road',
+            'delivery_city' => 'Lagos',
+            'notes' => 'Please call when you arrive.',
+        ]);
+        $order->items()->create([
+            'tenant_id' => $tenant->id,
+            'product_variant_id' => $variant->id,
+            'item_name' => 'City Runner / Default',
+            'sku' => 'CITY-RUNNER',
+            'quantity' => 1,
+            'unit_price_minor' => 200000,
+            'unit_cost_minor' => 120000,
+            'tax_minor' => 0,
+            'line_total_minor' => 200000,
+        ]);
+
+        $method = new \ReflectionMethod(StorefrontController::class, 'sendOrderConfirmation');
+        $method->setAccessible(true);
+        $method->invoke(app(StorefrontController::class), $store->load('tenant'), $order);
+
+        Mail::assertSent(OnlineOrderPlacedMail::class, function (OnlineOrderPlacedMail $mail) use ($order): bool {
+            return $mail->hasTo('seller@example.com')
+                && $mail->hasReplyTo('ada@example.com')
+                && str_contains($mail->render(), $order->order_number)
+                && str_contains($mail->render(), 'City Runner / Default')
+                && str_contains($mail->render(), url('/storage/tenants/demo/catalog/seller-city-runner.jpg'))
+                && str_contains($mail->render(), 'width="72" height="72"')
+                && str_contains($mail->render(), 'Please call when you arrive.');
+        });
+        Mail::assertNotSent(OnlineOrderPlacedMail::class, fn (OnlineOrderPlacedMail $mail): bool => $mail->hasTo('store@example.com'));
+
+        Mail::fake();
+        $tenant->update(['email' => null]);
+        $method = new \ReflectionMethod(RecordGatewayPaymentAction::class, 'sendConfirmation');
+        $method->setAccessible(true);
+        $method->invoke(app(RecordGatewayPaymentAction::class), $order);
+
+        Mail::assertSent(OnlineOrderPlacedMail::class, fn (OnlineOrderPlacedMail $mail): bool => $mail->hasTo('store@example.com'));
     }
 
     public function test_online_order_confirmation_is_sent_when_environment_is_production(): void

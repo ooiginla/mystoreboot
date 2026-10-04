@@ -2,13 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Mail\OnlineOrderProgressMail;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\Permission;
 use Modules\Access\Models\Role;
 use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
+use Modules\Business\Models\OnlineStore;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Enums\TaxBehavior;
@@ -108,6 +111,65 @@ class SalesOrderStatusUpdateTest extends TestCase
         $order->refresh();
         $this->assertSame(SalesOrderStatus::Processing, $order->order_status);
         $this->assertSame('delivered', $order->delivery_status);
+    }
+
+    public function test_online_customer_is_emailed_only_for_processing_and_out_for_delivery_transitions(): void
+    {
+        Mail::fake();
+        [$user, $order] = $this->fixture();
+        $order->customer->update(['email' => 'buyer@example.com']);
+        $order->update(['source' => 'online']);
+        $store = OnlineStore::query()->create([
+            'tenant_id' => $order->tenant_id,
+            'fulfilment_branch_id' => $order->branch_id,
+            'username' => 'status-shop-online',
+            'store_name' => 'Status Shop',
+            'theme_primary_color' => '#006554',
+            'payment_methods' => ['pay_on_delivery'],
+            'shipping_options' => [],
+            'pages' => [],
+            'faqs' => [],
+            'is_active' => true,
+            'maintenance_mode' => false,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('admin.sales.orders.status.update', $order), [
+                'order_status' => SalesOrderStatus::Processing->value,
+            ])
+            ->assertRedirect();
+
+        Mail::assertSent(OnlineOrderProgressMail::class, function (OnlineOrderProgressMail $mail) use ($order): bool {
+            return $mail->progress === OnlineOrderProgressMail::PROCESSING
+                && $mail->hasTo('buyer@example.com')
+                && str_contains($mail->render(), 'We’re preparing your order')
+                && str_contains($mail->render(), $order->order_number);
+        });
+
+        // Saving the same status again must not send a duplicate message.
+        $this->actingAs($user)->post(route('admin.sales.orders.status.update', $order), [
+            'order_status' => SalesOrderStatus::Processing->value,
+        ]);
+        Mail::assertSent(OnlineOrderProgressMail::class, 1);
+
+        $this->actingAs($user)
+            ->post(route('admin.sales.orders.delivery-status.update', $order), [
+                'delivery_status' => 'out_for_delivery',
+            ])
+            ->assertRedirect();
+
+        Mail::assertSent(OnlineOrderProgressMail::class, function (OnlineOrderProgressMail $mail) use ($order, $store): bool {
+            return $mail->progress === OnlineOrderProgressMail::OUT_FOR_DELIVERY
+                && $mail->hasTo('buyer@example.com')
+                && str_contains($mail->render(), 'Your order is on its way')
+                && str_contains($mail->render(), route('storefront.storefront.store.track', [$store, 'reference' => $order->tracking_reference]));
+        });
+
+        // Other delivery statuses do not produce a customer email.
+        $this->actingAs($user)->post(route('admin.sales.orders.delivery-status.update', $order), [
+            'delivery_status' => 'delivered',
+        ]);
+        Mail::assertSent(OnlineOrderProgressMail::class, 2);
     }
 
     public function test_order_status_button_cannot_bypass_the_cancellation_workflow(): void

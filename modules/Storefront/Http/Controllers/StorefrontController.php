@@ -6,8 +6,10 @@ namespace Modules\Storefront\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Mail\OnlineOrderConfirmationMail;
+use App\Mail\OnlineOrderPlacedMail;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -56,6 +58,7 @@ final class StorefrontController extends Controller
         $search = Str::limit(trim($request->string('search')->toString()), 100, '');
         $selectedCategory = $store->categories
             ->first(fn ($category): bool => $category->slug === $selectedCategorySlug);
+        $stockLocationId = $this->storefrontStockLocationId($store);
 
         $productsQuery = $this->productsFor($store, ProductType::Product)
             ->when($selectedCategorySlug !== '', function ($query) use ($selectedCategorySlug): void {
@@ -89,9 +92,7 @@ final class StorefrontController extends Controller
                         'externalImages',
                         'images',
                         'tenant',
-                        'variants' => fn ($variantQuery) => $variantQuery
-                            ->where('status', ProductStatus::Active->value)
-                            ->oldest('id'),
+                        'variants' => fn ($variantQuery) => $this->configureStorefrontVariants($variantQuery, $stockLocationId, false),
                     ])
                     ->where('tenant_id', $store->tenant_id)
                     ->where('product_type', ProductType::Product->value)
@@ -1011,22 +1012,39 @@ final class StorefrontController extends Controller
     private function sendOrderConfirmation(OnlineStore $store, SalesOrder $order): void
     {
         // Send in every environment — the configured mail driver decides real delivery
-        // (log/array locally, a real provider in production). A missing customer email
-        // or a transport failure is swallowed so it never blocks checkout.
-        $order->loadMissing(['customer', 'items', 'branch']);
+        // (log/array locally, a real provider in production). Missing recipient addresses
+        // or transport failures are ignored so email can never block checkout.
+        $order->loadMissing([
+            'customer',
+            'items.variant.product.images',
+            'items.variant.product.externalImages',
+            'branch',
+        ]);
 
-        if (! filled($order->customer?->email)) {
-            return;
+        if (filled($order->customer?->email)) {
+            try {
+                Mail::to($order->customer->email)->send(new OnlineOrderConfirmationMail($store, $order));
+            } catch (Throwable $exception) {
+                Log::warning('Online order confirmation email could not be sent.', [
+                    'sales_order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'exception' => $exception->getMessage(),
+                ]);
+            }
         }
 
-        try {
-            Mail::to($order->customer->email)->send(new OnlineOrderConfirmationMail($store, $order));
-        } catch (Throwable $exception) {
-            Log::warning('Online order confirmation email could not be sent.', [
-                'sales_order_id' => $order->id,
-                'order_number' => $order->order_number,
-                'exception' => $exception->getMessage(),
-            ]);
+        $sellerEmail = $store->tenant?->email ?: $store->site_email;
+
+        if (filled($sellerEmail)) {
+            try {
+                Mail::to($sellerEmail)->send(new OnlineOrderPlacedMail($store, $order));
+            } catch (Throwable $exception) {
+                Log::warning('Online order seller notification email could not be sent.', [
+                    'sales_order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'exception' => $exception->getMessage(),
+                ]);
+            }
         }
     }
 
@@ -1156,6 +1174,8 @@ final class StorefrontController extends Controller
 
     private function productsFor(OnlineStore $store, ProductType $type)
     {
+        $stockLocationId = $this->storefrontStockLocationId($store);
+
         return Product::query()
             ->with([
                 'tenant',
@@ -1163,10 +1183,7 @@ final class StorefrontController extends Controller
                 'category',
                 'externalImages',
                 'images',
-                'variants' => fn ($query) => $query
-                    ->where('status', ProductStatus::Active->value)
-                    ->oldest('id')
-                    ->with('optionValues.option'),
+                'variants' => fn ($query) => $this->configureStorefrontVariants($query, $stockLocationId),
                 'tags',
                 'taxes',
             ])
@@ -1191,10 +1208,7 @@ final class StorefrontController extends Controller
             'category',
             'externalImages',
             'images',
-            'variants' => fn ($query) => $query
-                ->where('status', ProductStatus::Active->value)
-                ->oldest('id')
-                ->with('optionValues.option'),
+            'variants' => fn ($query) => $this->configureStorefrontVariants($query, $this->storefrontStockLocationId($store)),
             'tags',
             'taxes',
             'attributeValues.definition',
@@ -1239,6 +1253,35 @@ final class StorefrontController extends Controller
                 $type === ProductType::Service ? 'serviceSlug' : 'productSlug' => $product->slug,
             ]),
         ]);
+    }
+
+    private function storefrontStockLocationId(OnlineStore $store): ?int
+    {
+        if (! $store->fulfilment_branch_id || ! app(TenantModuleAccess::class)->allows($store->tenant, 'inventory')) {
+            return null;
+        }
+
+        return app(AdjustInventoryReservationAction::class)->resolveActiveLocationId(
+            $store->tenant_id,
+            (int) $store->fulfilment_branch_id,
+        );
+    }
+
+    private function configureStorefrontVariants(Builder|HasMany $query, ?int $stockLocationId, bool $withOptions = true): void
+    {
+        $query
+            ->where('status', ProductStatus::Active->value)
+            ->oldest('id');
+
+        if ($withOptions) {
+            $query->with('optionValues.option');
+        }
+
+        if ($stockLocationId) {
+            $query->with([
+                'stockLevels' => fn ($stockQuery) => $stockQuery->where('inventory_location_id', $stockLocationId),
+            ]);
+        }
     }
 
     /**

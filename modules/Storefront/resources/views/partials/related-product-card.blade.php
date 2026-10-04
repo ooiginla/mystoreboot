@@ -1,5 +1,9 @@
 @php
     $variant = $product->variants->first();
+    $variantIsInStock = fn ($row): bool => ! $product->track_inventory
+        || ! $row->relationLoaded('stockLevels')
+        || $row->stockLevels->sum(fn ($level): float => $level->quantity_available) > 0;
+    $isOutOfStock = $product->variants->isNotEmpty() && ! $product->variants->contains($variantIsInStock);
     $imagePath = collect([$variant?->image_path, $product->image_path])
         ->merge($product->images->pluck('image_path'))
         ->merge($product->variants->pluck('image_path'))
@@ -17,6 +21,9 @@
 <a href="{{ $detailsUrl }}" class="group block overflow-hidden rounded-lg border border-[var(--store-line)] bg-white p-2 transition hover:shadow-xl">
     <div class="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-[var(--store-soft)]">
         @include('storefront::partials.product-badges', ['product' => $product])
+        @if ($isOutOfStock)
+            <span class="sf-caption absolute left-3 top-3 z-10 rounded-full bg-red-600 px-3 py-1 font-bold uppercase tracking-wide text-white shadow" data-out-of-stock-badge>Out of stock</span>
+        @endif
         @if ($image)
             <img src="{{ $image }}" alt="{{ $product->name }}" loading="lazy" class="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105">
         @else

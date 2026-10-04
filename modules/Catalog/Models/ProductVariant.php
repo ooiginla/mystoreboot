@@ -8,9 +8,11 @@ use App\Shared\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\TaxBehavior;
+use Modules\Inventory\Models\InventoryStockLevel;
 use Modules\Inventory\Models\UnitOfMeasure;
 
 final class ProductVariant extends Model
@@ -49,5 +51,10 @@ final class ProductVariant extends Model
     {
         return $this->belongsToMany(ProductOptionValue::class, 'product_variant_option_values')
             ->withTimestamps();
+    }
+
+    public function stockLevels(): HasMany
+    {
+        return $this->hasMany(InventoryStockLevel::class, 'product_variant_id');
     }
 }

@@ -23,6 +23,11 @@
     $money = fn (int|float|null $minor): string => number_format(((int) $minor) / 100, 2);
     $variants = $product->variants->values();
     $variant = $variants->first();
+    $variantIsInStock = fn ($row): bool => ! $product->track_inventory
+        || ! $row->relationLoaded('stockLevels')
+        || $row->stockLevels->sum(fn ($level): float => $level->quantity_available) > 0;
+    $initialVariantInStock = $variant ? $variantIsInStock($variant) : false;
+    $productIsOutOfStock = $variants->isNotEmpty() && ! $variants->contains($variantIsInStock);
     $priceMinor = (int) ($variant?->selling_price_minor ?? $product->base_price_minor);
     $compareMinor = (int) ($variant?->compare_at_price_minor ?? $product->compare_at_price_minor ?? 0);
     $uploadedGallery = collect([$product->image_path])
@@ -64,7 +69,7 @@
         'priceMinor' => $priceMinor,
         'image' => $selectedImage,
     ];
-    $variantPayloads = $variants->map(function ($row) use ($product, $primaryImage): array {
+    $variantPayloads = $variants->map(function ($row) use ($product, $primaryImage, $variantIsInStock): array {
         $image = $row->image_path
             ? '/storage/'.ltrim($row->image_path, '/')
             : $primaryImage;
@@ -75,6 +80,7 @@
             'sku' => $row->sku,
             'priceMinor' => (int) $row->selling_price_minor,
             'compareMinor' => (int) ($row->compare_at_price_minor ?? 0),
+            'inStock' => $variantIsInStock($row),
             'image' => $image,
             'optionValueIds' => $row->optionValues->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all(),
             'cart' => [
@@ -114,7 +120,7 @@
                 '@type' => 'Offer',
                 'priceCurrency' => strtoupper($currency),
                 'price' => number_format(((int) $priceMinor) / 100, 2, '.', ''),
-                'availability' => $product->status === \Modules\Catalog\Enums\ProductStatus::Active
+                'availability' => ! $productIsOutOfStock
                     ? 'https://schema.org/InStock'
                     : 'https://schema.org/OutOfStock',
                 'itemCondition' => 'https://schema.org/NewCondition',
@@ -173,6 +179,7 @@
                     <strong class="sf-headline-lg text-[var(--store-primary)]" data-variant-price>{{ $currencySymbol }}{{ $money($priceMinor) }}</strong>
                     <span class="sf-body-lg text-[var(--store-muted)] line-through" data-variant-compare @if (! $compareMinor || $compareMinor <= $priceMinor) hidden @endif>{{ $currencySymbol }}{{ $money($compareMinor) }}</span>
                 </div>
+                <p class="sf-label-md mt-3 w-fit rounded-full bg-red-50 px-3 py-1.5 uppercase text-red-700" data-variant-stock @if ($initialVariantInStock) hidden @endif>Out of stock</p>
                 @if ($variant)
                     <p class="sf-body-md mt-2 text-[var(--store-muted)]" data-selected-variant-meta>{{ $variant->variant_name }} · SKU {{ $variant->sku }}</p>
                 @endif
@@ -328,11 +335,11 @@
                 </div>
 
                 <div class="mt-7 flex flex-col gap-3 sm:flex-row">
-                    <button type="button" class="store-btn store-btn-secondary flex-1" data-add-to-cart data-variant-cart-button data-use-detail-quantity="true" data-product='@json($payload)' @disabled(! $variant)>
+                    <button type="button" class="store-btn store-btn-secondary flex-1" data-add-to-cart data-variant-cart-button data-use-detail-quantity="true" data-product='@json($payload)' @disabled(! $variant || ! $initialVariantInStock)>
                         @include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5 shrink-0'])
                         Add to Cart
                     </button>
-                    <button type="button" class="store-btn store-btn-primary flex-1" data-add-to-cart data-variant-cart-button data-use-detail-quantity="true" data-product='@json($payload)' @disabled(! $variant)>
+                    <button type="button" class="store-btn store-btn-primary flex-1" data-add-to-cart data-variant-cart-button data-use-detail-quantity="true" data-product='@json($payload)' @disabled(! $variant || ! $initialVariantInStock)>
                         @include('storefront::partials.icon', ['name' => 'bolt', 'class' => 'h-5 w-5 shrink-0'])
                         Buy It Now
                     </button>
@@ -417,6 +424,7 @@
             const compare = root.querySelector('[data-variant-compare]');
             const meta = root.querySelector('[data-selected-variant-meta]');
             const unavailable = root.querySelector('[data-variant-unavailable]');
+            const stockStatus = root.querySelector('[data-variant-stock]');
             const image = document.querySelector('[data-product-main-image]');
             const cartButtons = Array.from(root.querySelectorAll('[data-variant-cart-button]'));
             const currencySymbol = @json($currencySymbol);
@@ -477,8 +485,10 @@
             const renderVariant = () => {
                 const variant = selectedVariant();
                 unavailable.hidden = Boolean(variant);
+                const inStock = Boolean(variant?.inStock);
+                if (stockStatus) stockStatus.hidden = !variant || inStock;
                 cartButtons.forEach((button) => {
-                    button.disabled = !variant || personalizationUploading;
+                    button.disabled = !variant || !inStock || personalizationUploading;
                 });
 
                 if (!variant) return;

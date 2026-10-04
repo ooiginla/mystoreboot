@@ -16,6 +16,10 @@
         ->sortBy('selling_price_minor')
         ->values();
     $variant = $activeVariants->first();
+    $variantIsInStock = fn ($row): bool => ! $product->track_inventory
+        || ! $row->relationLoaded('stockLevels')
+        || $row->stockLevels->sum(fn ($level): float => $level->quantity_available) > 0;
+    $isOutOfStock = $activeVariants->isNotEmpty() && ! $activeVariants->contains($variantIsInStock);
     $variantPrices = $activeVariants->pluck('selling_price_minor')->map(fn ($price) => (int) $price)->unique();
     $priceMinor = (int) ($variant?->selling_price_minor ?? $product->base_price_minor);
     $compareMinor = (int) ($variant?->compare_at_price_minor ?? $product->compare_at_price_minor ?? 0);
@@ -47,6 +51,9 @@
 <article class="store-card store-product-card group cursor-pointer overflow-hidden p-2 transition-all duration-300 hover:shadow-2xl">
     <a href="{{ $detailsUrl }}" class="relative mb-4 flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-[var(--store-soft)]">
         @include('storefront::partials.product-badges', ['product' => $product])
+        @if ($isOutOfStock)
+            <span class="sf-caption absolute left-3 top-3 z-10 rounded-full bg-red-600 px-3 py-1 font-bold uppercase tracking-wide text-white shadow" data-out-of-stock-badge>Out of stock</span>
+        @endif
         @if ($image)
             <img src="{{ $image }}" alt="{{ $product->name }}" loading="lazy" class="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105">
         @else
@@ -63,7 +70,11 @@
                 @endif
             </div>
         </div>
-        @if ($requiresVariantSelection || $requiresPersonalizationChoice)
+        @if ($isOutOfStock)
+            <button type="button" class="sf-label-md store-product-card-action flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-slate-200 py-3 uppercase text-slate-500" disabled data-out-of-stock-action>
+                Out of stock
+            </button>
+        @elseif ($requiresVariantSelection || $requiresPersonalizationChoice)
             <a href="{{ $detailsUrl }}" class="sf-label-md store-product-card-action flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--store-secondary)] py-3 uppercase text-white transition-colors hover:brightness-90">
                 {{ $requiresPersonalizationChoice ? 'Personalise item' : 'Choose options' }}
                 @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'h-5 w-5'])
