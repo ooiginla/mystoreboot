@@ -25,7 +25,11 @@ final class SalesOrderRequest extends FormRequest
             'admin_discount_value' => $this->cleanMoney($this->input('admin_discount_value')),
             'amount_paid' => $this->cleanMoney($this->input('amount_paid')),
             'items' => collect((array) $this->input('items', []))->map(function (array $item): array {
+                $item['line_type'] = $item['line_type'] ?? 'catalog';
                 $item['unit_price'] = $this->cleanMoney($item['unit_price'] ?? null);
+                $item['unit_cost'] = filled($item['unit_cost'] ?? null)
+                    ? $this->cleanMoney($item['unit_cost'])
+                    : null;
 
                 return $item;
             })->all(),
@@ -44,6 +48,8 @@ final class SalesOrderRequest extends FormRequest
         $inventoryEnabled = $tenant
             ? app(TenantModuleAccess::class)->allows($tenant, 'inventory')
             : true;
+        $hasCatalogItems = collect((array) $this->input('items', []))
+            ->contains(fn (array $item): bool => ($item['line_type'] ?? 'catalog') === 'catalog');
 
         return [
             'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
@@ -51,7 +57,7 @@ final class SalesOrderRequest extends FormRequest
             'record_as' => ['nullable', Rule::in(['completed_sale', 'customer_order'])],
             'sales_till_session_id' => ['nullable', Rule::requiredIf($requiresTill), 'integer', Rule::exists('sales_till_sessions', 'id')->where('tenant_id', $tenantId)->where('status', 'open')],
             'branch_id' => ['required', 'integer', Rule::exists('branches', 'id')->where('tenant_id', $tenantId)],
-            'inventory_location_id' => [Rule::requiredIf($inventoryEnabled), 'nullable', 'integer', Rule::exists('inventory_locations', 'id')->where('tenant_id', $tenantId)],
+            'inventory_location_id' => [Rule::requiredIf($inventoryEnabled && $hasCatalogItems), 'nullable', 'integer', Rule::exists('inventory_locations', 'id')->where('tenant_id', $tenantId)],
             'customer_id' => ['required', 'integer', Rule::exists('customers', 'id')->where('tenant_id', $tenantId)],
             'order_date' => ['required', 'date'],
             'is_credit_sale' => ['boolean'],
@@ -68,9 +74,14 @@ final class SalesOrderRequest extends FormRequest
             'delivery_address' => ['nullable', 'string', 'max:1000'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1', 'max:100'],
-            'items.*.product_variant_id' => ['required', 'integer', Rule::exists('product_variants', 'id')->where('tenant_id', $tenantId)],
-            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:999999999'],
+            'items.*.line_type' => ['required', Rule::in(['catalog', 'manual'])],
+            'items.*.product_variant_id' => ['nullable', 'required_if:items.*.line_type,catalog', 'integer', Rule::exists('product_variants', 'id')->where('tenant_id', $tenantId)],
+            'items.*.product_category_id' => ['nullable', 'integer', Rule::exists('product_categories', 'id')->where('tenant_id', $tenantId)->where('category_type', 'product')->where('status', 'active')],
+            'items.*.item_name' => ['nullable', 'required_if:items.*.line_type,manual', 'string', 'max:240'],
+            'items.*.quantity' => ['required', 'numeric', 'gt:0', 'max:999999999'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0', 'max:999999999'],
+            'items.*.unit_cost' => ['nullable', 'numeric', 'min:0', 'max:999999999'],
+            'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ];
     }
 

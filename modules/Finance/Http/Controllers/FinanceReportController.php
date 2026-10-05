@@ -130,7 +130,7 @@ final class FinanceReportController extends Controller
             ->get();
 
         $salesItems = SalesOrderItem::query()
-            ->with(['order.branch', 'variant.product'])
+            ->with(['order.branch', 'variant.product.category', 'category'])
             ->where('tenant_id', $tenant->id)
             ->whereHas('order', fn ($query) => $query
                 ->when($selectedBranchId !== '', fn ($orderQuery) => $orderQuery->where('branch_id', $selectedBranchId))
@@ -1067,7 +1067,7 @@ final class FinanceReportController extends Controller
 
         $selectedBranch = $selectedBranchId !== '' ? $branches->firstWhere('id', (int) $selectedBranchId) : null;
         $salesItems = SalesOrderItem::query()
-            ->with(['order.branch', 'variant.product'])
+            ->with(['order.branch', 'variant.product.category', 'category'])
             ->where('tenant_id', $tenant->id)
             ->whereHas('order', fn ($query) => $query
                 ->when($selectedBranchId !== '', fn ($orderQuery) => $orderQuery->where('branch_id', $selectedBranchId))
@@ -1077,7 +1077,8 @@ final class FinanceReportController extends Controller
         $rows = $this->productProfitability($salesItems);
         $netRevenueMinor = (int) $rows->sum('revenue_minor');
         $cogsMinor = (int) $rows->sum('cogs_minor');
-        $profitMinor = (int) $rows->sum('profit_minor');
+        $costComplete = $rows->every(fn (array $row): bool => $row['cost_complete']);
+        $profitMinor = $costComplete ? (int) $rows->sum('profit_minor') : null;
         $query = [
             'tenant' => $tenant->id,
             'date_from' => $dateFrom->toDateString(),
@@ -1103,7 +1104,8 @@ final class FinanceReportController extends Controller
                 'net_revenue_minor' => $netRevenueMinor,
                 'cogs_minor' => $cogsMinor,
                 'profit_minor' => $profitMinor,
-                'margin_percent' => $netRevenueMinor > 0 ? ($profitMinor / $netRevenueMinor) * 100 : 0.0,
+                'margin_percent' => $costComplete && $netRevenueMinor > 0 ? ($profitMinor / $netRevenueMinor) * 100 : null,
+                'cost_complete' => $costComplete,
             ],
             'reportNumber' => 'PP-'.$dateFrom->format('Ym').'-'.str_pad((string) max(1, $rows->count()), 3, '0', STR_PAD_LEFT),
             'generatedAt' => now(),
@@ -1453,19 +1455,20 @@ final class FinanceReportController extends Controller
         foreach ($data['rows'] as $row) {
             $rows .= '<tr>'
                 .'<td>'.e($row['name']).'</td>'
+                .'<td>'.e($row['category']).'</td>'
                 .'<td>'.e($row['sku'] ?: 'Not set').'</td>'
                 .'<td>'.e((string) $row['quantity_sold']).'</td>'
                 .'<td>'.e((string) $row['quantity_returned']).'</td>'
                 .'<td>'.e((string) $row['net_quantity']).'</td>'
                 .'<td>'.e($money($row['revenue_minor'])).'</td>'
-                .'<td>'.e($money($row['cogs_minor'])).'</td>'
-                .'<td>'.e($money($row['profit_minor'])).'</td>'
-                .'<td>'.e($percent($row['margin_percent'])).'</td>'
+                .'<td>'.e($row['cost_complete'] ? $money($row['cogs_minor']).($row['is_estimated_cost'] ? ' estimated' : '') : 'Unknown').'</td>'
+                .'<td>'.e($row['cost_complete'] ? $money($row['profit_minor']) : 'Not available').'</td>'
+                .'<td>'.e($row['cost_complete'] ? $percent($row['margin_percent']) : 'Not available').'</td>'
                 .'</tr>';
         }
 
         if ($rows === '') {
-            $rows = '<tr><td colspan="9">No product sales for this period.</td></tr>';
+            $rows = '<tr><td colspan="10">No product sales for this period.</td></tr>';
         }
 
         return '<!doctype html><html><head><meta charset="utf-8"><title>Product Profitability Report</title></head><body>'
@@ -1473,8 +1476,9 @@ final class FinanceReportController extends Controller
             .'<p><strong>Company:</strong> '.e($data['tenant']->name).'</p>'
             .'<p><strong>Branch:</strong> '.e($data['selectedBranch']?->name ?? 'All branches').'</p>'
             .'<p><strong>Period:</strong> '.e($data['dateFrom']->format('M j, Y')).' to '.e($data['dateTo']->format('M j, Y')).'</p>'
-            .'<table border="1" cellspacing="0" cellpadding="6"><thead><tr><th>Product</th><th>SKU</th><th>Qty Sold</th><th>Qty Returned</th><th>Net Qty</th><th>Sales Revenue</th><th>COGS</th><th>Gross Profit</th><th>Gross Margin</th></tr></thead><tbody>'.$rows.'</tbody></table>'
-            .'<p><strong>Net Revenue:</strong> '.e($money($data['totals']['net_revenue_minor'])).' <strong>COGS:</strong> '.e($money($data['totals']['cogs_minor'])).' <strong>Gross Profit:</strong> '.e($money($data['totals']['profit_minor'])).' <strong>Gross Margin:</strong> '.e($percent($data['totals']['margin_percent'])).'</p>'
+            .'<table border="1" cellspacing="0" cellpadding="6"><thead><tr><th>Product</th><th>Category</th><th>SKU</th><th>Qty Sold</th><th>Qty Returned</th><th>Net Qty</th><th>Sales Revenue</th><th>COGS</th><th>Gross Profit</th><th>Gross Margin</th></tr></thead><tbody>'.$rows.'</tbody></table>'
+            .'<p><strong>Net Revenue:</strong> '.e($money($data['totals']['net_revenue_minor'])).' <strong>COGS:</strong> '.e($money($data['totals']['cogs_minor'])).' <strong>Gross Profit:</strong> '.e($data['totals']['cost_complete'] ? $money($data['totals']['profit_minor']) : 'Not available').' <strong>Gross Margin:</strong> '.e($data['totals']['cost_complete'] ? $percent($data['totals']['margin_percent']) : 'Not available').'</p>'
+            .'<p>Estimated manual-line costs are for management reporting only and do not post inventory or accounting COGS.</p>'
             .'</body></html>';
     }
 
@@ -1721,13 +1725,15 @@ final class FinanceReportController extends Controller
             'Net Quantity: '.$data['totals']['net_quantity'],
             'Net Revenue: '.$money($data['totals']['net_revenue_minor']),
             'COGS: '.$money($data['totals']['cogs_minor']),
-            'Gross Profit: '.$money($data['totals']['profit_minor']),
-            'Gross Margin: '.$percent($data['totals']['margin_percent']),
+            'Gross Profit: '.($data['totals']['cost_complete'] ? $money($data['totals']['profit_minor']) : 'Not available'),
+            'Gross Margin: '.($data['totals']['cost_complete'] ? $percent($data['totals']['margin_percent']) : 'Not available'),
+            'Note: Estimated manual-line costs do not post inventory or accounting COGS.',
             '',
         ];
 
         foreach ($data['rows']->take(32) as $row) {
-            $lines[] = $row['name'].' | '.($row['sku'] ?: 'Not set').' | Qty '.$row['net_quantity'].' | Revenue '.$money($row['revenue_minor']).' | Profit '.$money($row['profit_minor']).' | '.$percent($row['margin_percent']);
+            $profit = $row['cost_complete'] ? $money($row['profit_minor']).' | '.$percent($row['margin_percent']) : 'Profit not available';
+            $lines[] = $row['name'].' | '.$row['category'].' | '.($row['sku'] ?: 'Not set').' | Qty '.$row['net_quantity'].' | Revenue '.$money($row['revenue_minor']).' | '.$profit;
         }
 
         if ($data['rows']->isEmpty()) {
@@ -1977,7 +1983,7 @@ final class FinanceReportController extends Controller
     private function productProfitability(Collection $salesItems): Collection
     {
         return $salesItems
-            ->groupBy(fn (SalesOrderItem $item): string => (string) ($item->product_variant_id ?: ($item->sku ?: $item->item_name)))
+            ->groupBy(fn (SalesOrderItem $item): string => (string) ($item->product_variant_id ?: 'manual:'.($item->category_name ?? 'Uncategorized').':'.($item->sku ?: $item->item_name)))
             ->map(function (Collection $items): array {
                 /** @var SalesOrderItem $first */
                 $first = $items->first();
@@ -1992,11 +1998,17 @@ final class FinanceReportController extends Controller
                 });
                 $revenueMinor = max(0, $grossRevenueMinor - $returnedRevenueMinor);
                 $cogsMinor = $this->costOfGoodsSold($items);
-                $profitMinor = $revenueMinor - $cogsMinor;
+                $costComplete = $items->every(fn (SalesOrderItem $item): bool => $item->hasKnownCost());
+                $profitMinor = $costComplete ? $revenueMinor - $cogsMinor : null;
 
                 return [
-                    'name' => trim(($first->variant?->product?->name ?? $first->item_name).' / '.($first->variant?->variant_name ?? $first->sku ?? 'Default')),
+                    'name' => ($first->line_type ?? 'catalog') === 'manual'
+                        ? $first->item_name
+                        : trim(($first->variant?->product?->name ?? $first->item_name).' / '.($first->variant?->variant_name ?? $first->sku ?? 'Default')),
                     'sku' => $first->sku ?? $first->variant?->sku,
+                    'category' => $first->category_name ?? $first->variant?->product?->category?->name ?? 'Uncategorized',
+                    'is_estimated_cost' => $items->contains(fn (SalesOrderItem $item): bool => ($item->cost_basis ?? 'inventory') === 'estimated'),
+                    'cost_complete' => $costComplete,
                     'quantity_sold' => $quantitySold,
                     'quantity_returned' => $quantityReturned,
                     'net_quantity' => $netQuantity,
@@ -2006,10 +2018,10 @@ final class FinanceReportController extends Controller
                     'revenue_minor' => $revenueMinor,
                     'cogs_minor' => $cogsMinor,
                     'profit_minor' => $profitMinor,
-                    'margin_percent' => $revenueMinor > 0 ? ($profitMinor / $revenueMinor) * 100 : 0.0,
+                    'margin_percent' => $costComplete && $revenueMinor > 0 ? ($profitMinor / $revenueMinor) * 100 : null,
                 ];
             })
-            ->sortByDesc('profit_minor')
+            ->sortByDesc(fn (array $row): int => $row['profit_minor'] ?? PHP_INT_MIN)
             ->values();
     }
 

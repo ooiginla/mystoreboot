@@ -24,7 +24,9 @@ use Modules\Access\Models\TenantMembership;
 use Modules\Access\Support\ApprovalService;
 use Modules\Business\Models\Branch;
 use Modules\Business\Models\BusinessPaymentAccount;
+use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Enums\ProductType;
+use Modules\Catalog\Models\ProductCategory;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Customers\Models\Customer;
 use Modules\Finance\Actions\PostJournalEntryAction;
@@ -113,6 +115,12 @@ final class SalesController extends Controller
             ->whereHas('product', fn ($query) => $query->where('product_type', ProductType::Product->value))
             ->orderBy('sku')
             ->get();
+        $manualSaleCategories = ProductCategory::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('category_type', CategoryType::Product->value)
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
         $ordersQuery = SalesOrder::query()->with(['customer', 'branch', 'cashier', 'tillSession', 'items.variant.product', 'payments', 'returns.items.orderItem'])->where('tenant_id', $tenant->id);
         $orders = $ordersQuery
             ->when($orderBranchId !== null, fn ($query) => $query->where('branch_id', $orderBranchId))
@@ -146,6 +154,7 @@ final class SalesController extends Controller
             'recentTillSessions' => $recentTillSessions,
             'customers' => $customers,
             'variants' => $variants,
+            'manualSaleCategories' => $manualSaleCategories,
             'orders' => $orders,
             'allOrders' => $allOrders,
             'coupons' => $coupons,

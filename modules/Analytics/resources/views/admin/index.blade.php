@@ -191,12 +191,12 @@
         <div class="kpi hero grad-green">
             <div class="kpi-top"><span class="kpi-label">Total Revenue</span><span class="kpi-ico"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18m5-14H9.5a2.5 2.5 0 0 0 0 5h5a2.5 2.5 0 0 1 0 5H6"/></svg></span></div>
             <div class="kpi-value">{{ $currency }} {{ $money($kpi['revenueMinor']) }}</div>
-            <div class="kpi-sub">Cost of goods: {{ $currency }} {{ $money($kpi['cogsMinor']) }}</div>
+            <div class="kpi-sub">Cost of goods: {{ $currency }} {{ $money($kpi['cogsMinor']) }}{{ $kpi['hasEstimatedCost'] ? ' · includes estimates' : '' }}{{ ! $kpi['costComplete'] ? ' · excludes unknown costs' : '' }}</div>
         </div>
         <div class="kpi hero grad-dark">
             <div class="kpi-top"><span class="kpi-label">Gross Profit</span><span class="kpi-ico"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v18h18M7 14l3-3 3 3 5-6"/></svg></span></div>
             <div class="kpi-value">{{ $currency }} {{ $signed($kpi['grossProfitMinor']) }}</div>
-            <div class="kpi-sub">Net Profit: {{ $currency }} {{ $signed($kpi['netProfitMinor']) }}</div>
+            <div class="kpi-sub">Net Profit: {{ $currency }} {{ $signed($kpi['netProfitMinor']) }}{{ ! $kpi['costComplete'] ? ' · incomplete estimate' : '' }}</div>
         </div>
         <div class="kpi hero grad-amber">
             <div class="kpi-top"><span class="kpi-label">Total Expenses</span><span class="kpi-ico"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3v18l2-1 2 1 2-1 2 1 2-1 2 1V3l-2 1-2-1-2 1-2-1-2 1-2-1ZM9 8h6M9 12h6"/></svg></span></div>

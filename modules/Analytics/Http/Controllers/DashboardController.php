@@ -105,6 +105,8 @@ final class DashboardController extends Controller
             ->get();
 
         $cogsMinor = (int) round($items->sum(fn (SalesOrderItem $item): float => max(0, (float) $item->quantity - (float) $item->quantity_returned) * (int) $this->unitCostMinor($item)));
+        $costComplete = $items->every(fn (SalesOrderItem $item): bool => $item->hasKnownCost());
+        $hasEstimatedCost = $items->contains(fn (SalesOrderItem $item): bool => ($item->cost_basis ?? 'inventory') === 'estimated');
 
         $expenses = FinanceExpense::query()
             ->where('tenant_id', $tenant->id)
@@ -198,7 +200,7 @@ final class DashboardController extends Controller
 
         // ---- Top 10 products ----------------------------------------------
         $topProducts = $items
-            ->groupBy('product_variant_id')
+            ->groupBy(fn (SalesOrderItem $item): string => (string) ($item->product_variant_id ?: 'manual:'.($item->category_name ?? 'Uncategorized').':'.$item->item_name))
             ->map(function (Collection $g): array {
                 $first = $g->first();
 
@@ -259,6 +261,8 @@ final class DashboardController extends Controller
                 'cogsMinor' => $cogsMinor,
                 'grossProfitMinor' => $grossProfitMinor,
                 'netProfitMinor' => $netProfitMinor,
+                'costComplete' => $costComplete,
+                'hasEstimatedCost' => $hasEstimatedCost,
             ],
             'orderGroups' => ['pending' => $pending, 'completed' => $completed, 'cancelled' => $cancelled],
             'charts' => [
@@ -366,7 +370,7 @@ final class DashboardController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, Tenant>  $visibleTenants
+     * @param  Collection<int, Tenant>  $visibleTenants
      */
     private function resolveTenant(Request $request, Collection $visibleTenants): ?Tenant
     {

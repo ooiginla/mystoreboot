@@ -8,7 +8,9 @@ use App\Shared\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\Catalog\Models\ProductCategory;
 use Modules\Catalog\Models\ProductVariant;
+use Modules\Inventory\Models\InventoryLocation;
 
 final class SalesOrderItem extends Model
 {
@@ -90,9 +92,19 @@ final class SalesOrderItem extends Model
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(ProductCategory::class, 'product_category_id');
+    }
+
+    public function hasKnownCost(): bool
+    {
+        return ($this->cost_basis ?? 'inventory') !== 'unknown';
+    }
+
     public function inventoryLocation(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Inventory\Models\InventoryLocation::class, 'inventory_location_id');
+        return $this->belongsTo(InventoryLocation::class, 'inventory_location_id');
     }
 
     public function getQuantityReturnableAttribute(): float

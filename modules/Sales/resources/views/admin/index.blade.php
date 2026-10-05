@@ -73,7 +73,8 @@
     <style>
         .sales-header-context { margin-top: 8px; color: var(--muted); font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; }
         .sales-header-context strong { color: var(--ink); font-weight: 700; }
-        .sales-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); gap: 18px; align-items: start; }
+        .sales-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 520px); gap: 18px; align-items: start; }
+        .sales-grid > *, .sales-grid .stack, .sales-card, .sales-summary-card { min-width: 0; max-width: 100%; }
         .sales-customer-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
         .sales-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 20px; box-shadow: var(--shadow-sm); }
         .sales-card-title { margin: 0 0 16px; color: var(--ink); font-size: 15px; font-weight: 750; letter-spacing: -.01em; display: flex; align-items: center; gap: 9px; }
@@ -86,6 +87,15 @@
         .sales-summary-header h3 { margin: 0; color: var(--brand-strong); font-size: 17px; font-weight: 750; letter-spacing: -.01em; }
         .sales-summary-body { padding: 20px 22px; }
         .sales-product-entry-grid { display: grid; grid-template-columns: minmax(0, 1fr) 84px; gap: 14px; }
+        .sales-manual-entry-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(70px, .55fr) minmax(0, .8fr) minmax(0, .8fr); gap: 12px; align-items: end; }
+        .sales-manual-entry-grid .field, .sales-product-entry-grid .field { min-width: 0; }
+        .sales-manual-entry-grid input, .sales-manual-entry-grid select { min-width: 0; }
+        .sales-entry-mode { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-soft); padding: 4px; }
+        .sales-entry-mode button { min-width: 0; border: 0; border-radius: 7px; background: transparent; color: var(--muted); padding: 10px 12px; cursor: pointer; font-size: 13.5px; font-weight: 750; }
+        .sales-entry-mode button[aria-selected="true"] { background: #fff; color: var(--brand-strong); box-shadow: var(--shadow-sm); }
+        .sales-entry-panel { display: grid; gap: 14px; min-width: 0; }
+        .sales-entry-panel[hidden] { display: none; }
+        .cart-item-meta { display: block; margin-top: 2px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
         .sales-product-quantity input { width: 100%; min-width: 0; padding-inline: 6px; text-align: center; }
         .sales-summary-expander { width: 100%; margin: 10px 0 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; color: var(--ink-soft); padding: 10px 12px; cursor: pointer; font-size: 13.5px; font-weight: 700; text-align: left; }
         .sales-summary-expander:hover, .sales-summary-expander[aria-expanded="true"] { border-color: #a6f4c5; background: var(--brand-050); color: var(--brand-strong); }
@@ -126,9 +136,12 @@
         }
         @media (max-width: 760px) {
             .form-grid.order-filter-grid { grid-template-columns: 1fr; }
+            .sales-manual-entry-grid { grid-template-columns: 1fr 1fr; }
+            .sales-manual-entry-grid .manual-name { grid-column: 1 / -1; }
         }
         .cart-row { border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: var(--radius-sm); padding: 9px 12px; display: grid; grid-template-columns: minmax(0, 1fr) 58px 112px 28px; gap: 8px; align-items: center; background: var(--brand-050); }
-        .cart-row strong { font-weight: 700; color: var(--ink); font-size: 14px; }
+        .cart-row > div:first-child { min-width: 0; }
+        .cart-row strong { font-weight: 700; color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
         .cart-row > span { font-weight: 750; color: var(--brand-strong); text-align: right; font-variant-numeric: tabular-nums; }
         .cart-row input[data-cart-qty] { width: 58px; min-width: 0; height: 34px; justify-self: center; border-radius: 7px; padding: 4px 5px; text-align: center; font-size: 13px; font-weight: 700; }
         .cart-row .cart-remove-button { width: 28px; height: 28px; border-radius: 7px; padding: 0; font-size: 12px; }
@@ -214,11 +227,17 @@
             dialog[open].thermal-receipt-dialog .dialog-body { padding: 0; background: #fff; }
             dialog[open].thermal-receipt-dialog .thermal-receipt-paper { width: 80mm; max-width: 80mm; padding: 4mm 3mm; box-shadow: none; }
         }
-        @media (max-width: 1200px) { .sales-grid { grid-template-columns: 1fr; } .sales-summary-card { position: static; } }
+        @media (max-width: 1500px) {
+            .sales-manual-entry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .sales-manual-entry-grid .manual-name { grid-column: 1 / -1; }
+        }
+        @media (max-width: 1200px) { .sales-grid { grid-template-columns: minmax(0, 1fr); } .sales-summary-card { position: static; } }
         @media (max-width: 700px) {
             #pos > .panel-body { padding: 14px; }
             .sales-card { padding: 16px; }
             .sales-product-entry-grid { grid-template-columns: 1fr; }
+            .sales-manual-entry-grid { grid-template-columns: minmax(0, 1fr); }
+            .sales-manual-entry-grid .manual-name { grid-column: auto; }
             .sales-product-quantity input { min-height: 44px; padding-inline: 12px; text-align: left; }
             .cart-row {
                 grid-template-columns: 88px minmax(0, 1fr) 40px;
@@ -228,7 +247,8 @@
                 gap: 12px 10px;
                 padding: 12px;
             }
-            .cart-row strong { grid-area: product; overflow-wrap: anywhere; line-height: 1.45; }
+            .cart-row > div:first-child { grid-area: product; }
+            .cart-row strong { line-height: 1.45; }
             .cart-row input[data-cart-qty] { grid-area: quantity; width: 88px; height: 40px; justify-self: start; }
             .cart-row > span { grid-area: price; align-self: center; white-space: nowrap; }
             .cart-row .cart-remove-button { grid-area: remove; width: 40px; height: 40px; justify-self: end; font-size: 14px; }
@@ -341,24 +361,40 @@
                                     </div>
                                 </div>
                                 <div class="sales-card">
-                                    <h3 class="sales-card-title"><span class="sales-card-icon">+</span> Add Product to Cart</h3>
+                                    <h3 class="sales-card-title"><span class="sales-card-icon">+</span> Add Item to Cart</h3>
                                     <div style="display: grid; gap: 14px;">
-                                        <div class="sales-product-entry-grid">
-                                            <div class="field">
-                                                <label>Search Product, Variant or SKU</label>
-                                                <div class="sales-search-picker" data-sales-search-picker>
-                                                    <div class="sales-search-control">
-                                                        <input type="text" data-sales-product-search data-sales-options-id="sales-product-options" placeholder="Type to search..." autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false">
-                                                        <button class="sales-search-button" type="button" data-sales-search-toggle aria-label="Search products">
-                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg>
-                                                        </button>
-                                                    </div>
-                                                    <div class="sales-search-options" data-sales-search-options role="listbox" hidden></div>
-                                                </div>
-                                            </div>
-                                            <div class="field sales-product-quantity"><label>Quantity</label><input type="number" min="1" step="1" value="1" data-sales-product-qty></div>
+                                        <div class="sales-entry-mode" role="tablist" aria-label="Item entry type">
+                                            <button id="sales-catalog-tab" type="button" role="tab" aria-selected="true" aria-controls="sales-catalog-entry" data-sales-entry-mode="catalog">Existing product</button>
+                                            <button id="sales-manual-tab" type="button" role="tab" aria-selected="false" aria-controls="sales-manual-entry" data-sales-entry-mode="manual">Manual item</button>
                                         </div>
-                                        <button class="sales-primary-button" type="button" data-sales-add-product>+ Add to Cart</button>
+                                        <div class="sales-entry-panel" id="sales-catalog-entry" role="tabpanel" aria-labelledby="sales-catalog-tab" data-sales-entry-panel="catalog">
+                                            <div class="sales-product-entry-grid">
+                                                <div class="field">
+                                                    <label>Search Product, Variant or SKU</label>
+                                                    <div class="sales-search-picker" data-sales-search-picker>
+                                                        <div class="sales-search-control">
+                                                            <input type="text" data-sales-product-search data-sales-options-id="sales-product-options" placeholder="Type to search..." autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false">
+                                                            <button class="sales-search-button" type="button" data-sales-search-toggle aria-label="Search products">
+                                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg>
+                                                            </button>
+                                                        </div>
+                                                        <div class="sales-search-options" data-sales-search-options role="listbox" hidden></div>
+                                                    </div>
+                                                </div>
+                                                <div class="field sales-product-quantity"><label>Quantity</label><input type="number" min="1" step="1" value="1" data-sales-product-qty></div>
+                                            </div>
+                                            <button class="sales-primary-button" type="button" data-sales-add-product>+ Add product</button>
+                                        </div>
+                                        <div class="sales-entry-panel" id="sales-manual-entry" role="tabpanel" aria-labelledby="sales-manual-tab" data-sales-entry-panel="manual" hidden>
+                                            <div class="sales-manual-entry-grid" data-manual-sale-entry>
+                                                <div class="field manual-name"><label>What did you sell?</label><input type="text" maxlength="240" placeholder="e.g. Gold earring" data-manual-item-name></div>
+                                                <div class="field"><label>Category <span class="subtle">(optional)</span></label><select data-manual-category><option value="" data-category-name="Uncategorized">Uncategorized</option>@foreach ($manualSaleCategories as $category)<option value="{{ $category->id }}" data-category-name="{{ $category->name }}">{{ $category->name }}</option>@endforeach</select></div>
+                                                <div class="field sales-product-quantity"><label>Quantity</label><input type="number" min="0.0001" step="0.0001" value="1" data-manual-item-qty></div>
+                                                <div class="field"><label>Selling price</label><input type="text" inputmode="decimal" placeholder="0.00" data-money-input data-manual-item-price></div>
+                                                <div class="field"><label>Cost price <span class="subtle">(optional)</span></label><input type="text" inputmode="decimal" placeholder="Unknown" data-money-input data-manual-item-cost></div>
+                                            </div>
+                                            <button class="sales-primary-button" type="button" data-sales-add-manual>+ Add manual item</button>
+                                        </div>
                                         <div data-sales-cart style="display: grid; gap: 8px;"></div>
                                         <div data-sales-items></div>
                                     </div>
@@ -852,12 +888,35 @@
             const till = form.querySelector('[name="sales_till_session_id"]')?.value || '';
             return `sb-sales-pos-${tenant}-${till}`;
         }
+        function setSalesEntryMode(form, mode, focusField = false, persist = true) {
+            if (!form) return;
+            const selectedMode = mode === 'manual' ? 'manual' : 'catalog';
+            form.dataset.salesEntryMode = selectedMode;
+
+            form.querySelectorAll('[data-sales-entry-mode]').forEach((button) => {
+                const selected = button.dataset.salesEntryMode === selectedMode;
+                button.setAttribute('aria-selected', selected ? 'true' : 'false');
+                button.tabIndex = selected ? 0 : -1;
+            });
+            form.querySelectorAll('[data-sales-entry-panel]').forEach((panel) => {
+                panel.hidden = panel.dataset.salesEntryPanel !== selectedMode;
+            });
+
+            if (focusField) {
+                const selector = selectedMode === 'manual'
+                    ? '[data-manual-item-name]'
+                    : '[data-sales-product-search]';
+                window.setTimeout(() => form.querySelector(selector)?.focus(), 0);
+            }
+            if (persist) savePosState(form);
+        }
         function savePosState(form) {
             if (!form || !form.matches('[data-pos-form]')) return;
             try {
                 const val = (sel) => form.querySelector(sel)?.value ?? null;
                 sessionStorage.setItem(posStateKey(form), JSON.stringify({
                     cart,
+                    entryMode: form.dataset.salesEntryMode || 'catalog',
                     customerId: val('[data-sales-customer-value]'),
                     customerLabel: val('[data-sales-customer-search]'),
                     coupon: val('[data-sales-coupon-code]'),
@@ -883,10 +942,16 @@
         function restorePosState(form) {
             let saved;
             try { saved = JSON.parse(sessionStorage.getItem(posStateKey(form)) || 'null'); } catch (e) { saved = null; }
-            if (!saved || !Array.isArray(saved.cart) || !saved.cart.length) return;
+            if (!saved || !Array.isArray(saved.cart)) return;
             const set = (sel, v) => { const el = form.querySelector(sel); if (el && v != null) el.value = v; };
             cart.length = 0;
             saved.cart.forEach((item) => cart.push(item));
+            setSalesEntryMode(
+                form,
+                saved.entryMode || (saved.cart.some((item) => item.type === 'manual') ? 'manual' : 'catalog'),
+                false,
+                false
+            );
             set('[data-sales-customer-search]', saved.customerLabel);
             set('[data-sales-customer-value]', saved.customerId);
             set('[data-sales-coupon-code]', saved.coupon);
@@ -991,7 +1056,8 @@
             if (summaryItems) {
                 summaryItems.innerHTML = '';
                 cart.forEach((item) => {
-                    summaryItems.insertAdjacentHTML('beforeend', `<div class="summary-cart-item"><strong>${escapeHtml(item.label)} x ${item.quantity}</strong><span>${fmt(item.quantity * item.price)}</span></div>`);
+                    const detail = item.type === 'manual' ? ` · ${escapeHtml(item.categoryName || 'Uncategorized')}` : '';
+                    summaryItems.insertAdjacentHTML('beforeend', `<div class="summary-cart-item"><strong>${escapeHtml(item.label)} x ${item.quantity}${detail}</strong><span>${fmt(item.quantity * item.price)}</span></div>`);
                 });
             }
             const t = computeTotals(form);
@@ -1024,8 +1090,15 @@
             rows.innerHTML = '';
             hidden.innerHTML = '';
             cart.forEach((item, index) => {
-                rows.insertAdjacentHTML('beforeend', `<div class="cart-row"><strong>${escapeHtml(item.label)}</strong><input type="number" min="1" step="1" value="${item.quantity}" data-cart-qty="${index}"><span data-cart-line="${index}">${fmt(item.quantity * item.price)}</span><button class="icon-btn cart-remove-button" type="button" data-cart-remove="${index}" aria-label="Remove item">X</button></div>`);
-                hidden.insertAdjacentHTML('beforeend', `<input type="hidden" name="items[${index}][product_variant_id]" value="${item.id}"><input type="hidden" name="items[${index}][quantity]" data-cart-hidden-qty="${index}" value="${item.quantity}"><input type="hidden" name="items[${index}][unit_price]" value="${item.price.toFixed(2)}">`);
+                const meta = item.type === 'manual'
+                    ? `Manual · ${escapeHtml(item.categoryName || 'Uncategorized')} · ${item.cost === null ? 'Cost unknown' : `Est. cost ${fmt(item.cost)}`}`
+                    : 'Catalog product';
+                rows.insertAdjacentHTML('beforeend', `<div class="cart-row"><div><strong>${escapeHtml(item.label)}</strong><small class="cart-item-meta">${meta}</small></div><input type="number" min="0.0001" step="0.0001" value="${item.quantity}" data-cart-qty="${index}"><span data-cart-line="${index}">${fmt(item.quantity * item.price)}</span><button class="icon-btn cart-remove-button" type="button" data-cart-remove="${index}" aria-label="Remove item">X</button></div>`);
+                if (item.type === 'manual') {
+                    hidden.insertAdjacentHTML('beforeend', `<input type="hidden" name="items[${index}][line_type]" value="manual"><input type="hidden" name="items[${index}][item_name]" value="${escapeHtml(item.label)}"><input type="hidden" name="items[${index}][product_category_id]" value="${item.categoryId || ''}"><input type="hidden" name="items[${index}][quantity]" data-cart-hidden-qty="${index}" value="${item.quantity}"><input type="hidden" name="items[${index}][unit_price]" value="${item.price.toFixed(2)}">${item.cost === null ? '' : `<input type="hidden" name="items[${index}][unit_cost]" value="${item.cost.toFixed(2)}">`}`);
+                } else {
+                    hidden.insertAdjacentHTML('beforeend', `<input type="hidden" name="items[${index}][line_type]" value="catalog"><input type="hidden" name="items[${index}][product_variant_id]" value="${item.id}"><input type="hidden" name="items[${index}][quantity]" data-cart-hidden-qty="${index}" value="${item.quantity}"><input type="hidden" name="items[${index}][unit_price]" value="${item.price.toFixed(2)}">`);
+                }
             });
             renderSummary(form);
         }
@@ -1042,11 +1115,57 @@
                 search.focus();
                 return false;
             }
-            const existing = cart.find((item) => item.id === option.dataset.variantId);
+            const existing = cart.find((item) => item.type !== 'manual' && item.id === option.dataset.variantId);
             if (existing) existing.quantity += qty;
-            else cart.push({ id: option.dataset.variantId, label: option.value, quantity: qty, price: clean(option.dataset.price), taxRate: clean(option.dataset.taxRate) });
+            else cart.push({ type: 'catalog', id: option.dataset.variantId, label: option.value, quantity: qty, price: clean(option.dataset.price), taxRate: clean(option.dataset.taxRate) });
             search.value = '';
             search.focus();
+            renderCart(form);
+
+            return true;
+        }
+
+        function addManualItem(form) {
+            const name = form.querySelector('[data-manual-item-name]');
+            const category = form.querySelector('[data-manual-category]');
+            const quantity = form.querySelector('[data-manual-item-qty]');
+            const price = form.querySelector('[data-manual-item-price]');
+            const cost = form.querySelector('[data-manual-item-cost]');
+            const label = (name?.value || '').trim();
+            const rawPrice = (price?.value || '').trim();
+
+            if (!label) {
+                name?.classList.add('sales-input-error');
+                name?.focus();
+                window.setTimeout(() => name?.classList.remove('sales-input-error'), 1200);
+                return false;
+            }
+            if (rawPrice === '') {
+                price?.classList.add('sales-input-error');
+                price?.focus();
+                window.setTimeout(() => price?.classList.remove('sales-input-error'), 1200);
+                return false;
+            }
+
+            const selectedCategory = category?.selectedOptions[0];
+            const rawCost = (cost?.value || '').trim();
+            cart.push({
+                type: 'manual',
+                id: `manual-${Date.now()}-${Math.random()}`,
+                label,
+                categoryId: category?.value || '',
+                categoryName: selectedCategory?.dataset.categoryName || selectedCategory?.textContent?.trim() || 'Uncategorized',
+                quantity: Math.max(0.0001, Number(quantity?.value || 1)),
+                price: clean(rawPrice),
+                cost: rawCost === '' ? null : clean(rawCost),
+                taxRate: 0,
+            });
+
+            if (name) name.value = '';
+            if (quantity) quantity.value = '1';
+            if (price) price.value = '';
+            if (cost) cost.value = '';
+            name?.focus();
             renderCart(form);
 
             return true;
@@ -1061,7 +1180,7 @@
                 const cartForm = cartQty.closest('[data-pos-form]');
                 const i = Number(cartQty.dataset.cartQty);
                 if (cart[i]) {
-                    const quantity = Math.max(1, parseInt(cartQty.value, 10) || 1);
+                    const quantity = Math.max(0.0001, Number(cartQty.value) || 1);
                     cart[i].quantity = quantity;
                     const line = cartForm?.querySelector(`[data-cart-line="${i}"]`);
                     if (line) line.textContent = fmt(quantity * cart[i].price);
@@ -1220,19 +1339,41 @@
         }
 
         document.addEventListener('keydown', (event) => {
+            const entryMode = event.target.closest('[data-sales-entry-mode]');
+            if (entryMode && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+                const form = entryMode.closest('form');
+                const mode = ['ArrowRight', 'End'].includes(event.key) ? 'manual' : 'catalog';
+                event.preventDefault();
+                setSalesEntryMode(form, mode, false);
+                form?.querySelector(`[data-sales-entry-mode="${mode}"]`)?.focus();
+                return;
+            }
             const search = event.target.closest('[data-sales-product-search]');
-            if (!search || event.key !== 'Enter') return;
-            const form = search.closest('form');
+            const manualField = event.target.closest('[data-manual-item-name], [data-manual-item-price], [data-manual-item-cost]');
+            if ((!search && !manualField) || event.key !== 'Enter') return;
+            const form = (search || manualField).closest('form');
             if (!form) return;
             event.preventDefault();
-            addSelectedProduct(form);
+            if (search) addSelectedProduct(form);
+            else addManualItem(form);
         });
 
         document.addEventListener('click', (event) => {
+            const entryMode = event.target.closest('[data-sales-entry-mode]');
+            if (entryMode) {
+                setSalesEntryMode(entryMode.closest('form'), entryMode.dataset.salesEntryMode, true);
+                return;
+            }
             const add = event.target.closest('[data-sales-add-product]');
             if (add) {
                 const form = add.closest('form');
                 addSelectedProduct(form);
+                return;
+            }
+            const addManual = event.target.closest('[data-sales-add-manual]');
+            if (addManual) {
+                const form = addManual.closest('form');
+                addManualItem(form);
                 return;
             }
             const remove = event.target.closest('[data-cart-remove]');
@@ -1246,7 +1387,7 @@
         document.addEventListener('change', (event) => {
             const qty = event.target.closest('[data-cart-qty]');
             if (!qty) return;
-            cart[Number(qty.dataset.cartQty)].quantity = Math.max(1, parseInt(qty.value, 10) || 1);
+            cart[Number(qty.dataset.cartQty)].quantity = Math.max(0.0001, Number(qty.value) || 1);
             renderCart(qty.closest('form'));
         });
 
@@ -1264,7 +1405,7 @@
                     <div class="sales-confirm-item">
                         <span>
                             <strong>${escapeHtml(item.label)}</strong>
-                            <small>${item.quantity.toLocaleString('en-US')} × ${fmt(item.price)}</small>
+                            <small>${item.quantity.toLocaleString('en-US')} × ${fmt(item.price)}${item.type === 'manual' ? ` · ${escapeHtml(item.categoryName || 'Uncategorized')} · ${item.cost === null ? 'Cost unknown' : `Est. cost ${fmt(item.cost)}`}` : ''}</small>
                         </span>
                         <span>${fmt(item.quantity * item.price)}</span>
                     </div>
@@ -1397,6 +1538,7 @@
         // Restore an in-progress sale after a reload; clear it once a sale has completed.
         const posForm = document.querySelector('[data-pos-form]');
         if (posForm) {
+            setSalesEntryMode(posForm, 'catalog', false, false);
             if (autoInvoiceOrderId || autoViewOrderId) clearPosState(posForm);
             else restorePosState(posForm);
             syncRecordAs(posForm);

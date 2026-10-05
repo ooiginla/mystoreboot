@@ -4,27 +4,30 @@ declare(strict_types=1);
 
 namespace Modules\Sales\Actions;
 
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Enums\TaxBehavior;
+use Modules\Catalog\Models\ProductCategory;
 use Modules\Catalog\Models\ProductVariant;
-use Modules\Business\Models\BusinessPaymentAccount;
 use Modules\Customers\Models\Customer;
+use Modules\Finance\Actions\PostJournalEntryAction;
+use Modules\Finance\Models\FinanceAccount;
 use Modules\Inventory\Actions\AdjustInventoryReservationAction;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
 use Modules\Inventory\Actions\SaleRecipeDepletionAction;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Enums\StockCondition;
-use Modules\Finance\Actions\PostJournalEntryAction;
-use Modules\Finance\Models\FinanceAccount;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Inventory\Models\InventoryStockLevel;
+use Modules\Inventory\Support\Quantity;
 use Modules\Sales\Enums\DiscountType;
 use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Enums\SalesPaymentStatus;
-use Modules\Sales\Models\SalesCoupon;
 use Modules\Sales\Models\SalesCashLocation;
+use Modules\Sales\Models\SalesCoupon;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesTillSession;
 use Modules\Subscriptions\Support\TenantModuleAccess;
@@ -87,8 +90,49 @@ final class CreateSalesOrderAction
                 ]);
             }
 
-            $items = collect((array) $data['items'])->map(function (array $item) use ($tenant, $inventoryEnabled, $inventoryLocationId): array {
-                $variant = ProductVariant::query()->with('product.taxes')->where('tenant_id', $tenant->id)->findOrFail($item['product_variant_id']);
+            $items = collect((array) $data['items'])->map(function (array $item) use ($tenant, $inventoryEnabled, $inventoryLocationId, $source): array {
+                $lineType = (string) ($item['line_type'] ?? 'catalog');
+
+                if ($lineType === 'manual') {
+                    if ($source !== 'offline') {
+                        throw ValidationException::withMessages([
+                            'items' => 'Manual sale lines can only be used when recording an offline sale.',
+                        ]);
+                    }
+
+                    $category = filled($item['product_category_id'] ?? null)
+                        ? ProductCategory::query()
+                            ->where('tenant_id', $tenant->id)
+                            ->where('category_type', 'product')
+                            ->where('status', 'active')
+                            ->findOrFail($item['product_category_id'])
+                        : null;
+                    $quantity = Quantity::round((float) $item['quantity']);
+                    $unitPriceMinor = $this->moneyToMinor($item['unit_price']);
+                    $costProvided = filled($item['unit_cost'] ?? null);
+                    $unitCostMinor = $costProvided ? $this->moneyToMinor($item['unit_cost']) : 0;
+                    $lineSubtotalMinor = (int) round($quantity * $unitPriceMinor);
+                    $taxRate = (float) ($item['tax_rate'] ?? 0);
+
+                    return [
+                        'line_type' => 'manual',
+                        'variant' => null,
+                        'category' => $category,
+                        'item_name' => trim((string) $item['item_name']),
+                        'sku' => null,
+                        'quantity' => $quantity,
+                        'unit_price_minor' => $unitPriceMinor,
+                        'unit_cost_minor' => $unitCostMinor,
+                        'cost_basis' => $costProvided ? 'estimated' : 'unknown',
+                        'posts_cost_to_ledger' => false,
+                        'line_subtotal_minor' => $lineSubtotalMinor,
+                        'tax_minor' => (int) round($lineSubtotalMinor * ($taxRate / 100)),
+                        'is_tracked' => false,
+                        'uses_recipe' => false,
+                    ];
+                }
+
+                $variant = ProductVariant::query()->with(['product.taxes', 'product.category'])->where('tenant_id', $tenant->id)->findOrFail($item['product_variant_id']);
 
                 if ($variant->product?->product_type === ProductType::RawMaterial) {
                     throw ValidationException::withMessages([
@@ -96,7 +140,7 @@ final class CreateSalesOrderAction
                     ]);
                 }
 
-                $quantity = \Modules\Inventory\Support\Quantity::round((float) $item['quantity']);
+                $quantity = Quantity::round((float) $item['quantity']);
                 $unitPriceMinor = $this->moneyToMinor($item['unit_price']);
                 $unitCostMinor = $this->unitCostForSale($tenant, $inventoryLocationId, $variant, $inventoryEnabled);
                 $lineSubtotalMinor = (int) round($quantity * $unitPriceMinor);
@@ -106,10 +150,16 @@ final class CreateSalesOrderAction
                     : 0.0;
 
                 return [
+                    'line_type' => 'catalog',
                     'variant' => $variant,
+                    'category' => $variant->product?->category,
+                    'item_name' => $variant->product?->name.' / '.$variant->variant_name,
+                    'sku' => $variant->sku,
                     'quantity' => $quantity,
                     'unit_price_minor' => $unitPriceMinor,
                     'unit_cost_minor' => $unitCostMinor,
+                    'cost_basis' => 'inventory',
+                    'posts_cost_to_ledger' => true,
                     'line_subtotal_minor' => $lineSubtotalMinor,
                     'tax_minor' => (int) round($lineSubtotalMinor * ($taxRate / 100)),
                     // Only stocked physical products are counted/reserved/deducted. Made-to-order
@@ -220,18 +270,24 @@ final class CreateSalesOrderAction
 
                 $order->items()->create([
                     'tenant_id' => $tenant->id,
-                    'product_variant_id' => $variant->id,
+                    'product_variant_id' => $variant?->id,
+                    'product_category_id' => $item['category']?->id,
+                    'category_name' => $item['category']?->name ?? ($item['line_type'] === 'manual' ? 'Uncategorized' : null),
+                    'line_type' => $item['line_type'],
                     'inventory_tracked' => $item['is_tracked'],
-                    'item_name' => $variant->product?->name.' / '.$variant->variant_name,
-                    'sku' => $variant->sku,
+                    'item_name' => $item['item_name'],
+                    'sku' => $item['sku'],
                     'quantity' => $item['quantity'],
                     'unit_price_minor' => $item['unit_price_minor'],
                     'unit_cost_minor' => $effectiveUnitCostMinor,
+                    'cost_basis' => $item['cost_basis'],
                     'tax_minor' => $item['tax_minor'],
                     'line_total_minor' => $item['line_subtotal_minor'] + $item['tax_minor'],
                 ]);
 
-                $cogsMinor += (int) round((float) $item['quantity'] * $effectiveUnitCostMinor);
+                if ($item['posts_cost_to_ledger']) {
+                    $cogsMinor += (int) round((float) $item['quantity'] * $effectiveUnitCostMinor);
+                }
 
                 if (! $isCustomerOrder && $inventoryEnabled && $item['is_tracked']) {
                     $this->postInventoryMovement->executeFromSource([
@@ -327,7 +383,7 @@ final class CreateSalesOrderAction
             return;
         }
 
-        $user = \App\Models\User::find($userId);
+        $user = User::find($userId);
 
         if (! $user || $user->is_platform_admin) {
             return;
@@ -389,8 +445,7 @@ final class CreateSalesOrderAction
         ?int $inventoryLocationId,
         ProductVariant $variant,
         bool $inventoryEnabled,
-    ): int
-    {
+    ): int {
         $averageCostMinor = $inventoryEnabled && $inventoryLocationId
             ? (int) InventoryStockLevel::query()
                 ->where('tenant_id', $tenant->id)

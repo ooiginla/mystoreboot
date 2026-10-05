@@ -123,8 +123,9 @@
                 <table class="report-table">
                     <thead>
                         <tr>
-                            <th style="width: 22%;">Product</th>
-                            <th style="width: 12%;">SKU</th>
+                            <th style="width: 18%;">Product</th>
+                            <th style="width: 11%;">Category</th>
+                            <th style="width: 10%;">SKU</th>
                             <th style="width: 8%;" class="number">Qty Sold</th>
                             <th style="width: 9%;" class="number">Qty Returned</th>
                             <th style="width: 8%;" class="number">Net Qty</th>
@@ -138,29 +139,30 @@
                         @forelse ($rows as $row)
                             <tr>
                                 <td>{{ $row['name'] }}</td>
+                                <td>{{ $row['category'] }}</td>
                                 <td>{{ $row['sku'] ?: 'Not set' }}</td>
                                 <td class="number">{{ number_format($row['quantity_sold']) }}</td>
                                 <td class="number">{{ number_format($row['quantity_returned']) }}</td>
                                 <td class="number">{{ number_format($row['net_quantity']) }}</td>
                                 <td class="money">{{ $money($row['revenue_minor']) }}</td>
-                                <td class="money">{{ $money($row['cogs_minor']) }}</td>
-                                <td class="money">{{ $money($row['profit_minor']) }}</td>
-                                <td class="money">{{ $percent($row['margin_percent']) }}</td>
+                                <td class="money">{{ $row['cost_complete'] ? $money($row['cogs_minor']).($row['is_estimated_cost'] ? ' est.' : '') : 'Unknown' }}</td>
+                                <td class="money">{{ $row['cost_complete'] ? $money($row['profit_minor']) : 'Not available' }}</td>
+                                <td class="money">{{ $row['cost_complete'] ? $percent($row['margin_percent']) : 'Not available' }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="9"><div class="empty">No product sales for this period.</div></td></tr>
+                            <tr><td colspan="10"><div class="empty">No product sales for this period.</div></td></tr>
                         @endforelse
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colspan="2">Total</td>
+                            <td colspan="3">Total</td>
                             <td class="number">{{ number_format($totals['quantity_sold']) }}</td>
                             <td class="number">{{ number_format($totals['quantity_returned']) }}</td>
                             <td class="number">{{ number_format($totals['net_quantity']) }}</td>
                             <td class="money">{{ $money($totals['net_revenue_minor']) }}</td>
-                            <td class="money">{{ $money($totals['cogs_minor']) }}</td>
-                            <td class="money">{{ $money($totals['profit_minor']) }}</td>
-                            <td class="money">{{ $percent($totals['margin_percent']) }}</td>
+                            <td class="money">{{ $money($totals['cogs_minor']) }}{{ ! $totals['cost_complete'] ? ' known' : '' }}</td>
+                            <td class="money">{{ $totals['cost_complete'] ? $money($totals['profit_minor']) : 'Not available' }}</td>
+                            <td class="money">{{ $totals['cost_complete'] ? $percent($totals['margin_percent']) : 'Not available' }}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -178,13 +180,14 @@
             </div>
             <div class="total-cell">
                 <span>Gross Profit</span>
-                <strong>{{ $money($totals['profit_minor']) }}</strong>
+                <strong>{{ $totals['cost_complete'] ? $money($totals['profit_minor']) : 'N/A' }}</strong>
             </div>
             <div class="total-cell">
                 <span>Gross Margin</span>
-                <strong>{{ $percent($totals['margin_percent']) }}</strong>
+                <strong>{{ $totals['cost_complete'] ? $percent($totals['margin_percent']) : 'N/A' }}</strong>
             </div>
         </section>
+        <p class="currency" style="margin-top: 18px; white-space: normal;">Manual-line costs marked “est.” are used for management reporting only; they do not post inventory or accounting COGS. Profit is unavailable when any included line has no cost.</p>
     </main>
 </body>
 </html>

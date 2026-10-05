@@ -57,7 +57,9 @@ final class CompleteSalesOrderAction
             }
 
             $inventoryEnabled = $this->moduleAccess->allows($lockedOrder->tenant, 'inventory');
-            $location = $inventoryEnabled ? $this->inventoryLocationFor($lockedOrder) : null;
+            $needsInventoryLocation = $lockedOrder->items->contains(fn ($item): bool => ($item->line_type ?? 'catalog') !== 'manual'
+                && ((bool) ($item->inventory_tracked ?? true) || (bool) ($item->variant?->product?->usesRecipeDepletion() ?? false)));
+            $location = $inventoryEnabled && $needsInventoryLocation ? $this->inventoryLocationFor($lockedOrder) : null;
             $useEstimatedCost = (bool) ($lockedOrder->tenant->settings['use_estimated_cost_for_cogs'] ?? false);
             $cogsMinor = 0;
 
@@ -67,6 +69,13 @@ final class CompleteSalesOrderAction
                 // A voided restaurant line is off the bill; its cost was written off as
                 // waste when it was voided, so it books neither revenue nor COGS here.
                 if ($isCheck && $item->voided_at !== null) {
+                    continue;
+                }
+
+                // Manual lines may carry an estimated cost for management reporting,
+                // but they never post COGS or reduce inventory because no stock asset
+                // was recorded for them.
+                if (($item->line_type ?? 'catalog') === 'manual') {
                     continue;
                 }
 
