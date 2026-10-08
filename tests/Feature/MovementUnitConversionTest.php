@@ -61,46 +61,42 @@ final class MovementUnitConversionTest extends TestCase
 
         $user = User::factory()->create(['is_platform_admin' => true]);
 
-        // Receive 2 cartons — should store 48 base units (pieces).
+        // Receive two differently measured lines in one post: 2 cartons + 10 pieces.
         $this->actingAs($user)->post(route('admin.inventory.movements.store'), [
             'tenant_id' => $tenant->id,
             'inventory_location_id' => $location->id,
-            'product_variant_id' => $variant->id,
-            'movement_type' => InventoryMovementType::StockIn->value,
             'stock_condition' => StockCondition::Sellable->value,
-            'quantity' => 2,
-            'unit_id' => $carton->id,
-            'total_cost' => '240',
-        ])->assertSessionHasNoErrors();
-
-        $this->assertSame(48.0, (float) InventoryStockLevel::query()
-            ->where('inventory_location_id', $location->id)
-            ->where('product_variant_id', $variant->id)
-            ->value('quantity_on_hand'));
-
-        $cartonMovement = InventoryMovement::query()->latest('id')->firstOrFail();
-        $this->assertSame(2.0, (float) $cartonMovement->entered_quantity);
-        $this->assertSame($carton->id, $cartonMovement->entered_unit_id);
-        $this->assertSame('carton', $cartonMovement->entered_unit_code);
-        $this->assertSame(500, (int) $cartonMovement->unit_cost_minor);
-        $this->assertSame(24000, (int) $cartonMovement->movement_value_minor);
-
-        // Receiving in the base unit stores the number as-is.
-        $this->actingAs($user)->post(route('admin.inventory.movements.store'), [
-            'tenant_id' => $tenant->id,
-            'inventory_location_id' => $location->id,
-            'product_variant_id' => $variant->id,
-            'movement_type' => InventoryMovementType::StockIn->value,
-            'stock_condition' => StockCondition::Sellable->value,
-            'quantity' => 10,
-            'unit_id' => $base->id,
-            'total_cost' => '50',
+            'items' => [
+                [
+                    'product_variant_id' => $variant->id,
+                    'movement_type' => InventoryMovementType::StockIn->value,
+                    'quantity' => 2,
+                    'unit_id' => $carton->id,
+                    'total_cost' => '240',
+                ],
+                [
+                    'product_variant_id' => $variant->id,
+                    'movement_type' => InventoryMovementType::StockIn->value,
+                    'quantity' => 10,
+                    'unit_id' => $base->id,
+                    'total_cost' => '50',
+                ],
+            ],
         ])->assertSessionHasNoErrors();
 
         $this->assertSame(58.0, (float) InventoryStockLevel::query()
             ->where('inventory_location_id', $location->id)
             ->where('product_variant_id', $variant->id)
             ->value('quantity_on_hand'));
+
+        $cartonMovement = InventoryMovement::query()->oldest('id')->firstOrFail();
+        $this->assertSame(2.0, (float) $cartonMovement->entered_quantity);
+        $this->assertSame($carton->id, $cartonMovement->entered_unit_id);
+        $this->assertSame('carton', $cartonMovement->entered_unit_code);
+        $this->assertSame(500, (int) $cartonMovement->unit_cost_minor);
+        $this->assertSame(24000, (int) $cartonMovement->movement_value_minor);
+
+        $this->assertCount(2, InventoryMovement::query()->get());
 
         $this->actingAs($user)
             ->get(route('admin.inventory.index', ['tenant' => $tenant->id]).'#movements')
@@ -157,11 +153,15 @@ final class MovementUnitConversionTest extends TestCase
             'quantity' => 10, 'unit_id' => $kg->id, 'total_cost' => '20000',
         ])->assertSessionHasNoErrors();
 
-        // 2.5 kg sent to the kitchen.
+        // Two lines are transferred together (2.5 kg + 1.5 kg).
         $this->actingAs($user)->post(route('admin.inventory.movements.store'), [
             'tenant_id' => $tenant->id, 'inventory_location_id' => $store->id, 'destination_inventory_location_id' => $kitchen->id,
             'product_variant_id' => $flour->id, 'movement_type' => InventoryMovementType::TransferOut->value,
-            'stock_condition' => StockCondition::Sellable->value, 'quantity' => 2.5, 'unit_id' => $kg->id,
+            'stock_condition' => StockCondition::Sellable->value,
+            'items' => [
+                ['product_variant_id' => $flour->id, 'quantity' => 2.5, 'unit_id' => $kg->id],
+                ['product_variant_id' => $flour->id, 'quantity' => 1.5, 'unit_id' => $kg->id],
+            ],
         ])->assertSessionHasNoErrors();
 
         $onHand = fn (InventoryLocation $location): float => (float) InventoryStockLevel::query()
@@ -169,8 +169,24 @@ final class MovementUnitConversionTest extends TestCase
             ->where('product_variant_id', $flour->id)
             ->value('quantity_on_hand');
 
-        $this->assertSame(7500.0, $onHand($store));
-        $this->assertSame(2500.0, $onHand($kitchen));
+        $this->assertSame(6000.0, $onHand($store));
+        $this->assertSame(4000.0, $onHand($kitchen));
+        $this->assertSame(2, InventoryMovement::query()
+            ->where('movement_type', InventoryMovementType::TransferOut->value)
+            ->count());
+
+        // If a later row fails, the earlier row is rolled back as part of the same transfer.
+        $this->actingAs($user)->post(route('admin.inventory.movements.store'), [
+            'tenant_id' => $tenant->id, 'inventory_location_id' => $store->id, 'destination_inventory_location_id' => $kitchen->id,
+            'movement_type' => InventoryMovementType::TransferOut->value, 'stock_condition' => StockCondition::Sellable->value,
+            'items' => [
+                ['product_variant_id' => $flour->id, 'quantity' => 1, 'unit_id' => $kg->id],
+                ['product_variant_id' => $flour->id, 'quantity' => 99, 'unit_id' => $kg->id],
+            ],
+        ])->assertSessionHasErrors('quantity');
+
+        $this->assertSame(6000.0, $onHand($store));
+        $this->assertSame(4000.0, $onHand($kitchen));
 
         // Both dialogs carry the unit beside the quantity, and the page knows flour's units.
         $response = $this->actingAs($user)->get(route('admin.inventory.index', ['tenant' => $tenant->id]))->assertOk();

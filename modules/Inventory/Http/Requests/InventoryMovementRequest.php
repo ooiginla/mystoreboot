@@ -24,6 +24,7 @@ final class InventoryMovementRequest extends FormRequest
     {
         $tenantId = $this->string('tenant_id')->toString();
         $movementType = $this->string('movement_type')->toString();
+        $hasItems = is_array($this->input('items'));
         $requiresUnitCost = in_array($movementType, [
             InventoryMovementType::OpeningStock->value,
             InventoryMovementType::StockIn->value,
@@ -36,24 +37,25 @@ final class InventoryMovementRequest extends FormRequest
             ->pluck('value')
             ->all();
 
-        return [
+        $rules = [
             'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
             'inventory_location_id' => ['required', 'integer', Rule::exists('inventory_locations', 'id')->where('tenant_id', $tenantId)],
             'destination_inventory_location_id' => [
-                Rule::requiredIf($this->string('movement_type')->toString() === InventoryMovementType::TransferOut->value),
+                Rule::requiredIf($movementType === InventoryMovementType::TransferOut->value),
                 'nullable',
                 'integer',
                 'different:inventory_location_id',
                 Rule::exists('inventory_locations', 'id')->where('tenant_id', $tenantId),
             ],
             'product_variant_id' => [
-                'required',
+                Rule::requiredIf(! $hasItems),
+                'nullable',
                 'integer',
                 Rule::exists('product_variants', 'id')->where('tenant_id', $tenantId),
             ],
-            'movement_type' => ['required', Rule::in($movementTypes)],
+            'movement_type' => [Rule::requiredIf(! $hasItems), 'nullable', Rule::in($movementTypes)],
             'stock_condition' => ['required', Rule::in(array_column(StockCondition::cases(), 'value'))],
-            'quantity' => ['required', 'numeric', 'gt:0', 'max:999999999'],
+            'quantity' => [Rule::requiredIf(! $hasItems), 'nullable', 'numeric', 'gt:0', 'max:999999999'],
             'unit_id' => [
                 'nullable', 'integer',
                 Rule::exists('units_of_measure', 'id')->where('tenant_id', $tenantId),
@@ -76,7 +78,43 @@ final class InventoryMovementRequest extends FormRequest
             'reference_number' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'occurred_at' => ['nullable', 'date'],
+            'items' => ['nullable', 'array', 'min:1', 'max:50'],
+            'items.*' => ['required', 'array'],
+            'items.*.product_variant_id' => [
+                'required',
+                'integer',
+                Rule::exists('product_variants', 'id')->where('tenant_id', $tenantId),
+            ],
+            'items.*.movement_type' => [
+                Rule::requiredIf($movementType !== InventoryMovementType::TransferOut->value),
+                'nullable',
+                Rule::in($movementTypes),
+            ],
+            'items.*.quantity' => ['required', 'numeric', 'gt:0', 'max:999999999'],
+            'items.*.unit_id' => [
+                'nullable', 'integer',
+                Rule::exists('units_of_measure', 'id')->where('tenant_id', $tenantId),
+            ],
+            'items.*.batch_number' => ['nullable', 'string', 'max:120'],
+            'items.*.expiry_date' => ['nullable', 'date'],
         ];
+
+        foreach ((array) $this->input('items', []) as $index => $item) {
+            $itemType = is_array($item) ? ($item['movement_type'] ?? $movementType) : $movementType;
+            $itemRequiresCost = in_array($itemType, [
+                InventoryMovementType::OpeningStock->value,
+                InventoryMovementType::StockIn->value,
+            ], true);
+            $rules["items.{$index}.total_cost"] = [
+                Rule::requiredIf($itemRequiresCost),
+                'nullable',
+                'numeric',
+                Rule::when($itemRequiresCost, ['gt:0'], ['min:0']),
+                'max:999999999',
+            ];
+        }
+
+        return $rules;
     }
 
     protected function prepareForValidation(): void
@@ -86,11 +124,29 @@ final class InventoryMovementRequest extends FormRequest
             InventoryMovementType::StockIn->value,
         ], true);
 
-        $this->merge([
+        $prepared = [
             'total_cost' => $acceptsTotalCost
                 ? (is_string($this->input('total_cost')) ? str_replace(',', '', $this->input('total_cost')) : $this->input('total_cost'))
                 : null,
-        ]);
+        ];
+
+        if (is_array($this->input('items'))) {
+            $prepared['items'] = collect($this->input('items'))
+                ->map(function (mixed $item): mixed {
+                    if (! is_array($item)) {
+                        return $item;
+                    }
+
+                    if (array_key_exists('total_cost', $item) && is_string($item['total_cost'])) {
+                        $item['total_cost'] = str_replace(',', '', $item['total_cost']);
+                    }
+
+                    return $item;
+                })
+                ->all();
+        }
+
+        $this->merge($prepared);
 
         if ($this->string('movement_type')->toString() === InventoryMovementType::Damaged->value) {
             $this->merge(['stock_condition' => StockCondition::Damaged->value]);

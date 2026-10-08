@@ -61,7 +61,7 @@ final class ReorderLevels
     }
 
     /**
-     * @return array<int, array<int, array{level: float, qty: float, available: float}>>
+     * @return array<int, array<int, array{level: float, qty: float, available: float, average_cost_minor: int}>>
      */
     public static function levelsFor(string $tenantId): array
     {
@@ -69,12 +69,13 @@ final class ReorderLevels
 
         InventoryStockLevel::query()
             ->where('tenant_id', $tenantId)
-            ->get(['product_variant_id', 'inventory_location_id', 'quantity_on_hand', 'quantity_reserved', 'reorder_level', 'reorder_quantity'])
+            ->get(['product_variant_id', 'inventory_location_id', 'quantity_on_hand', 'quantity_reserved', 'reorder_level', 'reorder_quantity', 'average_cost_minor'])
             ->each(function (InventoryStockLevel $stock) use (&$levels): void {
                 $levels[$stock->product_variant_id][$stock->inventory_location_id] = [
                     'level' => (float) $stock->reorder_level,
                     'qty' => (float) $stock->reorder_quantity,
                     'available' => $stock->quantity_available,
+                    'average_cost_minor' => (int) $stock->average_cost_minor,
                 ];
             });
 

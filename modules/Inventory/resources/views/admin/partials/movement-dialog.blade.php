@@ -12,46 +12,12 @@
             <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
             <div class="form-grid">
                 <div class="field">
-                    <label>Movement type</label>
-                    <select name="movement_type" required data-movement-type>
-                        @foreach ($movementTypes as $value => $label)
-                            <option value="{{ $value }}" @selected(old('movement_type') === $value)>{{ $label }}</option>
-                        @endforeach
-                    </select>
-                    <small class="subtle">Use Purchasing for supplier deliveries and Sales Returns for customer returns.</small>
-                </div>
-                <div class="field">
                     <label>Location</label>
                     <select name="inventory_location_id" required>
                         @foreach ($locations as $location)
                             <option value="{{ $location->id }}" @selected((int) old('inventory_location_id') === $location->id || (! old('inventory_location_id') && $activeBranchLocationId === $location->id))>{{ $location->name }}</option>
                         @endforeach
                     </select>
-                </div>
-                <div class="field">
-                    <label>Type</label>
-                    <select data-datalist-type="variant-options">
-                        <option value="">All</option>
-                        <option value="product">Product</option>
-                        <option value="raw_material">Raw material</option>
-                    </select>
-                </div>
-                <x-variant-picker label="Product variant" class="full" enhanced />
-                <div class="field">
-                    <label for="movement-quantity">Quantity</label>
-                    {{-- The unit sits on the quantity itself, so "25" never goes in without saying 25 of what. --}}
-                    <div class="qty-unit">
-                        <input id="movement-quantity" name="quantity" type="number" min="0" step="any" required data-qty-input>
-                        <select name="unit_id" data-movement-unit aria-label="Measurement unit" disabled>
-                            <option value="">—</option>
-                        </select>
-                    </div>
-                    <small class="subtle" data-measurement-hint>Choose an item to see how it is measured.</small>
-                </div>
-                <div class="field">
-                    <label for="movement-total-cost">Total cost</label>
-                    <input id="movement-total-cost" name="total_cost" type="text" inputmode="decimal" value="{{ old('total_cost') }}" data-money-input data-movement-total-cost aria-describedby="movement-total-cost-help">
-                    <small class="subtle" id="movement-total-cost-help" data-movement-total-cost-help></small>
                 </div>
                 <div class="field">
                     <label>Stock condition</label>
@@ -65,23 +31,6 @@
                     <label>Occurred at</label>
                     <input name="occurred_at" type="datetime-local">
                 </div>
-                <div class="field full">
-                    <h3 style="margin: 8px 0 2px; font-size: 0.95rem;">Batch &amp; expiry tracking <span class="subtle" style="font-weight: 400;">(optional)</span></h3>
-                    <p class="subtle" style="margin: 0;">
-                        Fill either field and this stock is recorded as its own <strong>lot</strong>. Lots are depleted
-                        earliest-expiry-first, and you can trace where each one went from
-                        <a href="{{ route('admin.inventory.batches.index', array_filter(['tenant' => request('tenant')])) }}">Lot traceability</a>.
-                        Leave both blank for stock you do not need to track by batch.
-                    </p>
-                </div>
-                <div class="field">
-                    <label>Batch number</label>
-                    <input name="batch_number" placeholder="e.g. LOT-2026-001">
-                </div>
-                <div class="field">
-                    <label>Expiry date</label>
-                    <input name="expiry_date" type="date">
-                </div>
                 <div class="field">
                     <label>Reference number</label>
                     <input name="reference_number">
@@ -91,6 +40,42 @@
                     <textarea name="notes"></textarea>
                 </div>
             </div>
+            <div class="movement-lines-panel">
+                <div class="movement-lines-header">
+                    <div><strong>Movement items</strong><br><span class="subtle">Use Purchasing for supplier deliveries and Sales Returns for customer returns.</span></div>
+                    <button class="btn secondary" type="button" data-add-movement-line>Add item</button>
+                </div>
+                <div data-movement-lines>
+                    <div class="movement-line" data-movement-line>
+                        <div class="field">
+                            <label>Movement type</label>
+                            <select name="items[0][movement_type]" required data-movement-type>
+                                @foreach ($movementTypes as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <x-variant-picker name="items[0][product_variant_id]" label="Product variant" />
+                        <div class="field">
+                            <label>Quantity</label>
+                            <div class="qty-unit">
+                                <input name="items[0][quantity]" type="number" min="0" step="any" required data-qty-input>
+                                <select name="items[0][unit_id]" data-movement-unit aria-label="Measurement unit" disabled><option value="">—</option></select>
+                            </div>
+                            <small class="subtle" data-measurement-hint>Choose an item to see how it is measured.</small>
+                        </div>
+                        <div class="field">
+                            <label>Total cost</label>
+                            <input name="items[0][total_cost]" type="text" inputmode="decimal" data-money-input data-movement-total-cost>
+                            <small class="subtle" data-movement-total-cost-help></small>
+                        </div>
+                        <div class="field"><label>Batch number <span class="subtle">(optional)</span></label><input name="items[0][batch_number]" placeholder="e.g. LOT-2026-001"></div>
+                        <div class="field"><label>Expiry date <span class="subtle">(optional)</span></label><input name="items[0][expiry_date]" type="date"></div>
+                        <div class="movement-line-actions"><button class="btn danger" type="button" data-remove-movement-line>Remove</button></div>
+                    </div>
+                </div>
+                <div class="movement-grand-total"><span>Grand total</span><strong data-movement-grand-total>{{ $tenant->currency_code }} 0.00</strong></div>
+            </div>
             <div class="button-row">
                 <button class="btn secondary" type="button" data-dialog-close>Cancel</button>
                 <button class="btn primary" type="submit">Post movement</button>
@@ -98,29 +83,3 @@
         </form>
     </div>
 </dialog>
-
-<script>
-    (() => {
-        const dialog = document.getElementById('movement-dialog');
-        const movementType = dialog?.querySelector('[data-movement-type]');
-        const totalCost = dialog?.querySelector('[data-movement-total-cost]');
-        const help = dialog?.querySelector('[data-movement-total-cost-help]');
-
-        if (!movementType || !totalCost || !help) return;
-
-        const syncTotalCost = () => {
-            const acceptsTotalCost = ['opening_stock', 'stock_in'].includes(movementType.value);
-            totalCost.disabled = !acceptsTotalCost;
-            totalCost.required = acceptsTotalCost;
-
-            if (!acceptsTotalCost) totalCost.value = '';
-
-            help.textContent = acceptsTotalCost
-                ? 'Enter the total amount paid for all the quantity above. The base-unit price is calculated automatically.'
-                : 'Uses the product’s current weighted-average cost.';
-        };
-
-        movementType.addEventListener('change', syncTotalCost);
-        syncTotalCost();
-    })();
-</script>

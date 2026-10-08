@@ -31,30 +31,6 @@
                     </select>
                 </div>
                 <div class="field">
-                    <label>Type</label>
-                    <select data-datalist-type="variant-options">
-                        <option value="">All</option>
-                        <option value="product">Product</option>
-                        <option value="raw_material">Raw material</option>
-                    </select>
-                </div>
-                <x-variant-picker label="Product variant" class="full" enhanced />
-                <div class="field">
-                    <label for="transfer-quantity">Quantity</label>
-                    {{-- The unit sits on the quantity itself, so "25" never goes in without saying 25 of what. --}}
-                    <div class="qty-unit">
-                        <input id="transfer-quantity" name="quantity" type="number" min="0" step="any" required data-qty-input>
-                        <select name="unit_id" data-movement-unit aria-label="Measurement unit" disabled>
-                            <option value="">—</option>
-                        </select>
-                    </div>
-                    <small class="subtle" data-measurement-hint>Choose an item to see how it is measured.</small>
-                </div>
-                <div class="field">
-                    <label>Unit cost</label>
-                    <input type="text" value="Uses current average cost" disabled>
-                </div>
-                <div class="field">
                     <label>Reference number</label>
                     <input name="reference_number">
                 </div>
@@ -66,6 +42,32 @@
                     <label>Notes</label>
                     <textarea name="notes"></textarea>
                 </div>
+            </div>
+
+            <div class="movement-lines-panel">
+                <div class="movement-lines-header">
+                    <div><strong>Transfer items</strong><br><span class="subtle">Costs use the current weighted average at the source location.</span></div>
+                    <button class="btn secondary" type="button" data-add-movement-line>Add item</button>
+                </div>
+                <div data-movement-lines>
+                    <div class="movement-line transfer-line" data-movement-line>
+                        <x-variant-picker name="items[0][product_variant_id]" label="Product variant" />
+                        <div class="field">
+                            <label>Quantity</label>
+                            <div class="qty-unit">
+                                <input name="items[0][quantity]" type="number" min="0" step="any" required data-qty-input>
+                                <select name="items[0][unit_id]" data-movement-unit aria-label="Measurement unit" disabled><option value="">—</option></select>
+                            </div>
+                            <small class="subtle" data-measurement-hint>Choose an item to see how it is measured.</small>
+                        </div>
+                        <div class="field">
+                            <label>Cost</label>
+                            <div class="movement-line-cost"><strong data-line-total>{{ $tenant->currency_code }} 0.00</strong><span class="subtle" data-line-unit-cost>Choose an item</span></div>
+                        </div>
+                        <div class="movement-line-actions"><button class="btn danger" type="button" data-remove-movement-line>Remove</button></div>
+                    </div>
+                </div>
+                <div class="movement-grand-total"><span>Total transfer value</span><strong data-movement-grand-total>{{ $tenant->currency_code }} 0.00</strong></div>
             </div>
 
             <div class="button-row">

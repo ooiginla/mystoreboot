@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -220,82 +221,147 @@ final class InventoryController extends Controller
         $this->authorizeTenantIdAccess($user, $tenantId);
 
         $data = $request->validated();
+        $redirect = route('admin.inventory.index', ['tenant' => $tenantId]).'#movements';
+        $tenant = Tenant::query()->findOrFail($tenantId);
+        $items = $data['items'] ?? [[
+            'product_variant_id' => $data['product_variant_id'],
+            'movement_type' => $data['movement_type'],
+            'quantity' => $data['quantity'],
+            'unit_id' => $data['unit_id'] ?? null,
+            'total_cost' => $data['total_cost'] ?? null,
+        ]];
+        unset($data['items'], $data['product_variant_id'], $data['quantity'], $data['unit_id'], $data['total_cost']);
 
+        $movements = collect($items)->map(function (array $item, int $index) use ($data, $tenantId): array {
+            $item['movement_type'] ??= $data['movement_type'] ?? null;
+
+            return $this->prepareMovementData($tenantId, [...$data, ...$item], "items.{$index}");
+        })->all();
+
+        [$posted, $sentForApproval] = DB::transaction(function () use ($movements, $tenant, $user, $action, $approvals): array {
+            $posted = 0;
+            $sentForApproval = 0;
+
+            foreach ($movements as $movement) {
+                if ($this->divertAdjustmentIfRequired($tenant, $user, $movement, $approvals)) {
+                    $sentForApproval++;
+
+                    continue;
+                }
+
+                $action->execute($movement);
+                $posted++;
+            }
+
+            return [$posted, $sentForApproval];
+        });
+
+        $status = match (true) {
+            $posted > 0 && $sentForApproval > 0 => "{$posted} movement line(s) posted; {$sentForApproval} adjustment line(s) sent for approval.",
+            $sentForApproval > 0 => "{$sentForApproval} stock adjustment line(s) sent for approval.",
+            default => "{$posted} inventory movement line(s) posted.",
+        };
+
+        return redirect()->to($redirect)->with('status', $status);
+    }
+
+    /**
+     * Convert one user-entered row to the base-unit movement understood by the ledger.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function prepareMovementData(string $tenantId, array $data, string $errorPrefix): array
+    {
+        $variant = ProductVariant::query()
+            ->with(['product.unitCategory.units', 'baseUnit'])
+            ->where('tenant_id', $tenantId)
+            ->findOrFail((int) $data['product_variant_id']);
         $enteredQuantity = (float) $data['quantity'];
         $enteredUnit = null;
 
-        // If a measurement unit was chosen, convert the entered quantity to the item's
-        // base unit for storage (e.g. 2 cartons → 48 base units).
         if (! empty($data['unit_id'])) {
             $enteredUnit = UnitOfMeasure::query()
-                ->where('tenant_id', $tenantId)->find((int) $data['unit_id']);
+                ->where('tenant_id', $tenantId)
+                ->find((int) $data['unit_id']);
+            $allowedUnitIds = collect(ReorderLevels::unitsOf($variant))->pluck('id')->filter()->map(fn ($id): int => (int) $id);
 
-            if ($enteredUnit && $enteredUnit->isConvertible()) {
+            if (! $enteredUnit || ! $allowedUnitIds->contains($enteredUnit->id)) {
+                throw ValidationException::withMessages([
+                    "{$errorPrefix}.unit_id" => 'Choose a measurement unit configured for this item.',
+                ]);
+            }
+
+            if ($enteredUnit->isConvertible()) {
                 $data['quantity'] = app(UnitConverter::class)->toBase($enteredQuantity, $enteredUnit);
             }
         }
 
-        $variant = $request->variant()?->loadMissing('baseUnit');
         $data['entered_quantity'] = $enteredQuantity;
         $data['entered_unit_id'] = $enteredUnit?->id;
-        $data['entered_unit_code'] = $enteredUnit?->code ?? $variant?->baseUnit?->code ?? 'pc';
+        $data['entered_unit_code'] = $enteredUnit?->code ?? $variant->baseUnit?->code ?? 'pc';
 
         if (array_key_exists('total_cost', $data) && $data['total_cost'] !== null) {
             $movementValueMinor = (int) round((float) $data['total_cost'] * 100);
-            $baseQuantity = (float) $data['quantity'];
             $data['movement_value_minor'] = $movementValueMinor;
-            $data['unit_cost_minor'] = (int) round($movementValueMinor / $baseQuantity);
+            $data['unit_cost_minor'] = (int) round($movementValueMinor / (float) $data['quantity']);
         }
 
-        unset($data['total_cost']);
-        unset($data['unit_id']);
+        if ($data['movement_type'] === InventoryMovementType::Damaged->value) {
+            $data['stock_condition'] = StockCondition::Damaged->value;
+        }
 
-        $redirect = route('admin.inventory.index', ['tenant' => $tenantId]).'#movements';
+        unset($data['total_cost'], $data['unit_id']);
 
+        return $data;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function divertAdjustmentIfRequired(
+        Tenant $tenant,
+        User $user,
+        array $data,
+        ApprovalService $approvals,
+    ): bool {
         $isAdjustment = in_array($data['movement_type'], [
             InventoryMovementType::AdjustmentIn->value,
             InventoryMovementType::AdjustmentOut->value,
         ], true);
 
-        if ($isAdjustment && ! $user->is_platform_admin) {
-            $tenant = Tenant::query()->findOrFail($tenantId);
-
-            // Adjustments specifically require the adjust permission (route allows any movement perm).
-            abort_unless($user->hasPermission($tenant, 'inventory.adjust'), 403, 'You do not have permission to adjust stock.');
-
-            $valueMinor = $this->estimateAdjustmentValueMinor($tenant, $data);
-            $limit = $user->permissionLimit($tenant, 'inventory.adjustment.max_minor');
-            $overLimit = $limit !== null && $valueMinor > (int) $limit;
-
-            // Divert to approval when the tenant requires it and the user cannot self-approve,
-            // OR when a directly-acting user exceeds their limit and approval is available.
-            $mustDivert = $approvals->shouldDivert($tenant, $user, 'inventory_adjustment', 'inventory.adjustments.approve')
-                || ($overLimit && $approvals->requiresApproval($tenant, 'inventory_adjustment'));
-
-            if ($mustDivert) {
-                $variant = $request->variant();
-                $approvals->create($tenant, $user, 'inventory_adjustment', 'Stock adjustment · '.($variant?->name ?? 'item'), [
-                    'branch_id' => $this->branchIdForLocation($tenant, (int) $data['inventory_location_id']),
-                    'amount_minor' => $valueMinor,
-                    'payload' => $data,
-                    'description' => sprintf('%s of %s unit(s)', $data['movement_type'] === InventoryMovementType::AdjustmentIn->value ? 'Increase' : 'Decrease', Quantity::format((float) $data['quantity'])),
-                    'request_note' => $data['notes'] ?? null,
-                ]);
-
-                return redirect()->to($redirect)->with('status', 'This stock adjustment has been sent for approval.');
-            }
-
-            // Acting directly (can self-approve or approvals off): enforce the limit as a hard cap.
-            if ($overLimit) {
-                throw ValidationException::withMessages([
-                    'quantity' => sprintf('This adjustment is worth %s, above your limit of %s.', $tenant->currency_code.' '.number_format($valueMinor / 100, 2), $tenant->currency_code.' '.number_format((int) $limit / 100, 2)),
-                ]);
-            }
+        if (! $isAdjustment || $user->is_platform_admin) {
+            return false;
         }
 
-        $action->execute($data);
+        abort_unless($user->hasPermission($tenant, 'inventory.adjust'), 403, 'You do not have permission to adjust stock.');
 
-        return redirect()->to($redirect)->with('status', 'Inventory movement posted.');
+        $valueMinor = $this->estimateAdjustmentValueMinor($tenant, $data);
+        $limit = $user->permissionLimit($tenant, 'inventory.adjustment.max_minor');
+        $overLimit = $limit !== null && $valueMinor > (int) $limit;
+        $mustDivert = $approvals->shouldDivert($tenant, $user, 'inventory_adjustment', 'inventory.adjustments.approve')
+            || ($overLimit && $approvals->requiresApproval($tenant, 'inventory_adjustment'));
+
+        if ($mustDivert) {
+            $variant = ProductVariant::query()->with('product')->find((int) $data['product_variant_id']);
+            $approvals->create($tenant, $user, 'inventory_adjustment', 'Stock adjustment · '.($variant?->product?->name ?? 'item'), [
+                'branch_id' => $this->branchIdForLocation($tenant, (int) $data['inventory_location_id']),
+                'amount_minor' => $valueMinor,
+                'payload' => $data,
+                'description' => sprintf('%s of %s unit(s)', $data['movement_type'] === InventoryMovementType::AdjustmentIn->value ? 'Increase' : 'Decrease', Quantity::format((float) $data['quantity'])),
+                'request_note' => $data['notes'] ?? null,
+            ]);
+
+            return true;
+        }
+
+        if ($overLimit) {
+            throw ValidationException::withMessages([
+                'quantity' => sprintf('This adjustment is worth %s, above your limit of %s.', $tenant->currency_code.' '.number_format($valueMinor / 100, 2), $tenant->currency_code.' '.number_format((int) $limit / 100, 2)),
+            ]);
+        }
+
+        return false;
     }
 
     /**

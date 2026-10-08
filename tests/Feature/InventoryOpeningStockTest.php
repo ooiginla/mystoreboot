@@ -42,7 +42,7 @@ final class InventoryOpeningStockTest extends TestCase
             ->assertSee('Opening stock')
             ->assertSee('data-movement-total-cost', false)
             ->assertSee("['opening_stock', 'stock_in']", false)
-            ->assertSee('base-unit price is calculated automatically');
+            ->assertSee('Enter the total paid for this entire line.');
 
         $payload = [
             'tenant_id' => $tenant->id,
