@@ -15,6 +15,7 @@ use Modules\Inventory\Enums\InventoryLocationType;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Enums\StockCondition;
 use Modules\Inventory\Models\InventoryLocation;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\InventoryStockLevel;
 use Modules\Inventory\Models\UnitCategory;
 use Modules\Inventory\Models\UnitOfMeasure;
@@ -69,13 +70,20 @@ final class MovementUnitConversionTest extends TestCase
             'stock_condition' => StockCondition::Sellable->value,
             'quantity' => 2,
             'unit_id' => $carton->id,
-            'unit_cost' => '5',
+            'total_cost' => '240',
         ])->assertSessionHasNoErrors();
 
         $this->assertSame(48.0, (float) InventoryStockLevel::query()
             ->where('inventory_location_id', $location->id)
             ->where('product_variant_id', $variant->id)
             ->value('quantity_on_hand'));
+
+        $cartonMovement = InventoryMovement::query()->latest('id')->firstOrFail();
+        $this->assertSame(2.0, (float) $cartonMovement->entered_quantity);
+        $this->assertSame($carton->id, $cartonMovement->entered_unit_id);
+        $this->assertSame('carton', $cartonMovement->entered_unit_code);
+        $this->assertSame(500, (int) $cartonMovement->unit_cost_minor);
+        $this->assertSame(24000, (int) $cartonMovement->movement_value_minor);
 
         // Receiving in the base unit stores the number as-is.
         $this->actingAs($user)->post(route('admin.inventory.movements.store'), [
@@ -86,13 +94,23 @@ final class MovementUnitConversionTest extends TestCase
             'stock_condition' => StockCondition::Sellable->value,
             'quantity' => 10,
             'unit_id' => $base->id,
-            'unit_cost' => '5',
+            'total_cost' => '50',
         ])->assertSessionHasNoErrors();
 
         $this->assertSame(58.0, (float) InventoryStockLevel::query()
             ->where('inventory_location_id', $location->id)
             ->where('product_variant_id', $variant->id)
             ->value('quantity_on_hand'));
+
+        $this->actingAs($user)
+            ->get(route('admin.inventory.index', ['tenant' => $tenant->id]).'#movements')
+            ->assertOk()
+            ->assertSee('<th>Quantity &amp; cost</th>', false)
+            ->assertDontSee('<th>Reference</th>', false)
+            ->assertSee('2 carton')
+            ->assertSee('48 pc base')
+            ->assertSee('NGN 5.00/pc')
+            ->assertSee('Total NGN 240.00');
     }
 
     public function test_a_transfer_entered_in_kg_moves_the_right_number_of_grams_and_the_dialog_shows_the_unit(): void
@@ -135,7 +153,7 @@ final class MovementUnitConversionTest extends TestCase
         $this->actingAs($user)->post(route('admin.inventory.movements.store'), [
             'tenant_id' => $tenant->id, 'inventory_location_id' => $store->id, 'product_variant_id' => $flour->id,
             'movement_type' => InventoryMovementType::StockIn->value, 'stock_condition' => StockCondition::Sellable->value,
-            'quantity' => 10, 'unit_id' => $kg->id, 'unit_cost' => '2',
+            'quantity' => 10, 'unit_id' => $kg->id, 'total_cost' => '20000',
         ])->assertSessionHasNoErrors();
 
         // 2.5 kg sent to the kitchen.

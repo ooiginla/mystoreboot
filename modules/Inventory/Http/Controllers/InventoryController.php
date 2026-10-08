@@ -10,16 +10,19 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
+use Modules\Access\Support\ApprovalService;
 use Modules\Business\Models\Branch;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
+use Modules\Inventory\Actions\EnsureLocationTypesAction;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
 use Modules\Inventory\Actions\SaveReorderLevelsAction;
-use Modules\Inventory\Enums\InventoryLocationType;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Enums\StockCondition;
 use Modules\Inventory\Http\Requests\InventoryLocationRequest;
@@ -29,6 +32,12 @@ use Modules\Inventory\Models\InventoryBatch;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\InventoryStockLevel;
+use Modules\Inventory\Models\LocationType;
+use Modules\Inventory\Models\UnitOfMeasure;
+use Modules\Inventory\Support\Quantity;
+use Modules\Inventory\Support\ReorderLevels;
+use Modules\Inventory\Support\UnitConverter;
+use Modules\Subscriptions\Support\TenantModuleAccess;
 use Modules\Tenancy\Models\Tenant;
 
 final class InventoryController extends Controller
@@ -36,9 +45,8 @@ final class InventoryController extends Controller
     public function index(
         Request $request,
         EnsureInventoryLocationsAction $inventoryLocations,
-        \Modules\Subscriptions\Support\TenantModuleAccess $moduleAccess,
-    ): View
-    {
+        TenantModuleAccess $moduleAccess,
+    ): View {
         /** @var User $user */
         $user = $request->user();
         $tenants = $this->visibleTenantsFor($user);
@@ -47,9 +55,9 @@ final class InventoryController extends Controller
         abort_if(! $tenant, 403);
 
         $inventoryLocations->forTenant($tenant);
-        app(\Modules\Inventory\Actions\EnsureLocationTypesAction::class)->forTenant($tenant->id);
+        app(EnsureLocationTypesAction::class)->forTenant($tenant->id);
 
-        $locationTypeOptions = \Modules\Inventory\Models\LocationType::query()
+        $locationTypeOptions = LocationType::query()
             ->where('tenant_id', $tenant->id)
             ->where('status', 'active')
             ->orderByDesc('is_system')
@@ -106,7 +114,7 @@ final class InventoryController extends Controller
         $stockLevels = $stockLevels->values();
 
         $movements = InventoryMovement::query()
-            ->with(['location.branch', 'destinationLocation.branch', 'variant.product', 'batchAllocations.batch'])
+            ->with(['location.branch', 'destinationLocation.branch', 'variant.product', 'variant.baseUnit', 'enteredUnit', 'batchAllocations.batch'])
             ->where('tenant_id', $tenant->id)
             ->latest('occurred_at')
             ->limit(80)
@@ -145,9 +153,9 @@ final class InventoryController extends Controller
                 fn (InventoryLocation $location): bool => (bool) $location->is_prep_station,
             )->values(),
             'reorderUnits' => $variants->mapWithKeys(fn (ProductVariant $variant): array => [
-                $variant->id => \Modules\Inventory\Support\ReorderLevels::unitsOf($variant),
+                $variant->id => ReorderLevels::unitsOf($variant),
             ])->all(),
-            'reorderLevels' => \Modules\Inventory\Support\ReorderLevels::levelsFor($tenant->id),
+            'reorderLevels' => ReorderLevels::levelsFor($tenant->id),
             'movementTypes' => InventoryMovementType::options(),
             'stockConditions' => StockCondition::options(),
             'stats' => [
@@ -178,13 +186,13 @@ final class InventoryController extends Controller
             'name' => ['required', 'string', 'max:140'],
             'code' => [
                 'nullable', 'string', 'max:50',
-                \Illuminate\Validation\Rule::unique('inventory_locations', 'code')
+                Rule::unique('inventory_locations', 'code')
                     ->where('tenant_id', $location->tenant_id)
                     ->ignore($location->id),
             ],
             'location_type' => [
                 'required', 'string', 'max:40',
-                \Illuminate\Validation\Rule::exists('location_types', 'key')->where('tenant_id', $location->tenant_id),
+                Rule::exists('location_types', 'key')->where('tenant_id', $location->tenant_id),
             ],
         ]);
 
@@ -204,7 +212,7 @@ final class InventoryController extends Controller
     public function storeMovement(
         InventoryMovementRequest $request,
         PostInventoryMovementAction $action,
-        \Modules\Access\Support\ApprovalService $approvals,
+        ApprovalService $approvals,
     ): RedirectResponse {
         /** @var User $user */
         $user = $request->user();
@@ -213,16 +221,33 @@ final class InventoryController extends Controller
 
         $data = $request->validated();
 
+        $enteredQuantity = (float) $data['quantity'];
+        $enteredUnit = null;
+
         // If a measurement unit was chosen, convert the entered quantity to the item's
         // base unit for storage (e.g. 2 cartons → 48 base units).
         if (! empty($data['unit_id'])) {
-            $unit = \Modules\Inventory\Models\UnitOfMeasure::query()
+            $enteredUnit = UnitOfMeasure::query()
                 ->where('tenant_id', $tenantId)->find((int) $data['unit_id']);
 
-            if ($unit && $unit->isConvertible()) {
-                $data['quantity'] = app(\Modules\Inventory\Support\UnitConverter::class)->toBase((float) $data['quantity'], $unit);
+            if ($enteredUnit && $enteredUnit->isConvertible()) {
+                $data['quantity'] = app(UnitConverter::class)->toBase($enteredQuantity, $enteredUnit);
             }
         }
+
+        $variant = $request->variant()?->loadMissing('baseUnit');
+        $data['entered_quantity'] = $enteredQuantity;
+        $data['entered_unit_id'] = $enteredUnit?->id;
+        $data['entered_unit_code'] = $enteredUnit?->code ?? $variant?->baseUnit?->code ?? 'pc';
+
+        if (array_key_exists('total_cost', $data) && $data['total_cost'] !== null) {
+            $movementValueMinor = (int) round((float) $data['total_cost'] * 100);
+            $baseQuantity = (float) $data['quantity'];
+            $data['movement_value_minor'] = $movementValueMinor;
+            $data['unit_cost_minor'] = (int) round($movementValueMinor / $baseQuantity);
+        }
+
+        unset($data['total_cost']);
         unset($data['unit_id']);
 
         $redirect = route('admin.inventory.index', ['tenant' => $tenantId]).'#movements';
@@ -253,7 +278,7 @@ final class InventoryController extends Controller
                     'branch_id' => $this->branchIdForLocation($tenant, (int) $data['inventory_location_id']),
                     'amount_minor' => $valueMinor,
                     'payload' => $data,
-                    'description' => sprintf('%s of %s unit(s)', $data['movement_type'] === InventoryMovementType::AdjustmentIn->value ? 'Increase' : 'Decrease', \Modules\Inventory\Support\Quantity::format((float) $data['quantity'])),
+                    'description' => sprintf('%s of %s unit(s)', $data['movement_type'] === InventoryMovementType::AdjustmentIn->value ? 'Increase' : 'Decrease', Quantity::format((float) $data['quantity'])),
                     'request_note' => $data['notes'] ?? null,
                 ]);
 
@@ -262,7 +287,7 @@ final class InventoryController extends Controller
 
             // Acting directly (can self-approve or approvals off): enforce the limit as a hard cap.
             if ($overLimit) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'quantity' => sprintf('This adjustment is worth %s, above your limit of %s.', $tenant->currency_code.' '.number_format($valueMinor / 100, 2), $tenant->currency_code.' '.number_format((int) $limit / 100, 2)),
                 ]);
             }

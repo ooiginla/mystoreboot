@@ -24,6 +24,7 @@ final class InventoryMovement extends Model
             'movement_type' => InventoryMovementType::class,
             'stock_condition' => StockCondition::class,
             'quantity' => 'decimal:4',
+            'entered_quantity' => 'decimal:4',
             'stock_after' => 'decimal:4',
             'expiry_date' => 'date',
             'occurred_at' => 'datetime',
@@ -43,6 +44,11 @@ final class InventoryMovement extends Model
     public function variant(): BelongsTo
     {
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');
+    }
+
+    public function enteredUnit(): BelongsTo
+    {
+        return $this->belongsTo(UnitOfMeasure::class, 'entered_unit_id');
     }
 
     /**

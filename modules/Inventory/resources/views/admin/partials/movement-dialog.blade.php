@@ -49,9 +49,9 @@
                     <small class="subtle" data-measurement-hint>Choose an item to see how it is measured.</small>
                 </div>
                 <div class="field">
-                    <label for="movement-unit-cost">Unit cost</label>
-                    <input id="movement-unit-cost" name="unit_cost" type="text" inputmode="decimal" value="{{ old('unit_cost') }}" data-money-input data-movement-unit-cost aria-describedby="movement-unit-cost-help">
-                    <small class="subtle" id="movement-unit-cost-help" data-movement-unit-cost-help></small>
+                    <label for="movement-total-cost">Total cost</label>
+                    <input id="movement-total-cost" name="total_cost" type="text" inputmode="decimal" value="{{ old('total_cost') }}" data-money-input data-movement-total-cost aria-describedby="movement-total-cost-help">
+                    <small class="subtle" id="movement-total-cost-help" data-movement-total-cost-help></small>
                 </div>
                 <div class="field">
                     <label>Stock condition</label>
@@ -103,24 +103,24 @@
     (() => {
         const dialog = document.getElementById('movement-dialog');
         const movementType = dialog?.querySelector('[data-movement-type]');
-        const unitCost = dialog?.querySelector('[data-movement-unit-cost]');
-        const help = dialog?.querySelector('[data-movement-unit-cost-help]');
+        const totalCost = dialog?.querySelector('[data-movement-total-cost]');
+        const help = dialog?.querySelector('[data-movement-total-cost-help]');
 
-        if (!movementType || !unitCost || !help) return;
+        if (!movementType || !totalCost || !help) return;
 
-        const syncUnitCost = () => {
-            const acceptsUnitCost = ['opening_stock', 'stock_in'].includes(movementType.value);
-            unitCost.disabled = !acceptsUnitCost;
-            unitCost.required = acceptsUnitCost;
+        const syncTotalCost = () => {
+            const acceptsTotalCost = ['opening_stock', 'stock_in'].includes(movementType.value);
+            totalCost.disabled = !acceptsTotalCost;
+            totalCost.required = acceptsTotalCost;
 
-            if (!acceptsUnitCost) unitCost.value = '';
+            if (!acceptsTotalCost) totalCost.value = '';
 
-            help.textContent = acceptsUnitCost
-                ? 'Required for opening stock and stock-in.'
+            help.textContent = acceptsTotalCost
+                ? 'Enter the total amount paid for all the quantity above. The base-unit price is calculated automatically.'
                 : 'Uses the product’s current weighted-average cost.';
         };
 
-        movementType.addEventListener('change', syncUnitCost);
-        syncUnitCost();
+        movementType.addEventListener('change', syncTotalCost);
+        syncTotalCost();
     })();
 </script>

@@ -13,6 +13,7 @@ use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\Product;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Finance\Models\FinanceJournalEntry;
+use Modules\Inventory\Actions\EnsureDefaultUnitsAction;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
 use Modules\Inventory\Enums\InventoryLocationType;
 use Modules\Inventory\Enums\InventoryMovementType;
@@ -20,6 +21,7 @@ use Modules\Inventory\Enums\StockCondition;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\InventoryStockLevel;
+use Modules\Inventory\Models\UnitOfMeasure;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 use Tests\TestCase;
@@ -28,7 +30,7 @@ final class InventoryOpeningStockTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_opening_stock_is_available_and_requires_a_positive_unit_cost(): void
+    public function test_opening_stock_is_available_and_requires_a_positive_total_cost(): void
     {
         [$tenant, $location, $variant] = $this->inventoryContext();
         $user = User::factory()->create(['is_platform_admin' => true]);
@@ -38,9 +40,9 @@ final class InventoryOpeningStockTest extends TestCase
             ->assertOk()
             ->assertSee('value="opening_stock"', false)
             ->assertSee('Opening stock')
-            ->assertSee('data-movement-unit-cost', false)
+            ->assertSee('data-movement-total-cost', false)
             ->assertSee("['opening_stock', 'stock_in']", false)
-            ->assertSee('Uses current average cost');
+            ->assertSee('base-unit price is calculated automatically');
 
         $payload = [
             'tenant_id' => $tenant->id,
@@ -53,11 +55,11 @@ final class InventoryOpeningStockTest extends TestCase
 
         $this->actingAs($user)
             ->post(route('admin.inventory.movements.store'), $payload)
-            ->assertSessionHasErrors('unit_cost');
+            ->assertSessionHasErrors('total_cost');
 
         $this->actingAs($user)
-            ->post(route('admin.inventory.movements.store'), [...$payload, 'unit_cost' => 0])
-            ->assertSessionHasErrors('unit_cost');
+            ->post(route('admin.inventory.movements.store'), [...$payload, 'total_cost' => 0])
+            ->assertSessionHasErrors('total_cost');
 
         $stockInPayload = [
             ...$payload,
@@ -66,11 +68,11 @@ final class InventoryOpeningStockTest extends TestCase
 
         $this->actingAs($user)
             ->post(route('admin.inventory.movements.store'), $stockInPayload)
-            ->assertSessionHasErrors('unit_cost');
+            ->assertSessionHasErrors('total_cost');
 
         $this->actingAs($user)
-            ->post(route('admin.inventory.movements.store'), [...$stockInPayload, 'unit_cost' => 0])
-            ->assertSessionHasErrors('unit_cost');
+            ->post(route('admin.inventory.movements.store'), [...$stockInPayload, 'total_cost' => 0])
+            ->assertSessionHasErrors('total_cost');
 
         $this->assertArrayNotHasKey(
             InventoryMovementType::Returned->value,
@@ -272,8 +274,8 @@ final class InventoryOpeningStockTest extends TestCase
     public function test_stock_visibility_can_be_filtered_by_location(): void
     {
         [$tenant, $mainLocation, $variant, $branch] = $this->inventoryContext();
-        app(\Modules\Inventory\Actions\EnsureDefaultUnitsAction::class)->forTenant($tenant);
-        $gram = \Modules\Inventory\Models\UnitOfMeasure::query()
+        app(EnsureDefaultUnitsAction::class)->forTenant($tenant);
+        $gram = UnitOfMeasure::query()
             ->where('tenant_id', $tenant->id)
             ->where('code', 'g')
             ->firstOrFail();
@@ -322,7 +324,7 @@ final class InventoryOpeningStockTest extends TestCase
             ->assertSee('data-stock-location-id="'.$storeRoom->id.'"', false)
             ->assertDontSee('data-stock-location-id="'.$mainLocation->id.'"', false);
 
-        $each = \Modules\Inventory\Models\UnitOfMeasure::query()
+        $each = UnitOfMeasure::query()
             ->where('tenant_id', $tenant->id)
             ->where('code', 'pc')
             ->firstOrFail();

@@ -58,7 +58,7 @@ final class InventoryMovementRequest extends FormRequest
                 'nullable', 'integer',
                 Rule::exists('units_of_measure', 'id')->where('tenant_id', $tenantId),
             ],
-            'unit_cost' => [
+            'total_cost' => [
                 Rule::requiredIf($requiresUnitCost),
                 'nullable',
                 'numeric',
@@ -81,14 +81,14 @@ final class InventoryMovementRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $acceptsUnitCost = in_array($this->string('movement_type')->toString(), [
+        $acceptsTotalCost = in_array($this->string('movement_type')->toString(), [
             InventoryMovementType::OpeningStock->value,
             InventoryMovementType::StockIn->value,
         ], true);
 
         $this->merge([
-            'unit_cost' => $acceptsUnitCost
-                ? (is_string($this->input('unit_cost')) ? str_replace(',', '', $this->input('unit_cost')) : $this->input('unit_cost'))
+            'total_cost' => $acceptsTotalCost
+                ? (is_string($this->input('total_cost')) ? str_replace(',', '', $this->input('total_cost')) : $this->input('total_cost'))
                 : null,
         ]);
 

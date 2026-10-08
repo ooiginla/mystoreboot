@@ -189,8 +189,7 @@ final class PostInventoryMovementAction
         float $delta,
         int $unitCostMinor,
         ?int $incomingValueMinor = null,
-    ): void
-    {
+    ): void {
         $currentQuantity = (float) $stockLevel->quantity_on_hand;
 
         if ($delta > 0 && $unitCostMinor > 0) {
@@ -215,8 +214,7 @@ final class PostInventoryMovementAction
         float $delta,
         int $unitCostMinor,
         ?int $movementValueMinor = null,
-    ): InventoryMovement
-    {
+    ): InventoryMovement {
         return InventoryMovement::query()->create([
             'tenant_id' => $data['tenant_id'],
             'inventory_location_id' => $data['inventory_location_id'],
@@ -226,6 +224,9 @@ final class PostInventoryMovementAction
             'movement_type' => $type->value,
             'stock_condition' => $data['stock_condition'] ?? StockCondition::Sellable->value,
             'quantity' => $delta,
+            'entered_quantity' => $data['entered_quantity'] ?? null,
+            'entered_unit_id' => $data['entered_unit_id'] ?? null,
+            'entered_unit_code' => $data['entered_unit_code'] ?? null,
             'stock_after' => $stockLevel->quantity_on_hand,
             'unit_cost_minor' => $unitCostMinor,
             'movement_value_minor' => $movementValueMinor ?? (int) round(abs($delta) * $unitCostMinor),
@@ -296,8 +297,7 @@ final class PostInventoryMovementAction
         InventoryStockLevel $stockLevel,
         InventoryMovement $movement,
         bool $accountingHandledBySource,
-    ): void
-    {
+    ): void {
         if ($accountingHandledBySource) {
             return;
         }

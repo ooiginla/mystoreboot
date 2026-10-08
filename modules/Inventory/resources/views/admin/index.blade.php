@@ -173,9 +173,7 @@
                                 <th>Type</th>
                                 <th>Variant</th>
                                 <th>Location</th>
-                                <th>Qty</th>
-                                <th>Cost</th>
-                                <th>Reference</th>
+                                <th>Quantity &amp; cost</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -190,10 +188,23 @@
                                             <br><span class="subtle">To {{ $movement->destinationLocation->name }}</span>
                                         @endif
                                     </td>
-                                    <td>{{ \Modules\Inventory\Support\Quantity::format($movement->quantity) }}</td>
-                                    <td>{{ $tenant->currency_code }} {{ $money($movement->unit_cost_minor) }}</td>
+                                    @php
+                                        $enteredQuantity = $movement->entered_quantity !== null
+                                            ? abs((float) $movement->entered_quantity)
+                                            : abs((float) $movement->quantity);
+                                        $enteredUnitCode = $movement->entered_unit_code
+                                            ?: $movement->enteredUnit?->code
+                                            ?: $movement->variant?->baseUnit?->code
+                                            ?: 'pc';
+                                        $baseUnitCode = $movement->variant?->baseUnit?->code ?? 'pc';
+                                    @endphp
                                     <td class="movement-note">
-                                        {{ $movement->reference_number ?: $movement->notes ?: 'Not set' }}
+                                        <strong>{{ \Modules\Inventory\Support\Quantity::format($enteredQuantity) }} {{ $enteredUnitCode }}</strong>
+                                        <br><span class="subtle">
+                                            {{ \Modules\Inventory\Support\Quantity::format(abs((float) $movement->quantity)) }} {{ $baseUnitCode }} base
+                                            · {{ $tenant->currency_code }} {{ $money($movement->unit_cost_minor) }}/{{ $baseUnitCode }}
+                                            · Total {{ $tenant->currency_code }} {{ $money($movement->movement_value_minor) }}
+                                        </span>
                                         @if ($movement->batchAllocations->isNotEmpty())
                                             <br><span class="subtle">Lots:
                                                 {{ $movement->batchAllocations->map(fn ($a) => ($a->batch?->batch_number ?: 'no batch no.')
@@ -204,7 +215,7 @@
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="7"><div class="empty">No inventory movements yet.</div></td></tr>
+                                <tr><td colspan="5"><div class="empty">No inventory movements yet.</div></td></tr>
                             @endforelse
                         </tbody>
                     </table>
