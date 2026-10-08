@@ -65,7 +65,28 @@
                     </div>
                     <a href="{{ $homeAnchor('showcase') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Product</a>
                     <a href="{{ $homeAnchor('pricing') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Pricing</a>
-                    <a href="{{ $homeAnchor('faq') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">FAQ</a>
+                    <div class="group relative">
+                        <button type="button" aria-haspopup="true" class="flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">
+                            Support
+                            <svg class="h-3.5 w-3.5 transition group-hover:rotate-180 group-focus-within:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                        <div class="pointer-events-none invisible absolute left-1/2 top-full w-64 -translate-x-1/2 pt-3 opacity-0 transition duration-150 group-hover:pointer-events-auto group-hover:visible group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:visible group-focus-within:opacity-100">
+                            <div class="space-y-1 rounded-2xl border border-zinc-200/80 bg-white p-2 shadow-2xl shadow-zinc-950/15 dark:border-white/10 dark:bg-ink-900">
+                                <a href="{{ $homeAnchor('faq') }}" class="flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold text-zinc-700 transition hover:bg-brand-50 hover:text-brand-800 focus:bg-brand-50 focus:outline-none dark:text-zinc-200 dark:hover:bg-white/5 dark:hover:text-white">
+                                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-500/10 text-brand-700 dark:text-brand-300">
+                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.1 9a3 3 0 1 1 4.8 2.4c-1.1.8-1.9 1.3-1.9 2.6M12 18h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z"/></svg>
+                                    </span>
+                                    FAQ
+                                </a>
+                                <a href="https://www.youtube.com/playlist?list=PLbLq9ZxKovZ0" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold text-zinc-700 transition hover:bg-brand-50 hover:text-brand-800 focus:bg-brand-50 focus:outline-none dark:text-zinc-200 dark:hover:bg-white/5 dark:hover:text-white">
+                                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-red-500/10 text-red-600 dark:text-red-400">
+                                        <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M21.6 7.2a2.8 2.8 0 0 0-2-2C17.9 4.7 12 4.7 12 4.7s-5.9 0-7.6.5a2.8 2.8 0 0 0-2 2A29 29 0 0 0 2 12a29 29 0 0 0 .4 4.8 2.8 2.8 0 0 0 2 2c1.7.5 7.6.5 7.6.5s5.9 0 7.6-.5a2.8 2.8 0 0 0 2-2A29 29 0 0 0 22 12a29 29 0 0 0-.4-4.8ZM10 15.2V8.8l5.5 3.2-5.5 3.2Z"/></svg>
+                                    </span>
+                                    Demo Videos
+                                </a>
+                            </div>
+                        </div>
+                    </div>
                     <a href="{{ route('about') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">About</a>
                     <a href="{{ route('contact') }}" class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white">Contact</a>
                 </div>
@@ -112,7 +133,13 @@
                     </details>
                     <a href="{{ $homeAnchor('showcase') }}" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Product</a>
                     <a href="{{ $homeAnchor('pricing') }}" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Pricing</a>
-                    <a href="{{ $homeAnchor('faq') }}" onclick="sbToggleMenu()" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">FAQ</a>
+                    <details class="group rounded-xl">
+                        <summary class="flex cursor-pointer list-none items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Support <svg class="h-4 w-4 transition group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg></summary>
+                        <div class="space-y-1 px-2 pb-2">
+                            <a href="{{ $homeAnchor('faq') }}" onclick="sbToggleMenu()" class="block rounded-xl px-3 py-2.5 text-sm font-semibold text-zinc-600 hover:bg-brand-50 hover:text-brand-800 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white">FAQ</a>
+                            <a href="https://www.youtube.com/playlist?list=PLbLq9ZxKovZ0" target="_blank" rel="noopener noreferrer" class="block rounded-xl px-3 py-2.5 text-sm font-semibold text-zinc-600 hover:bg-brand-50 hover:text-brand-800 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white">Demo Videos</a>
+                        </div>
+                    </details>
                     <a href="{{ route('about') }}" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">About</a>
                     <a href="{{ route('contact') }}" class="block rounded-xl px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5">Contact</a>
                     <div class="grid grid-cols-2 gap-2 pt-2">

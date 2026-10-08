@@ -94,7 +94,7 @@ final class SalesController extends Controller
         $recordSaleBranch = $branchManager->stateForRequest($request, $user)['activeBranch'] ?? $branches->first();
         $locations = InventoryLocation::query()->where('tenant_id', $tenant->id)->where('status', 'active')->orderBy('name')->get();
         $activeTill = SalesTillSession::query()
-            ->with(['branch', 'user', 'cashLocation.financeAccount', 'vaultCashLocation.financeAccount', 'movements.user', 'payments.order.customer'])
+            ->with(['branch', 'inventoryLocation', 'user', 'cashLocation.financeAccount', 'vaultCashLocation.financeAccount', 'movements.user', 'payments.order.customer'])
             ->where('tenant_id', $tenant->id)
             ->where('user_id', $user->id)
             ->where('status', 'open')
@@ -102,7 +102,7 @@ final class SalesController extends Controller
             ->first();
         $activeTillRows = $activeTill ? $this->tillBreakdown($activeTill, $tenant) : collect();
         $recentTillSessions = SalesTillSession::query()
-            ->with(['branch', 'user', 'cashLocation', 'vaultCashLocation'])
+            ->with(['branch', 'inventoryLocation', 'user', 'cashLocation', 'vaultCashLocation'])
             ->where('tenant_id', $tenant->id)
             ->where('user_id', $user->id)
             ->latest('opened_at')
@@ -204,7 +204,9 @@ final class SalesController extends Controller
 
         abort_if(! $tenant, 403);
 
-        if ($moduleAccess->allows($tenant, 'inventory')) {
+        $inventoryEnabled = $moduleAccess->allows($tenant, 'inventory');
+
+        if ($inventoryEnabled) {
             $inventoryLocations->forTenant($tenant);
         }
 
@@ -212,7 +214,7 @@ final class SalesController extends Controller
         $branches = Branch::query()->where('tenant_id', $tenant->id)->orderByDesc('is_primary')->orderBy('name')->get();
         $locations = InventoryLocation::query()->where('tenant_id', $tenant->id)->where('status', 'active')->orderBy('name')->get();
         $activeTill = SalesTillSession::query()
-            ->with(['branch', 'user', 'cashLocation.financeAccount', 'vaultCashLocation.financeAccount', 'movements.user', 'payments.order.customer'])
+            ->with(['branch', 'inventoryLocation', 'user', 'cashLocation.financeAccount', 'vaultCashLocation.financeAccount', 'movements.user', 'payments.order.customer'])
             ->where('tenant_id', $tenant->id)
             ->where('user_id', $user->id)
             ->where('status', 'open')
@@ -220,7 +222,7 @@ final class SalesController extends Controller
             ->first();
         $activeTillRows = $activeTill ? $this->tillBreakdown($activeTill, $tenant) : collect();
         $recentTillSessions = SalesTillSession::query()
-            ->with(['branch', 'user', 'cashLocation', 'vaultCashLocation'])
+            ->with(['branch', 'inventoryLocation', 'user', 'cashLocation', 'vaultCashLocation'])
             ->where('tenant_id', $tenant->id)
             ->where('user_id', $user->id)
             ->latest('opened_at')
@@ -265,6 +267,7 @@ final class SalesController extends Controller
             'walkInCustomer' => $walkInCustomer,
             'branches' => $branches,
             'locations' => $locations,
+            'inventoryEnabled' => $inventoryEnabled,
             'activeTill' => $activeTill,
             'activeTillRows' => $activeTillRows,
             'recentTillSessions' => $recentTillSessions,
@@ -743,6 +746,7 @@ final class SalesController extends Controller
         $session = SalesTillSession::query()->create([
             'tenant_id' => $data['tenant_id'],
             'branch_id' => $data['branch_id'],
+            'inventory_location_id' => $data['inventory_location_id'] ?? null,
             'user_id' => $user->id,
             'session_number' => $this->tillNumber($data['tenant_id']),
             'status' => 'open',

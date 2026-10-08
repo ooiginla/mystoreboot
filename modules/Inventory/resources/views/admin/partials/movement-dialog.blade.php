@@ -10,6 +10,7 @@
         <form class="mini-form" method="POST" action="{{ route('admin.inventory.movements.store') }}">
             @csrf
             <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+            <input type="hidden" name="multi_item" value="1">
             <div class="form-grid">
                 <div class="field">
                     <label>Location</label>
@@ -43,36 +44,11 @@
             <div class="movement-lines-panel">
                 <div class="movement-lines-header">
                     <div><strong>Movement items</strong><br><span class="subtle">Use Purchasing for supplier deliveries and Sales Returns for customer returns.</span></div>
-                    <button class="btn secondary" type="button" data-add-movement-line>Add item</button>
+                    <button class="btn secondary" type="button" data-open-item-editor data-owner-dialog="movement-dialog" data-item-mode="movement">Add item</button>
                 </div>
-                <div data-movement-lines>
-                    <div class="movement-line" data-movement-line>
-                        <div class="field">
-                            <label>Movement type</label>
-                            <select name="items[0][movement_type]" required data-movement-type>
-                                @foreach ($movementTypes as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <x-variant-picker name="items[0][product_variant_id]" label="Product variant" />
-                        <div class="field">
-                            <label>Quantity</label>
-                            <div class="qty-unit">
-                                <input name="items[0][quantity]" type="number" min="0" step="any" required data-qty-input>
-                                <select name="items[0][unit_id]" data-movement-unit aria-label="Measurement unit" disabled><option value="">—</option></select>
-                            </div>
-                            <small class="subtle" data-measurement-hint>Choose an item to see how it is measured.</small>
-                        </div>
-                        <div class="field">
-                            <label>Total cost</label>
-                            <input name="items[0][total_cost]" type="text" inputmode="decimal" data-money-input data-movement-total-cost>
-                            <small class="subtle" data-movement-total-cost-help></small>
-                        </div>
-                        <div class="field"><label>Batch number <span class="subtle">(optional)</span></label><input name="items[0][batch_number]" placeholder="e.g. LOT-2026-001"></div>
-                        <div class="field"><label>Expiry date <span class="subtle">(optional)</span></label><input name="items[0][expiry_date]" type="date"></div>
-                        <div class="movement-line-actions"><button class="btn danger" type="button" data-remove-movement-line>Remove</button></div>
-                    </div>
+                <div class="movement-summary-head" aria-hidden="true"><span></span><span>Type</span><span>Item</span><span>Quantity</span><span>Cost</span></div>
+                <div data-movement-lines data-empty-text="No movement items added yet.">
+                    <div class="empty" data-movement-lines-empty>No movement items added yet.</div>
                 </div>
                 <div class="movement-grand-total"><span>Grand total</span><strong data-movement-grand-total>{{ $tenant->currency_code }} 0.00</strong></div>
             </div>

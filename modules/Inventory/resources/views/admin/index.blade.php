@@ -33,11 +33,17 @@
         .qty-unit select:disabled { color: #344054; opacity: 1; cursor: default; }
         .movement-lines-panel { margin-top: 18px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
         .movement-lines-header, .movement-grand-total { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: #f8fafc; }
-        .movement-line { display: grid; grid-template-columns: minmax(150px, .8fr) minmax(220px, 1.4fr) minmax(180px, 1fr) minmax(180px, 1fr); gap: 12px; align-items: start; padding: 14px; border-top: 1px solid var(--line); }
-        .movement-line.transfer-line { grid-template-columns: minmax(240px, 1.5fr) minmax(200px, 1fr) minmax(180px, .8fr) auto; }
-        .movement-line-actions { display: flex; align-items: end; height: 100%; }
+        .movement-summary-head, .movement-summary-row { display: grid; grid-template-columns: 38px minmax(110px, .75fr) minmax(220px, 1.5fr) minmax(130px, .8fr) minmax(150px, .8fr); gap: 12px; align-items: center; padding: 11px 14px; }
+        .movement-summary-head { border-top: 1px solid var(--line); background: #fbfcfd; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+        .movement-summary-row { border-top: 1px solid var(--line); }
+        .movement-summary-row:first-child { border-top: 0; }
+        .movement-summary-remove { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 1px solid var(--danger-border); border-radius: 8px; background: #fff; color: var(--danger); cursor: pointer; font-size: 20px; line-height: 1; }
+        .movement-summary-remove:hover { color: #fff; background: var(--danger); }
+        .movement-summary-cell { min-width: 0; overflow-wrap: anywhere; }
+        .movement-summary-cell strong, .movement-summary-cell span { display: block; }
         .movement-line-cost { min-height: 42px; display: flex; flex-direction: column; justify-content: center; }
         .movement-grand-total { border-top: 1px solid var(--line); font-size: 1.05rem; }
+        .movement-item-dialog { width: min(1040px, calc(100vw - 32px)); max-width: 1040px; }
         @media (max-width: 900px) {
             .report-grid { grid-template-columns: 1fr; }
             .inventory-actions { width: 100%; }
@@ -45,8 +51,10 @@
             .stock-visibility-filters { width: 100%; }
             .stock-visibility-filter-field { flex: 1; min-width: 180px; }
             .stock-visibility-filter-field input, .stock-visibility-filter-field select { min-width: 0; }
-            .movement-line, .movement-line.transfer-line { grid-template-columns: 1fr; }
-            .movement-line-actions .btn { width: 100%; }
+            .movement-summary-head { display: none; }
+            .movement-summary-row { grid-template-columns: 36px 1fr; align-items: start; }
+            .movement-summary-cell { grid-column: 2; }
+            .movement-summary-remove { grid-row: 1 / span 4; }
         }
     </style>
 
@@ -400,6 +408,7 @@
 
     @include('inventory::admin.partials.movement-dialog')
     @include('inventory::admin.partials.transfer-dialog')
+    @include('inventory::admin.partials.movement-item-dialog')
     @include('inventory::admin.partials.reorder-dialog', [
         'reorderLocations' => $locations,
         'reorderPicker' => true,
@@ -432,40 +441,49 @@
 
     <script>
         (function () {
-            // Units each item can be counted in, smallest first. An item with no measurement
-            // set gets one fixed unit ("pc") with no id, which is shown but never submitted.
-            // Stock per location is held in the base unit (factor 1).
             const UNITS = @json($reorderUnits ?? []);
             const LEVELS = @json($reorderLevels ?? []);
-            const DIALOGS = '#movement-dialog, #transfer-dialog';
             const CURRENCY = @json($tenant->currency_code);
+            const editor = document.getElementById('movement-item-dialog');
+            const editorForm = editor?.querySelector('[data-item-editor-form]');
+            const editorOptions = document.getElementById('movement-item-variant-options');
+            const allEditorOptions = Array.from(editorOptions?.options || []).map((option) => option.cloneNode(true));
             const fmt = (n) => (Math.round(n * 10000) / 10000).toLocaleString(undefined, { maximumFractionDigits: 4 });
             const money = (n) => `${CURRENCY} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             const numberValue = (value) => parseFloat(String(value || '').replace(/,/g, '')) || 0;
 
-            function parts(line) {
-                const dialog = line.closest(DIALOGS);
-                const picker = line.querySelector('[data-variant-picker]');
+            if (!editor || !editorForm || !editorOptions) return;
+
+            function ownerDialog() {
+                return document.getElementById(editor.dataset.ownerDialog || '');
+            }
+
+            function parts() {
+                const owner = ownerDialog();
+                const picker = editor.querySelector('[data-variant-picker]');
                 const variantId = picker?.querySelector('[data-variant-value]')?.value || '';
+
                 return {
-                    dialog,
+                    owner,
                     variantId,
                     units: variantId ? (UNITS[variantId] || []) : [],
-                    unit: line.querySelector('[data-movement-unit]'),
-                    qty: line.querySelector('[data-qty-input]'),
-                    hint: line.querySelector('[data-measurement-hint]'),
-                    type: line.querySelector('[data-movement-type]'),
-                    totalCost: line.querySelector('[data-movement-total-cost]'),
-                    costHelp: line.querySelector('[data-movement-total-cost-help]'),
-                    lineTotal: line.querySelector('[data-line-total]'),
-                    lineUnitCost: line.querySelector('[data-line-unit-cost]'),
-                    location: dialog?.querySelector('select[name="inventory_location_id"]'),
+                    picker,
+                    search: picker?.querySelector('[data-variant-search]'),
+                    variantValue: picker?.querySelector('[data-variant-value]'),
+                    unit: editor.querySelector('[data-movement-unit]'),
+                    qty: editor.querySelector('[data-qty-input]'),
+                    hint: editor.querySelector('[data-measurement-hint]'),
+                    type: editor.querySelector('[data-movement-type]'),
+                    totalCost: editor.querySelector('[data-movement-total-cost]'),
+                    costHelp: editor.querySelector('[data-movement-total-cost-help]'),
+                    lineTotal: editor.querySelector('[data-line-total]'),
+                    lineUnitCost: editor.querySelector('[data-line-unit-cost]'),
+                    location: owner?.querySelector('select[name="inventory_location_id"]'),
                 };
             }
 
-            // Rebuild the unit list for the chosen item, starting on the unit stock is kept in.
-            function loadUnits(line) {
-                const p = parts(line);
+            function loadUnits() {
+                const p = parts();
                 if (!p.unit) return;
 
                 if (!p.units.length) {
@@ -481,18 +499,25 @@
                     p.unit.disabled = p.units.length === 1 && p.units[0].id === null;
                 }
 
-                updateLine(line);
+                updateEditor();
             }
 
-            // One line under the quantity: what the stock is kept in, the conversion, and what is there.
-            function updateLine(line) {
-                const p = parts(line);
+            function updateEditor() {
+                const p = parts();
                 if (!p.hint || !p.unit) return;
+
+                const mode = editor.dataset.itemMode || 'movement';
+                const movementType = mode === 'transfer' ? 'transfer_out' : p.type?.value;
+                const acceptsTotal = mode === 'movement' && ['opening_stock', 'stock_in'].includes(movementType);
+                p.totalCost.disabled = !acceptsTotal;
+                p.totalCost.required = acceptsTotal;
+                if (!acceptsTotal) p.totalCost.value = '';
 
                 if (!p.variantId || !p.units.length) {
                     p.hint.textContent = 'Choose an item to see how it is measured.';
-                    updateCost(line, p, 0, null, null);
-                    updateGrandTotal(p.dialog);
+                    p.costHelp.textContent = acceptsTotal ? 'Enter the total paid for this entire line.' : 'Choose an item to calculate its value.';
+                    p.lineTotal.textContent = money(0);
+                    p.lineUnitCost.textContent = 'Choose an item';
                     return;
                 }
 
@@ -521,127 +546,266 @@
 
                 p.hint.textContent = bits.join(' · ');
                 const level = p.location?.value ? (LEVELS[p.variantId] || {})[p.location.value] : null;
-                updateCost(line, p, (qty || 0) * factor, base, level);
-                updateGrandTotal(p.dialog);
-            }
-
-            function updateCost(line, p, baseQuantity, base, level) {
                 const averageMinor = level?.average_cost_minor || 0;
-                const calculatedTotal = baseQuantity * averageMinor / 100;
-
-                if (p.totalCost) {
-                    const acceptsTotal = ['opening_stock', 'stock_in'].includes(p.type?.value);
-                    p.totalCost.disabled = !acceptsTotal;
-                    p.totalCost.required = acceptsTotal;
-                    if (!acceptsTotal) p.totalCost.value = '';
-                    if (p.costHelp) {
-                        p.costHelp.textContent = acceptsTotal
-                            ? 'Enter the total paid for this entire line.'
-                            : `${money(averageMinor / 100)}/${base?.code || 'unit'} · ${money(calculatedTotal)} line value`;
-                    }
-                }
-
-                if (p.lineTotal) p.lineTotal.textContent = money(calculatedTotal);
-                if (p.lineUnitCost) p.lineUnitCost.textContent = p.variantId
-                    ? `${money(averageMinor / 100)}/${base?.code || 'unit'}`
-                    : 'Choose an item';
-            }
-
-            function lineValue(line) {
-                const p = parts(line);
-                const option = p.unit?.selectedOptions[0];
-                const factor = parseFloat(option?.dataset.factor) || 1;
-                const quantity = numberValue(p.qty?.value) * factor;
-                const level = p.location?.value ? (LEVELS[p.variantId] || {})[p.location.value] : null;
-
-                return p.totalCost && !p.totalCost.disabled
-                    ? numberValue(p.totalCost.value)
-                    : quantity * (level?.average_cost_minor || 0) / 100;
+                const calculatedTotal = (qty || 0) * factor * averageMinor / 100;
+                p.costHelp.textContent = acceptsTotal
+                    ? 'Enter the total paid for this entire line.'
+                    : `${money(averageMinor / 100)}/${base.code} · ${money(calculatedTotal)} line value`;
+                p.lineTotal.textContent = money(calculatedTotal);
+                p.lineUnitCost.textContent = `${money(averageMinor / 100)}/${base.code}`;
             }
 
             function updateGrandTotal(dialog) {
                 if (!dialog) return;
                 const target = dialog.querySelector('[data-movement-grand-total]');
                 if (!target) return;
-                const total = Array.from(dialog.querySelectorAll('[data-movement-line]'))
-                    .reduce((sum, line) => sum + lineValue(line), 0);
+                const total = Array.from(dialog.querySelectorAll('[data-movement-summary-row]'))
+                    .reduce((sum, row) => sum + numberValue(row.dataset.lineValue), 0);
                 target.textContent = money(total);
             }
 
             function reindex(dialog) {
-                dialog.querySelectorAll('[data-movement-line]').forEach((line, index) => {
-                    line.querySelectorAll('[name]').forEach((field) => {
-                        field.name = field.name.replace(/items\[\d+\]/, `items[${index}]`);
+                dialog.querySelectorAll('[data-movement-summary-row]').forEach((row, index) => {
+                    row.querySelectorAll('[data-item-field]').forEach((field) => {
+                        field.name = `items[${index}][${field.dataset.itemField}]`;
                     });
                 });
             }
 
-            function clearLine(line) {
-                line.querySelectorAll('input').forEach((field) => {
-                    field.value = '';
-                    field.setCustomValidity('');
-                });
-                line.querySelectorAll('select').forEach((field) => {
-                    field.selectedIndex = 0;
-                });
-                const unit = line.querySelector('[data-movement-unit]');
-                if (unit) {
-                    unit.innerHTML = '<option value="">—</option>';
-                    unit.disabled = true;
-                }
-                updateLine(line);
+            function syncEmptyState(dialog) {
+                const list = dialog.querySelector('[data-movement-lines]');
+                const empty = list?.querySelector('[data-movement-lines-empty]');
+                if (empty) empty.hidden = Boolean(list.querySelector('[data-movement-summary-row]'));
             }
 
-            const dialogOf = (el) => el.closest ? el.closest(DIALOGS) : null;
-            const lineOf = (el) => el.closest ? el.closest('[data-movement-line]') : null;
+            function hiddenField(key, value) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.dataset.itemField = key;
+                input.value = value ?? '';
+                return input;
+            }
 
-            // Defer on input so the picker has set [data-variant-value] first; change fires when
-            // an item is chosen from the results, and a click covers picking from the list.
-            document.addEventListener('input', function (e) {
-                const dialog = dialogOf(e.target);
-                if (!dialog) return;
-                const line = lineOf(e.target);
-                if (e.target.closest('[data-variant-search]') && line) setTimeout(() => loadUnits(line), 0);
-                else if (line && e.target.matches('[data-qty-input], [data-movement-total-cost]')) updateLine(line);
-            });
-            document.addEventListener('change', function (e) {
-                const dialog = dialogOf(e.target);
-                if (!dialog) return;
-                const line = lineOf(e.target);
-                if (e.target.closest('[data-variant-search]') && line) loadUnits(line);
-                else if (line && e.target.matches('[data-movement-unit], [data-movement-type]')) updateLine(line);
-                else if (e.target.matches('select[name="inventory_location_id"]')) {
-                    dialog.querySelectorAll('[data-movement-line]').forEach(updateLine);
-                }
-            });
-            document.addEventListener('click', function (e) {
-                const dialog = dialogOf(e.target);
-                if (!dialog) return;
-                const line = lineOf(e.target);
-                if (line && e.target.closest('[data-variant-search-options]')) setTimeout(() => loadUnits(line), 0);
-
-                if (e.target.closest('[data-add-movement-line]')) {
-                    const list = dialog.querySelector('[data-movement-lines]');
-                    const first = list?.querySelector('[data-movement-line]');
-                    if (!list || !first) return;
-                    const clone = first.cloneNode(true);
-                    clearLine(clone);
-                    list.appendChild(clone);
-                    reindex(dialog);
-                    clone.querySelector('[data-variant-search]')?.focus();
+            function summaryCell(primary, secondary = '') {
+                const cell = document.createElement('div');
+                cell.className = 'movement-summary-cell';
+                const strong = document.createElement('strong');
+                strong.textContent = primary;
+                cell.appendChild(strong);
+                if (secondary) {
+                    const subtle = document.createElement('span');
+                    subtle.className = 'subtle';
+                    subtle.textContent = secondary;
+                    cell.appendChild(subtle);
                 }
 
-                if (e.target.closest('[data-remove-movement-line]') && line) {
-                    const list = dialog.querySelector('[data-movement-lines]');
-                    if (list?.querySelectorAll('[data-movement-line]').length > 1) line.remove();
-                    else clearLine(line);
+                return cell;
+            }
+
+            function appendSummary(dialog, item) {
+                const list = dialog.querySelector('[data-movement-lines]');
+                const row = document.createElement('div');
+                row.className = 'movement-summary-row';
+                row.dataset.movementSummaryRow = '';
+                Object.entries(item.dataset).forEach(([key, value]) => { row.dataset[key] = String(value ?? ''); });
+
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'movement-summary-remove';
+                remove.dataset.removeMovementLine = '';
+                remove.setAttribute('aria-label', `Remove ${item.itemLabel}`);
+                remove.textContent = '×';
+                row.append(
+                    remove,
+                    summaryCell(item.typeLabel),
+                    summaryCell(item.itemLabel, item.lotLabel),
+                    summaryCell(`${fmt(item.enteredQuantity)} ${item.unitCode}`, item.baseQuantity !== item.enteredQuantity || item.unitCode !== item.baseCode ? `${fmt(item.baseQuantity)} ${item.baseCode} in base unit` : ''),
+                    summaryCell(money(item.lineValue), `${money(item.unitCostMinor / 100)}/${item.baseCode}`),
+                );
+
+                Object.entries(item.fields).forEach(([key, value]) => {
+                    if (value !== null && value !== '') row.appendChild(hiddenField(key, value));
+                });
+                list.appendChild(row);
+                reindex(dialog);
+                syncEmptyState(dialog);
+                updateGrandTotal(dialog);
+            }
+
+            function refreshSummaries(dialog) {
+                const locationId = dialog.querySelector('select[name="inventory_location_id"]')?.value;
+                dialog.querySelectorAll('[data-movement-summary-row]').forEach((row) => {
+                    if (row.dataset.usesAverage !== '1') return;
+                    const level = (LEVELS[row.dataset.variantId] || {})[locationId] || null;
+                    const averageMinor = level?.average_cost_minor || 0;
+                    const value = numberValue(row.dataset.baseQuantity) * averageMinor / 100;
+                    row.dataset.lineValue = String(value);
+                    row.dataset.unitCostMinor = String(averageMinor);
+                    const cost = row.querySelectorAll('.movement-summary-cell')[3];
+                    if (cost) {
+                        cost.querySelector('strong').textContent = money(value);
+                        cost.querySelector('.subtle').textContent = `${money(averageMinor / 100)}/${row.dataset.baseCode}`;
+                    }
+                });
+                updateGrandTotal(dialog);
+            }
+
+            function applyItemFilter() {
+                const filter = editor.querySelector('[data-item-type-filter]').value;
+                editorOptions.replaceChildren(...allEditorOptions
+                    .filter((option) => !filter || option.dataset.type === filter)
+                    .map((option) => option.cloneNode(true)));
+            }
+
+            function clearEditor() {
+                editorForm.reset();
+                const p = parts();
+                p.search.value = '';
+                p.search.setCustomValidity('');
+                p.variantValue.value = '';
+                p.unit.innerHTML = '<option value="">—</option>';
+                p.unit.disabled = true;
+                applyItemFilter();
+                updateEditor();
+            }
+
+            function openDialog(dialog) {
+                if (window.sbOpenDialog) window.sbOpenDialog(dialog);
+                else if (typeof dialog.showModal === 'function') dialog.showModal();
+                else dialog.setAttribute('open', '');
+            }
+
+            function closeDialog(dialog) {
+                if (window.sbCloseDialog) window.sbCloseDialog(dialog);
+                else if (dialog.open && typeof dialog.close === 'function') dialog.close();
+                else dialog.removeAttribute('open');
+            }
+
+            function returnToOwner() {
+                const owner = ownerDialog();
+                closeDialog(editor);
+                if (owner) setTimeout(() => openDialog(owner), 50);
+            }
+
+            document.addEventListener('click', (event) => {
+                const opener = event.target.closest('[data-open-item-editor]');
+                if (opener) {
+                    const owner = document.getElementById(opener.dataset.ownerDialog);
+                    editor.dataset.ownerDialog = opener.dataset.ownerDialog;
+                    editor.dataset.itemMode = opener.dataset.itemMode;
+                    editor.querySelector('[data-item-editor-title]').textContent = opener.dataset.itemMode === 'transfer' ? 'Add transfer item' : 'Add movement item';
+                    editor.querySelector('[data-item-movement-type-field]').hidden = opener.dataset.itemMode === 'transfer';
+                    editor.querySelector('[data-item-total-cost-field]').hidden = opener.dataset.itemMode === 'transfer';
+                    editor.querySelector('[data-item-transfer-cost-field]').hidden = opener.dataset.itemMode !== 'transfer';
+                    editor.querySelector('[data-item-batch-field]').hidden = opener.dataset.itemMode === 'transfer';
+                    editor.querySelector('[data-item-expiry-field]').hidden = opener.dataset.itemMode === 'transfer';
+                    clearEditor();
+                    closeDialog(owner);
+                    setTimeout(() => openDialog(editor), 50);
+                    return;
+                }
+
+                if (event.target.closest('[data-item-editor-cancel]')) {
+                    returnToOwner();
+                    return;
+                }
+
+                const remove = event.target.closest('[data-remove-movement-line]');
+                if (remove) {
+                    const row = remove.closest('[data-movement-summary-row]');
+                    const dialog = row.closest('#movement-dialog, #transfer-dialog');
+                    row.remove();
                     reindex(dialog);
+                    syncEmptyState(dialog);
                     updateGrandTotal(dialog);
                 }
             });
 
-            document.querySelectorAll(DIALOGS).forEach((dialog) => {
-                dialog.querySelectorAll('[data-movement-line]').forEach(loadUnits);
+            editor.querySelector('[data-item-type-filter]').addEventListener('change', () => {
+                const p = parts();
+                applyItemFilter();
+                p.search.value = '';
+                p.variantValue.value = '';
+                loadUnits();
+            });
+
+            editor.addEventListener('input', (event) => {
+                if (event.target.closest('[data-variant-search]')) setTimeout(loadUnits, 0);
+                else if (event.target.matches('[data-qty-input], [data-movement-total-cost]')) updateEditor();
+            });
+            editor.addEventListener('change', (event) => {
+                if (event.target.closest('[data-variant-search]')) loadUnits();
+                else if (event.target.matches('[data-movement-unit], [data-movement-type]')) updateEditor();
+            });
+
+            document.querySelectorAll('#movement-dialog select[name="inventory_location_id"], #transfer-dialog select[name="inventory_location_id"]').forEach((select) => {
+                select.addEventListener('change', () => refreshSummaries(select.closest('dialog')));
+            });
+
+            document.querySelectorAll('#movement-dialog form, #transfer-dialog form').forEach((form) => {
+                form.addEventListener('submit', (event) => {
+                    const dialog = form.closest('dialog');
+                    if (dialog.querySelector('[data-movement-summary-row]')) return;
+                    event.preventDefault();
+                    const empty = dialog.querySelector('[data-movement-lines-empty]');
+                    empty.textContent = 'Add at least one item before continuing.';
+                    dialog.querySelector('[data-open-item-editor]')?.focus();
+                });
+            });
+
+            editorForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const p = parts();
+                const mode = editor.dataset.itemMode;
+                const movementType = mode === 'transfer' ? 'transfer_out' : p.type.value;
+                const acceptsTotal = mode === 'movement' && ['opening_stock', 'stock_in'].includes(movementType);
+                const enteredQuantity = numberValue(p.qty.value);
+                const selectedUnit = p.unit.selectedOptions[0];
+                const factor = numberValue(selectedUnit?.dataset.factor) || 1;
+                const base = p.units.find((unit) => unit.factor === 1) || p.units[0];
+                const locationId = p.location?.value;
+                const level = (LEVELS[p.variantId] || {})[locationId] || null;
+                const averageMinor = level?.average_cost_minor || 0;
+
+                if (!editorForm.reportValidity() || !p.variantId || !base) return;
+
+                const baseQuantity = enteredQuantity * factor;
+                const enteredTotal = acceptsTotal ? numberValue(p.totalCost.value) : null;
+                const unitCostMinor = acceptsTotal ? Math.round(enteredTotal * 100 / baseQuantity) : averageMinor;
+                const lineValue = acceptsTotal ? enteredTotal : baseQuantity * averageMinor / 100;
+                const batch = editor.querySelector('[data-item-batch-number]').value.trim();
+                const expiry = editor.querySelector('[data-item-expiry-date]').value;
+                const lotLabel = [batch ? `Batch ${batch}` : '', expiry ? `Expires ${expiry}` : ''].filter(Boolean).join(' · ');
+
+                appendSummary(p.owner, {
+                    typeLabel: mode === 'transfer' ? 'Transfer' : p.type.selectedOptions[0].textContent.trim(),
+                    itemLabel: p.search.value,
+                    lotLabel,
+                    enteredQuantity,
+                    unitCode: selectedUnit?.dataset.code || base.code,
+                    baseQuantity,
+                    baseCode: base.code,
+                    lineValue,
+                    unitCostMinor,
+                    dataset: {
+                        variantId: p.variantId,
+                        baseQuantity,
+                        baseCode: base.code,
+                        lineValue,
+                        unitCostMinor,
+                        usesAverage: acceptsTotal ? 0 : 1,
+                    },
+                    fields: {
+                        movement_type: movementType,
+                        product_variant_id: p.variantId,
+                        quantity: enteredQuantity,
+                        unit_id: selectedUnit?.value || null,
+                        total_cost: acceptsTotal ? enteredTotal : null,
+                        batch_number: mode === 'movement' ? batch : null,
+                        expiry_date: mode === 'movement' ? expiry : null,
+                    },
+                });
+                returnToOwner();
             });
         })();
     </script>

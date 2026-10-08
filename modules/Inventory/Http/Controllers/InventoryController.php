@@ -230,7 +230,7 @@ final class InventoryController extends Controller
             'unit_id' => $data['unit_id'] ?? null,
             'total_cost' => $data['total_cost'] ?? null,
         ]];
-        unset($data['items'], $data['product_variant_id'], $data['quantity'], $data['unit_id'], $data['total_cost']);
+        unset($data['items'], $data['multi_item'], $data['product_variant_id'], $data['quantity'], $data['unit_id'], $data['total_cost']);
 
         $movements = collect($items)->map(function (array $item, int $index) use ($data, $tenantId): array {
             $item['movement_type'] ??= $data['movement_type'] ?? null;

@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Business\Models\Branch;
+use Modules\Inventory\Models\InventoryLocation;
 
 final class SalesTillSession extends Model
 {
@@ -33,6 +34,11 @@ final class SalesTillSession extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function inventoryLocation(): BelongsTo
+    {
+        return $this->belongsTo(InventoryLocation::class);
     }
 
     public function cashLocation(): BelongsTo

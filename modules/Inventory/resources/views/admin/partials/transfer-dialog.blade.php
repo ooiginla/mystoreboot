@@ -10,6 +10,7 @@
         <form class="mini-form" method="POST" action="{{ route('admin.inventory.movements.store') }}">
             @csrf
             <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+            <input type="hidden" name="multi_item" value="1">
             <input type="hidden" name="movement_type" value="{{ \Modules\Inventory\Enums\InventoryMovementType::TransferOut->value }}">
             <input type="hidden" name="stock_condition" value="{{ \Modules\Inventory\Enums\StockCondition::Sellable->value }}">
 
@@ -47,25 +48,11 @@
             <div class="movement-lines-panel">
                 <div class="movement-lines-header">
                     <div><strong>Transfer items</strong><br><span class="subtle">Costs use the current weighted average at the source location.</span></div>
-                    <button class="btn secondary" type="button" data-add-movement-line>Add item</button>
+                    <button class="btn secondary" type="button" data-open-item-editor data-owner-dialog="transfer-dialog" data-item-mode="transfer">Add item</button>
                 </div>
-                <div data-movement-lines>
-                    <div class="movement-line transfer-line" data-movement-line>
-                        <x-variant-picker name="items[0][product_variant_id]" label="Product variant" />
-                        <div class="field">
-                            <label>Quantity</label>
-                            <div class="qty-unit">
-                                <input name="items[0][quantity]" type="number" min="0" step="any" required data-qty-input>
-                                <select name="items[0][unit_id]" data-movement-unit aria-label="Measurement unit" disabled><option value="">—</option></select>
-                            </div>
-                            <small class="subtle" data-measurement-hint>Choose an item to see how it is measured.</small>
-                        </div>
-                        <div class="field">
-                            <label>Cost</label>
-                            <div class="movement-line-cost"><strong data-line-total>{{ $tenant->currency_code }} 0.00</strong><span class="subtle" data-line-unit-cost>Choose an item</span></div>
-                        </div>
-                        <div class="movement-line-actions"><button class="btn danger" type="button" data-remove-movement-line>Remove</button></div>
-                    </div>
+                <div class="movement-summary-head" aria-hidden="true"><span></span><span>Type</span><span>Item</span><span>Quantity</span><span>Cost</span></div>
+                <div data-movement-lines data-empty-text="No transfer items added yet.">
+                    <div class="empty" data-movement-lines-empty>No transfer items added yet.</div>
                 </div>
                 <div class="movement-grand-total"><span>Total transfer value</span><strong data-movement-grand-total>{{ $tenant->currency_code }} 0.00</strong></div>
             </div>

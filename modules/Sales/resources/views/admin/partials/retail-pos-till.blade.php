@@ -31,7 +31,7 @@
     <div class="dialog-header">
         <div>
             <h2 class="panel-title">Till &amp; Cash Management</h2>
-            <p class="subtle">{{ $activeTill->session_number }} · {{ $activeTill->branch?->name }} · opened {{ $activeTill->opened_at->format('M j, H:i') }}</p>
+            <p class="subtle">{{ $activeTill->session_number }} · {{ $activeTill->branch?->name }} · Stock: {{ $activeTill->inventoryLocation?->name ?? 'Not assigned' }} · opened {{ $activeTill->opened_at->format('M j, H:i') }}</p>
         </div>
         <button class="icon-btn" type="button" data-dialog-close aria-label="Close">✕</button>
     </div>

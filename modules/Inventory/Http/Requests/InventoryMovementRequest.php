@@ -24,7 +24,7 @@ final class InventoryMovementRequest extends FormRequest
     {
         $tenantId = $this->string('tenant_id')->toString();
         $movementType = $this->string('movement_type')->toString();
-        $hasItems = is_array($this->input('items'));
+        $hasItems = $this->boolean('multi_item') || is_array($this->input('items'));
         $requiresUnitCost = in_array($movementType, [
             InventoryMovementType::OpeningStock->value,
             InventoryMovementType::StockIn->value,
@@ -39,6 +39,7 @@ final class InventoryMovementRequest extends FormRequest
 
         $rules = [
             'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
+            'multi_item' => ['nullable', 'boolean'],
             'inventory_location_id' => ['required', 'integer', Rule::exists('inventory_locations', 'id')->where('tenant_id', $tenantId)],
             'destination_inventory_location_id' => [
                 Rule::requiredIf($movementType === InventoryMovementType::TransferOut->value),
@@ -78,7 +79,7 @@ final class InventoryMovementRequest extends FormRequest
             'reference_number' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'occurred_at' => ['nullable', 'date'],
-            'items' => ['nullable', 'array', 'min:1', 'max:50'],
+            'items' => [Rule::requiredIf($this->boolean('multi_item')), 'nullable', 'array', 'min:1', 'max:50'],
             'items.*' => ['required', 'array'],
             'items.*.product_variant_id' => [
                 'required',

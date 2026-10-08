@@ -348,6 +348,7 @@ class SalesCostingTest extends TestCase
         $tillSession = SalesTillSession::query()->create([
             'tenant_id' => $tenant->id,
             'branch_id' => $branch->id,
+            'inventory_location_id' => $location->id,
             'user_id' => $user->id,
             'session_number' => 'TILL-TEST-1',
             'status' => 'open',
@@ -371,9 +372,9 @@ class SalesCostingTest extends TestCase
 
         $order = app(CreateSalesOrderAction::class)->execute([
             'tenant_id' => $tenant->id,
+            'source' => 'retail_pos',
             'sales_till_session_id' => $tillSession->id,
             'branch_id' => $branch->id,
-            'inventory_location_id' => $location->id,
             'customer_id' => $customer->id,
             'order_date' => '2026-06-08',
             'is_credit_sale' => false,
@@ -421,6 +422,15 @@ class SalesCostingTest extends TestCase
             'status' => 'active',
             'is_primary' => true,
         ]);
+        $location = InventoryLocation::query()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'name' => 'Bakery',
+            'code' => 'BAKERY',
+            'location_type' => InventoryLocationType::Branch->value,
+            'is_sellable_point' => true,
+            'status' => 'active',
+        ]);
         $user = User::factory()->create(['is_platform_admin' => true]);
 
         $this->actingAs($user)
@@ -429,9 +439,21 @@ class SalesCostingTest extends TestCase
                 'branch_id' => $branch->id,
                 'opening_float' => '100.00',
             ])
+            ->assertSessionHasErrors('inventory_location_id');
+
+        $this->assertDatabaseCount('sales_till_sessions', 0);
+
+        $this->actingAs($user)
+            ->post(route('admin.sales.tills.open'), [
+                'tenant_id' => $tenant->id,
+                'branch_id' => $branch->id,
+                'inventory_location_id' => $location->id,
+                'opening_float' => '100.00',
+            ])
             ->assertRedirect(route('admin.sales.retail-pos', ['tenant' => $tenant->id]));
 
         $tillSession = SalesTillSession::query()->where('tenant_id', $tenant->id)->firstOrFail();
+        $this->assertSame($location->id, $tillSession->inventory_location_id);
 
         $this->actingAs($user)
             ->post(route('admin.sales.tills.movements.store', $tillSession), [

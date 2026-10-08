@@ -73,6 +73,24 @@ final class CreateSalesOrderAction
                 ]);
             }
 
+            if ($source === 'retail_pos' && $tillSession && $inventoryEnabled) {
+                $tillLocationId = (int) ($tillSession->inventory_location_id ?? 0) ?: null;
+
+                if (! $tillLocationId) {
+                    throw ValidationException::withMessages([
+                        'inventory_location_id' => 'This till has no stock location. Close it and reopen it with a stock location.',
+                    ]);
+                }
+
+                if ($inventoryLocationId && $inventoryLocationId !== $tillLocationId) {
+                    throw ValidationException::withMessages([
+                        'inventory_location_id' => 'This sale must use the stock location selected when the till was opened.',
+                    ]);
+                }
+
+                $inventoryLocationId = $tillLocationId;
+            }
+
             $customer = Customer::query()->where('tenant_id', $tenant->id)->findOrFail($data['customer_id']);
             $isWalkIn = strcasecmp($customer->phone, 'WALK-IN') === 0;
 

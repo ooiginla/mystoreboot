@@ -188,9 +188,11 @@ final class MovementUnitConversionTest extends TestCase
         $this->assertSame(6000.0, $onHand($store));
         $this->assertSame(4000.0, $onHand($kitchen));
 
-        // Both dialogs carry the unit beside the quantity, and the page knows flour's units.
+        // Both parent dialogs add through the shared item editor, which carries the unit picker and item-type filter.
         $response = $this->actingAs($user)->get(route('admin.inventory.index', ['tenant' => $tenant->id]))->assertOk();
-        $this->assertSame(2, substr_count($response->getContent(), 'required data-qty-input>'));
-        $response->assertSee('"code":"kg"', false);
+        $this->assertSame(1, substr_count($response->getContent(), 'required data-qty-input>'));
+        $this->assertSame(2, substr_count($response->getContent(), '<button class="btn secondary" type="button" data-open-item-editor'));
+        $response->assertSee('data-item-type-filter', false)
+            ->assertSee('"code":"kg"', false);
     }
 }

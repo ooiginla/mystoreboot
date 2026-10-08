@@ -3,10 +3,7 @@
     $currencySymbols = ['NGN' => '₦', 'USD' => '$', 'GHS' => '₵', 'KES' => 'KSh', 'ZAR' => 'R', 'GBP' => '£', 'EUR' => '€', 'GHc' => '₵'];
     $currency = $currencySymbols[$tenant->currency_code] ?? $tenant->currency_code;
     $signedMoney = fn (int $minor): string => ($minor < 0 ? '-' : '').$currency.' '.number_format(abs($minor) / 100, 2);
-    $posLocations = $activeTill
-        ? $locations->filter(fn ($location) => $location->is_sellable_point
-            && ($location->branch_id === null || $location->branch_id === $activeTill->branch_id))
-        : collect();
+    $sellableLocations = $locations->where('is_sellable_point', true)->values();
     $tileName = fn ($v): string => $v->product?->name.($v->variant_name && $v->variant_name !== 'Default' ? ' · '.$v->variant_name : '');
     $tileImage = function ($v): ?string {
         $path = $v->image_path ?: $v->product?->image_path;
@@ -313,7 +310,19 @@
                     <form class="mini-form" method="POST" action="{{ route('admin.sales.tills.open') }}">
                         @csrf
                         <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
-                        <div class="field"><label>Branch</label><select name="branch_id" required>@foreach ($branches as $branch)<option value="{{ $branch->id }}">{{ $branch->name }}</option>@endforeach</select></div>
+                        <div class="field"><label>Branch</label><select name="branch_id" required data-till-branch>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((string) old('branch_id') === (string) $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
+                        @if ($inventoryEnabled)
+                            <div class="field">
+                                <label>Stock location</label>
+                                <select name="inventory_location_id" required data-till-stock-location>
+                                    <option value="">Choose where this till will sell from</option>
+                                    @foreach ($sellableLocations as $location)
+                                        <option value="{{ $location->id }}" data-branch="{{ $location->branch_id }}" @selected((string) old('inventory_location_id') === (string) $location->id)>{{ $location->name }}{{ $location->branch_id === null ? ' · All branches' : '' }}</option>
+                                    @endforeach
+                                </select>
+                                <small class="subtle">All sales during this till session will deduct stock from this location.</small>
+                            </div>
+                        @endif
                         <div class="field"><label>Opening cash float</label><input name="opening_float" type="text" inputmode="decimal" data-money-input value="0.00"></div>
                         <div class="field"><label>Opening note</label><textarea name="opening_note" rows="2" placeholder="Optional"></textarea></div>
                         <div class="button-row"><button class="btn primary" type="submit">Open till &amp; start</button></div>
@@ -321,6 +330,33 @@
                 </div>
             </div>
         </div>
+        <script>
+            (() => {
+                const branch = document.querySelector('[data-till-branch]');
+                const location = document.querySelector('[data-till-stock-location]');
+                if (!branch || !location) return;
+
+                const syncLocations = () => {
+                    const selectedBranch = branch.value;
+                    let firstAvailable = null;
+                    let selectedStillAvailable = false;
+
+                    Array.from(location.options).forEach((option) => {
+                        if (!option.value) return;
+                        const available = !option.dataset.branch || option.dataset.branch === selectedBranch;
+                        option.hidden = !available;
+                        option.disabled = !available;
+                        if (available && !firstAvailable) firstAvailable = option;
+                        if (available && option.selected) selectedStillAvailable = true;
+                    });
+
+                    if (!selectedStillAvailable) location.value = firstAvailable?.value || '';
+                };
+
+                branch.addEventListener('change', syncLocations);
+                syncLocations();
+            })();
+        </script>
     @else
     <div class="rpos" data-rpos
          data-tenant="{{ $tenant->id }}"
@@ -477,7 +513,7 @@
         <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
         <input type="hidden" name="sales_till_session_id" value="{{ $activeTill->id }}">
         <input type="hidden" name="branch_id" value="{{ $activeTill->branch_id }}">
-        <input type="hidden" name="inventory_location_id" value="{{ $posLocations->first()?->id }}">
+        <input type="hidden" name="inventory_location_id" value="{{ $activeTill->inventory_location_id }}">
         <input type="hidden" name="order_date" value="{{ now()->toDateString() }}">
         <input type="hidden" name="customer_id" data-f-customer value="{{ $walkInCustomer->id }}">
         <input type="hidden" name="payment_method" data-f-method value="Cash">
