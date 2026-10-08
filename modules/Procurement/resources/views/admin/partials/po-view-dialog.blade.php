@@ -18,10 +18,31 @@
             <div class="summary-item"><span>Balance</span><strong>{{ $tenant->currency_code }} {{ $money($po->balance_minor) }}</strong></div>
         </div>
         <table class="table" style="margin-top: 16px;">
-            <thead><tr><th>Item</th><th>Location</th><th>Ordered</th><th>Received</th><th>Quantity left</th><th>Unit cost</th><th>Line total</th></tr></thead>
+            <thead><tr><th>Item</th><th>Location</th><th>Ordered</th><th>Received</th><th>Quantity left</th><th>Base unit cost</th><th>Line total</th></tr></thead>
             <tbody>
                 @foreach ($po->items as $item)
-                    <tr><td>{{ $variantLabel($item->variant) }}</td><td>{{ $item->location->name }}</td><td>{{ $item->quantity_ordered }}</td><td>{{ $item->quantity_received }}</td><td class="danger-text">{{ $item->quantity_pending }}</td><td>{{ $tenant->currency_code }} {{ $money($item->unit_cost_minor) }}</td><td>{{ $tenant->currency_code }} {{ $money($item->line_total_minor) }}</td></tr>
+                    @php
+                        $baseUnitCode = $item->variant?->baseUnit?->code ?? 'pc';
+                        $orderedLabel = $item->entered_quantity !== null
+                            ? \Modules\Inventory\Support\Quantity::format((float) $item->entered_quantity).' '.($item->entered_unit_code ?: $baseUnitCode)
+                            : \Modules\Inventory\Support\Quantity::format((float) $item->quantity_ordered).' '.$baseUnitCode;
+                        $showBaseEquivalent = $item->entered_quantity !== null
+                            && ((float) $item->entered_quantity !== (float) $item->quantity_ordered || $item->entered_unit_code !== $baseUnitCode);
+                    @endphp
+                    <tr>
+                        <td>{{ $variantLabel($item->variant) }}</td>
+                        <td>{{ $item->location->name }}</td>
+                        <td>
+                            {{ $orderedLabel }}
+                            @if ($showBaseEquivalent)
+                                <div class="subtle">{{ \Modules\Inventory\Support\Quantity::format((float) $item->quantity_ordered) }} {{ $baseUnitCode }} in inventory</div>
+                            @endif
+                        </td>
+                        <td>{{ \Modules\Inventory\Support\Quantity::format((float) $item->quantity_received) }} {{ $baseUnitCode }}</td>
+                        <td class="danger-text">{{ \Modules\Inventory\Support\Quantity::format($item->quantity_pending) }} {{ $baseUnitCode }}</td>
+                        <td>{{ $tenant->currency_code }} {{ $money($item->unit_cost_minor) }}/{{ $baseUnitCode }}</td>
+                        <td>{{ $tenant->currency_code }} {{ $money($item->line_total_minor) }}</td>
+                    </tr>
                 @endforeach
             </tbody>
         </table>

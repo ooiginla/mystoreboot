@@ -6,6 +6,7 @@ namespace Modules\Customers\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Modules\Access\Enums\MembershipStatus;
 use Modules\Customers\Enums\TicketPriority;
 use Modules\Customers\Enums\TicketStatus;
 use Modules\Customers\Enums\TicketType;
@@ -24,7 +25,13 @@ final class SupportTicketRequest extends FormRequest
         return [
             'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
             'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')->where('tenant_id', $tenantId)],
-            'assigned_to' => ['nullable', 'integer', 'exists:users,id'],
+            'assigned_to' => [
+                'nullable',
+                'integer',
+                Rule::exists('tenant_memberships', 'user_id')
+                    ->where('tenant_id', $tenantId)
+                    ->where('status', MembershipStatus::Active->value),
+            ],
             'type' => ['required', Rule::in(TicketType::values())],
             'category' => ['nullable', 'string', 'max:120'],
             'priority' => ['required', Rule::in(TicketPriority::values())],

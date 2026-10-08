@@ -20,7 +20,7 @@ final class PurchaseOrderRequest extends FormRequest
             'tax' => $this->cleanMoney($this->input('tax')),
             'shipping' => $this->cleanMoney($this->input('shipping')),
             'items' => collect((array) $this->input('items', []))->map(function (array $item): array {
-                $item['unit_cost'] = $this->cleanMoney($item['unit_cost'] ?? null);
+                $item['line_total'] = $this->cleanMoney($item['line_total'] ?? null);
 
                 return $item;
             })->all(),
@@ -44,8 +44,9 @@ final class PurchaseOrderRequest extends FormRequest
             'items' => ['required', 'array', 'min:1', 'max:50'],
             'items.*.product_variant_id' => ['required', 'integer', Rule::exists('product_variants', 'id')->where('tenant_id', $tenantId)],
             'items.*.inventory_location_id' => ['required', 'integer', Rule::exists('inventory_locations', 'id')->where('tenant_id', $tenantId)],
-            'items.*.quantity_ordered' => ['required', 'integer', 'min:1', 'max:999999999'],
-            'items.*.unit_cost' => ['required', 'numeric', 'min:0'],
+            'items.*.quantity_ordered' => ['required', 'numeric', 'gt:0', 'max:999999999'],
+            'items.*.unit_id' => ['nullable', 'integer', Rule::exists('units_of_measure', 'id')->where('tenant_id', $tenantId)],
+            'items.*.line_total' => ['required', 'numeric', 'min:0', 'max:999999999'],
             'items.*.vendor_sku' => ['nullable', 'string', 'max:120'],
         ];
     }

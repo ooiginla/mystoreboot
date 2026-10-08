@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Access\Enums\MembershipStatus;
+use Modules\Access\Models\TenantMembership;
 use Modules\Customers\Enums\CustomerStatus;
 use Modules\Customers\Enums\TicketPriority;
 use Modules\Customers\Enums\TicketStatus;
@@ -146,6 +148,71 @@ class CustomerRelationshipTest extends TestCase
             ->assertSee(route('admin.customers.tickets.status.update', $ticket), false)
             ->assertSee('Claim ticket')
             ->assertSee('Update status');
+    }
+
+    public function test_ticket_assignee_options_are_limited_to_active_members_of_the_tenant(): void
+    {
+        $tenant = $this->tenant();
+        $otherTenant = $this->tenant();
+        $viewer = User::factory()->create(['is_platform_admin' => true]);
+        $tenantUser = User::factory()->create(['name' => 'Current Tenant Agent']);
+        $otherTenantUser = User::factory()->create(['name' => 'Other Tenant Agent']);
+        $inactiveTenantUser = User::factory()->create(['name' => 'Inactive Tenant Agent']);
+
+        TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $tenantUser->id,
+            'status' => MembershipStatus::Active->value,
+        ]);
+        TenantMembership::query()->create([
+            'tenant_id' => $otherTenant->id,
+            'user_id' => $otherTenantUser->id,
+            'status' => MembershipStatus::Active->value,
+        ]);
+        TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $inactiveTenantUser->id,
+            'status' => MembershipStatus::Inactive->value,
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('admin.customers.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSeeText('Current Tenant Agent')
+            ->assertDontSeeText('Other Tenant Agent')
+            ->assertDontSeeText('Inactive Tenant Agent');
+    }
+
+    public function test_ticket_cannot_be_assigned_to_a_user_from_another_tenant(): void
+    {
+        $tenant = $this->tenant();
+        $otherTenant = $this->tenant();
+        $viewer = User::factory()->create(['is_platform_admin' => true]);
+        $otherTenantUser = User::factory()->create();
+        $ticket = $this->ticket($tenant);
+
+        TenantMembership::query()->create([
+            'tenant_id' => $otherTenant->id,
+            'user_id' => $otherTenantUser->id,
+            'status' => MembershipStatus::Active->value,
+        ]);
+
+        $this->actingAs($viewer)
+            ->from(route('admin.customers.index', ['tenant' => $tenant->id]))
+            ->put(route('admin.customers.tickets.update', $ticket), [
+                'tenant_id' => $tenant->id,
+                'assigned_to' => $otherTenantUser->id,
+                'type' => $ticket->type->value,
+                'category' => $ticket->category,
+                'priority' => $ticket->priority->value,
+                'status' => $ticket->status->value,
+                'subject' => $ticket->subject,
+                'description' => $ticket->description,
+                'internal_notes' => $ticket->internal_notes,
+            ])
+            ->assertSessionHasErrors('assigned_to');
+
+        $this->assertNull($ticket->refresh()->assigned_to);
     }
 
     public function test_user_can_claim_an_unassigned_ticket_but_cannot_take_another_users_ticket(): void

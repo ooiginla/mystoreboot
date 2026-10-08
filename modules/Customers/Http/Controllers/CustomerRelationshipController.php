@@ -124,7 +124,12 @@ final class CustomerRelationshipController extends Controller
             'tickets' => $tickets,
             'allTickets' => $allTickets,
             'purchases' => $purchases,
-            'users' => User::query()->orderBy('name')->get(),
+            'users' => User::query()
+                ->whereHas('tenantMemberships', fn ($query) => $query
+                    ->where('tenant_id', $tenant->id)
+                    ->where('status', MembershipStatus::Active->value))
+                ->orderBy('name')
+                ->get(),
             'search' => $search,
             'filters' => ['group_id' => $groupId, 'status' => $status, 'ticket_search' => $ticketSearch],
             'ticketCategories' => ['General enquiry', 'Product issue', 'Service request', 'Billing', 'Delivery', 'Return/refund', 'Technical support', 'Internal operations'],

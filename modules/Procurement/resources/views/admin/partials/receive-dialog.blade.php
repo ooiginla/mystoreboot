@@ -12,10 +12,12 @@
                 <thead><tr><th>Item</th><th>Pending</th><th>Receive</th><th>Batch</th><th>Expiry</th></tr></thead>
                 <tbody>
                     @foreach ($po->items as $index => $item)
+                        @continue($item->quantity_pending <= 0)
+                        @php $baseUnitCode = $item->variant?->baseUnit?->code ?? 'pc'; @endphp
                         <tr>
                             <td>{{ $variantLabel($item->variant) }}<input type="hidden" name="items[{{ $index }}][purchase_order_item_id]" value="{{ $item->id }}"></td>
-                            <td>{{ $item->quantity_pending }}</td>
-                            <td><input name="items[{{ $index }}][quantity_received]" type="number" min="0" max="{{ $item->quantity_pending }}" step="1" value="{{ $item->quantity_pending }}"></td>
+                            <td>{{ \Modules\Inventory\Support\Quantity::format($item->quantity_pending) }} {{ $baseUnitCode }}</td>
+                            <td><input name="items[{{ $index }}][quantity_received]" type="number" min="0.0001" max="{{ $item->quantity_pending }}" step="any" value="0" required aria-label="Quantity received in {{ $baseUnitCode }}"></td>
                             <td><input name="items[{{ $index }}][batch_number]"></td>
                             <td><input name="items[{{ $index }}][expiry_date]" type="date"></td>
                         </tr>

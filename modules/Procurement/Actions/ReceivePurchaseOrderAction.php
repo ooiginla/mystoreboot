@@ -12,6 +12,7 @@ use Modules\Finance\Models\FinanceJournalLine;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Enums\StockCondition;
+use Modules\Inventory\Support\Quantity;
 use Modules\Procurement\Enums\PurchaseOrderStatus;
 use Modules\Procurement\Models\GoodsReceipt;
 use Modules\Procurement\Models\PurchaseOrder;
@@ -33,7 +34,7 @@ final class ReceivePurchaseOrderAction
 
             $validItems = collect((array) $data['items'])
                 ->map(function (array $item) use ($purchaseOrder): array {
-                    $quantity = \Modules\Inventory\Support\Quantity::round((float) ($item['quantity_received'] ?? 0));
+                    $quantity = Quantity::round((float) ($item['quantity_received'] ?? 0));
                     $poItem = $purchaseOrder->items()->whereKey($item['purchase_order_item_id'])->firstOrFail();
 
                     if ($quantity > $poItem->quantity_pending) {
@@ -42,7 +43,13 @@ final class ReceivePurchaseOrderAction
                         ]);
                     }
 
-                    return [$item, $poItem, $quantity];
+                    $orderedQuantity = max(0.0001, (float) $poItem->quantity_ordered);
+                    $receivedBefore = (float) $poItem->quantity_received;
+                    $receivedAfter = min($orderedQuantity, $receivedBefore + $quantity);
+                    $valueBefore = (int) round((int) $poItem->line_total_minor * $receivedBefore / $orderedQuantity);
+                    $valueAfter = (int) round((int) $poItem->line_total_minor * $receivedAfter / $orderedQuantity);
+
+                    return [$item, $poItem, $quantity, $valueAfter - $valueBefore];
                 })
                 ->filter(fn (array $row): bool => $row[2] > 0)
                 ->values();
@@ -53,9 +60,7 @@ final class ReceivePurchaseOrderAction
                 ]);
             }
 
-            $receiptSubtotalMinor = (int) round($validItems->sum(
-                fn (array $row): float => (int) $row[1]->unit_cost_minor * (float) $row[2],
-            ));
+            $receiptSubtotalMinor = (int) $validItems->sum(fn (array $row): int => $row[3]);
             $receivedQuantity = (float) $validItems->sum(fn (array $row): float => (float) $row[2]);
             $pendingQuantity = (float) $purchaseOrder->items->sum(fn ($item): float => (float) $item->quantity_pending);
             $isFinalReceipt = abs($receivedQuantity - $pendingQuantity) < 0.0001;
@@ -80,7 +85,7 @@ final class ReceivePurchaseOrderAction
                 $isFinalReceipt,
             );
             $weights = $validItems
-                ->map(fn (array $row): int => (int) round(((int) $row[1]->unit_cost_minor * (float) $row[2]) ?: (float) $row[2]))
+                ->map(fn (array $row): int => $row[3] ?: (int) round((float) $row[2]))
                 ->all();
             $shippingByItem = $this->distributeAmount($receiptShippingMinor, $weights);
             $taxByItem = $this->distributeAmount($receiptTaxMinor, $weights);
@@ -101,7 +106,7 @@ final class ReceivePurchaseOrderAction
 
             $accountingRows = [];
 
-            foreach ($validItems as $index => [$item, $poItem, $quantity]) {
+            foreach ($validItems as $index => [$item, $poItem, $quantity, $lineValueMinor]) {
                 $receipt->items()->create([
                     'tenant_id' => $purchaseOrder->tenant_id,
                     'purchase_order_item_id' => $poItem->id,
@@ -111,7 +116,7 @@ final class ReceivePurchaseOrderAction
                 ]);
 
                 $poItem->increment('quantity_received', $quantity);
-                $inventoryValueMinor = (int) round(((int) $poItem->unit_cost_minor * $quantity) + $shippingByItem[$index]);
+                $inventoryValueMinor = $lineValueMinor + $shippingByItem[$index];
                 $landedUnitCostMinor = (int) round($inventoryValueMinor / max(0.0001, $quantity));
                 $branchId = $poItem->location?->branch_id;
 

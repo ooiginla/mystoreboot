@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Inventory\Models\InventoryLocation;
+use Modules\Inventory\Models\UnitOfMeasure;
 
 final class PurchaseOrderItem extends Model
 {
@@ -21,6 +22,7 @@ final class PurchaseOrderItem extends Model
         return [
             'quantity_ordered' => 'decimal:4',
             'quantity_received' => 'decimal:4',
+            'entered_quantity' => 'decimal:4',
         ];
     }
 
@@ -37,6 +39,11 @@ final class PurchaseOrderItem extends Model
     public function location(): BelongsTo
     {
         return $this->belongsTo(InventoryLocation::class, 'inventory_location_id');
+    }
+
+    public function enteredUnit(): BelongsTo
+    {
+        return $this->belongsTo(UnitOfMeasure::class, 'entered_unit_id');
     }
 
     public function getQuantityPendingAttribute(): float

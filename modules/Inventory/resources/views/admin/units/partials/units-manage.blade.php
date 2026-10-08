@@ -6,35 +6,71 @@
 @endphp
 
 <style>
-    .unit-row { display:grid; grid-template-columns: 80px 1fr 110px 110px auto auto; gap:8px; align-items:center; margin-bottom:8px; }
+    .unit-row { display:grid; grid-template-columns:80px 1fr 110px 110px auto auto; gap:8px; align-items:center; margin-bottom:8px; }
     .unit-row input, .unit-row select { width:100%; }
     .unit-head { font-size:12px; color:var(--muted, #667085); }
-    @media (max-width: 760px) { .unit-row { grid-template-columns: 1fr 1fr; } }
+    .unit-accordion { margin-bottom:16px; }
+    .unit-accordion > summary { cursor:pointer; list-style:none; user-select:none; }
+    .unit-accordion > summary::-webkit-details-marker { display:none; }
+    .unit-accordion-summary { display:flex; align-items:center; gap:10px; width:100%; }
+    .unit-accordion-title { display:flex; align-items:center; gap:8px; flex:1; min-width:0; }
+    .unit-accordion-chevron { width:18px; height:18px; flex:0 0 auto; transition:transform .18s ease; }
+    .unit-accordion[open] .unit-accordion-chevron { transform:rotate(180deg); }
+    .unit-category-actions { display:flex; justify-content:space-between; gap:12px; align-items:end; flex-wrap:wrap; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+    @media (max-width:760px) { .unit-row { grid-template-columns:1fr 1fr; } }
 </style>
+
+<section class="panel" style="margin-bottom:16px;">
+    <div class="panel-header"><h2 class="panel-title">New measurement category</h2></div>
+    <div class="panel-body">
+        <form method="POST" action="{{ route('admin.inventory.unit-categories.store') }}" class="mini-form" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+            @csrf
+            <input type="hidden" name="tenant" value="{{ $tenantParam }}">
+            <div class="field" style="flex:1; min-width:220px;">
+                <label>Category name</label>
+                <input name="name" required placeholder="e.g. Okin Biscuit Measurement">
+            </div>
+            <button class="btn primary" type="submit">Add category</button>
+        </form>
+    </div>
+</section>
 
 <p class="subtle" style="margin-bottom:12px;">
     Group your measurements into categories (e.g. “Okin Biscuit”). Within a category, one unit is the base (factor 1) and the rest are multiples of it. Assign a category to a product so it stocks in that base and can be bought/sold in the others.
 </p>
 
 @foreach ($unitCategories as $category)
-    <section class="panel" style="margin-bottom:16px;">
-        <div class="panel-header" style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-            <form method="POST" action="{{ route('admin.inventory.unit-categories.update', $category->id) }}" style="display:flex; gap:8px; align-items:center;">
-                @csrf @method('PUT')
-                <input type="hidden" name="tenant" value="{{ $tenantParam }}">
-                <input name="name" value="{{ $category->name }}" required style="min-width:200px;">
-                @if ($category->is_default)<span class="badge neutral">Default</span>@endif
-                <button class="icon-btn" type="submit" aria-label="Rename category" title="Rename">{!! $saveIcon !!}</button>
-            </form>
-            @unless ($category->is_default)
-                <form method="POST" action="{{ route('admin.inventory.unit-categories.destroy', $category->id) }}" onsubmit="return confirm('Remove this category?');">
-                    @csrf @method('DELETE')
-                    <input type="hidden" name="tenant" value="{{ $tenantParam }}">
-                    <button class="icon-btn" type="submit" aria-label="Remove category" title="Remove category">{!! $trashIcon !!}</button>
-                </form>
-            @endunless
-        </div>
+    <details class="panel unit-accordion" name="unit-categories" data-unit-accordion>
+        <summary class="panel-header">
+            <span class="unit-accordion-summary">
+                <svg class="unit-accordion-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                <span class="unit-accordion-title">
+                    <strong>{{ $category->name }}</strong>
+                    <span class="badge neutral">{{ $category->units->count() }} {{ \Illuminate\Support\Str::plural('unit', $category->units->count()) }}</span>
+                    @if ($category->is_default)<span class="badge neutral">Default</span>@endif
+                </span>
+            </span>
+        </summary>
         <div class="panel-body">
+            <div class="unit-category-actions">
+                <form method="POST" action="{{ route('admin.inventory.unit-categories.update', $category->id) }}" style="display:flex; gap:8px; align-items:end; flex:1; flex-wrap:wrap;">
+                    @csrf @method('PUT')
+                    <input type="hidden" name="tenant" value="{{ $tenantParam }}">
+                    <div class="field" style="flex:1; min-width:200px;">
+                        <label>Category name</label>
+                        <input name="name" value="{{ $category->name }}" required>
+                    </div>
+                    <button class="btn secondary" type="submit">Rename category</button>
+                </form>
+                @unless ($category->is_default)
+                    <form method="POST" action="{{ route('admin.inventory.unit-categories.destroy', $category->id) }}" onsubmit="return confirm('Remove this category?');">
+                        @csrf @method('DELETE')
+                        <input type="hidden" name="tenant" value="{{ $tenantParam }}">
+                        <button class="btn danger" type="submit">Remove category</button>
+                    </form>
+                @endunless
+            </div>
+
             <div class="unit-row unit-head">
                 <span>Code</span><span>Name</span><span>Dimension</span><span>Base units</span><span>Base?</span><span></span>
             </div>
@@ -87,20 +123,18 @@
                 <button class="btn primary" type="submit">Add unit</button>
             </form>
         </div>
-    </section>
+    </details>
 @endforeach
 
-<section class="panel">
-    <div class="panel-header"><h2 class="panel-title">New measurement category</h2></div>
-    <div class="panel-body">
-        <form method="POST" action="{{ route('admin.inventory.unit-categories.store') }}" class="mini-form" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
-            @csrf
-            <input type="hidden" name="tenant" value="{{ $tenantParam }}">
-            <div class="field" style="flex:1; min-width:220px;">
-                <label>Category name</label>
-                <input name="name" required placeholder="e.g. Okin Biscuit Measurement">
-            </div>
-            <button class="btn primary" type="submit">Add category</button>
-        </form>
-    </div>
-</section>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-unit-accordion]').forEach((accordion) => {
+        accordion.addEventListener('toggle', () => {
+            if (!accordion.open) return;
+            document.querySelectorAll('[data-unit-accordion][open]').forEach((other) => {
+                if (other !== accordion) other.open = false;
+            });
+        });
+    });
+});
+</script>

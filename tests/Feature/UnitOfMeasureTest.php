@@ -11,6 +11,7 @@ use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\Product;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Inventory\Actions\EnsureDefaultUnitsAction;
+use Modules\Inventory\Models\UnitCategory;
 use Modules\Inventory\Models\UnitOfMeasure;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
@@ -27,7 +28,7 @@ final class UnitOfMeasureTest extends TestCase
             'business_type' => 'restaurant', 'country_code' => 'NG', 'timezone' => 'Africa/Lagos', 'currency_code' => 'NGN',
         ]);
         app(EnsureDefaultUnitsAction::class)->forTenant($tenant->id);
-        $category = \Modules\Inventory\Models\UnitCategory::query()->where('tenant_id', $tenant->id)->firstOrFail();
+        $category = UnitCategory::query()->where('tenant_id', $tenant->id)->firstOrFail();
         $user = User::factory()->create(['is_platform_admin' => true]);
 
         // Add a custom unit with a base factor.
@@ -81,7 +82,7 @@ final class UnitOfMeasureTest extends TestCase
         $this->actingAs($user)->post(route('admin.inventory.unit-categories.store'), [
             'tenant' => $tenant->id, 'name' => 'Okin Biscuit Measurement',
         ])->assertRedirect();
-        $category = \Modules\Inventory\Models\UnitCategory::query()->where('tenant_id', $tenant->id)->where('name', 'Okin Biscuit Measurement')->firstOrFail();
+        $category = UnitCategory::query()->where('tenant_id', $tenant->id)->where('name', 'Okin Biscuit Measurement')->firstOrFail();
 
         // Add a unit to it.
         $this->actingAs($user)->post(route('admin.inventory.units.store'), [
@@ -89,17 +90,29 @@ final class UnitOfMeasureTest extends TestCase
             'code' => 'lg_carton', 'name' => 'Large carton', 'dimension' => 'count', 'to_base_factor' => 100,
         ])->assertRedirect();
 
+        $this->actingAs($user)
+            ->get(route('admin.inventory.units.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSeeInOrder([
+                'New measurement category',
+                'Group your measurements into categories',
+                'Okin Biscuit Measurement',
+            ])
+            ->assertSee('<details class="panel unit-accordion" name="unit-categories" data-unit-accordion>', false)
+            ->assertSee('1 unit')
+            ->assertSee('data-unit-accordion][open]', false);
+
         // Cannot delete a category that still has units.
         $this->actingAs($user)->delete(route('admin.inventory.unit-categories.destroy', $category->id), ['tenant' => $tenant->id])
             ->assertSessionHasErrors('category');
 
         // The default (General) category can never be deleted.
-        $general = \Modules\Inventory\Models\UnitCategory::query()->where('tenant_id', $tenant->id)->where('is_default', true)->firstOrFail();
+        $general = UnitCategory::query()->where('tenant_id', $tenant->id)->where('is_default', true)->firstOrFail();
         $this->actingAs($user)->delete(route('admin.inventory.unit-categories.destroy', $general->id), ['tenant' => $tenant->id])
             ->assertSessionHasErrors('category');
 
         // Remove the unit, then the category deletes cleanly.
-        \Modules\Inventory\Models\UnitOfMeasure::query()->where('unit_category_id', $category->id)->delete();
+        UnitOfMeasure::query()->where('unit_category_id', $category->id)->delete();
         $this->actingAs($user)->delete(route('admin.inventory.unit-categories.destroy', $category->id), ['tenant' => $tenant->id])
             ->assertRedirect()->assertSessionHasNoErrors();
         $this->assertDatabaseMissing('unit_categories', ['id' => $category->id]);

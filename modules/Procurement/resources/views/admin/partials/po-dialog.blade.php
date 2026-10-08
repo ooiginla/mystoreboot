@@ -36,6 +36,10 @@
                 </div>
                 <div class="panel-body" data-po-lines>
                     @foreach ($poItems as $i => $poItem)
+                        @php
+                            $lineUnits = $poItem ? ($purchaseOrderUnits[$poItem->product_variant_id] ?? []) : [];
+                            $enteredQuantity = $poItem?->entered_quantity ?? $poItem?->quantity_ordered;
+                        @endphp
                         <div class="po-line-card" data-po-line>
                             <div class="po-line-header">
                                 <strong>Line item</strong>
@@ -44,8 +48,21 @@
                             <div class="form-grid">
                                 <x-variant-picker name="items[{{ $i }}][product_variant_id]" label="Variant" :selected-variant="$poItem?->variant" />
                                 <div class="field"><label>Destination</label><select name="items[{{ $i }}][inventory_location_id]" required>@foreach ($locations as $location)<option value="{{ $location->id }}" @selected($poItem?->inventory_location_id === $location->id || (! $poItem?->inventory_location_id && $i === 0 && $activeBranchLocationId === $location->id))>{{ $location->name }}</option>@endforeach</select></div>
-                                <div class="field"><label>Quantity</label><input name="items[{{ $i }}][quantity_ordered]" type="number" min="1" step="1" value="{{ $poItem?->quantity_ordered }}" @if ($i === 0) required @endif></div>
-                                <div class="field"><label>Unit cost</label><input name="items[{{ $i }}][unit_cost]" type="text" inputmode="decimal" data-money-input value="{{ $poItem ? $money($poItem->unit_cost_minor) : '' }}" @if ($i === 0) required @endif></div>
+                                <div class="field">
+                                    <label>Quantity</label>
+                                    <div class="qty-unit">
+                                        <input name="items[{{ $i }}][quantity_ordered]" type="number" min="0.0001" step="any" value="{{ $enteredQuantity }}" @if ($i === 0) required @endif>
+                                        <select name="items[{{ $i }}][unit_id]" data-po-unit data-selected-unit="{{ $poItem?->entered_unit_id }}" aria-label="Measurement unit" @disabled(count($lineUnits) <= 1)>
+                                            @forelse ($lineUnits as $unit)
+                                                <option value="{{ $unit['id'] }}" @selected($poItem?->entered_unit_id ? (int) $poItem->entered_unit_id === $unit['id'] : $unit['factor'] === 1.0)>{{ $unit['code'] }}</option>
+                                            @empty
+                                                <option value="">—</option>
+                                            @endforelse
+                                        </select>
+                                    </div>
+                                    <small class="subtle" data-po-measurement-hint>{{ $poItem ? 'Stored in inventory as '.$poItem->quantity_ordered.' base units.' : 'Choose an item to see how it is measured.' }}</small>
+                                </div>
+                                <div class="field"><label>Total line cost</label><input name="items[{{ $i }}][line_total]" type="text" inputmode="decimal" data-money-input value="{{ $poItem ? $money($poItem->line_total_minor) : '' }}" @if ($i === 0) required @endif><small class="subtle">Enter the total cost for this entire line.</small></div>
                                 <div class="field"><label>Vendor SKU</label><input name="items[{{ $i }}][vendor_sku]" value="{{ $poItem?->vendor_sku }}"></div>
                             </div>
                         </div>
@@ -62,6 +79,39 @@
 document.addEventListener('DOMContentLoaded', () => {
     if (window.storebootPoDialogBound) return;
     window.storebootPoDialogBound = true;
+    const units = @json($purchaseOrderUnits ?? []);
+
+    const loadUnits = (line, variantId, selectedUnitId = '') => {
+        const select = line?.querySelector('[data-po-unit]');
+        const hint = line?.querySelector('[data-po-measurement-hint]');
+        if (!select) return;
+
+        const available = units[variantId] || [];
+        select.replaceChildren();
+
+        if (!available.length) {
+            select.add(new Option('—', ''));
+            select.disabled = true;
+            if (hint) hint.textContent = 'Choose an item to see how it is measured.';
+            return;
+        }
+
+        available.forEach((unit) => select.add(new Option(unit.code, unit.id ?? '')));
+        const selectedIndex = available.findIndex((unit) => selectedUnitId
+            ? String(unit.id) === String(selectedUnitId)
+            : Number(unit.factor) === 1);
+        select.selectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        select.disabled = available.length === 1 && available[0].id === null;
+        if (hint) hint.textContent = available.length > 1
+            ? 'Choose the measurement used by the supplier; inventory will use the base-unit equivalent.'
+            : `Quantity is measured in ${available[0].code}.`;
+    };
+
+    document.querySelectorAll('[data-po-line]').forEach((line) => {
+        const variantId = line.querySelector('[data-variant-value]')?.value || '';
+        const selectedUnitId = line.querySelector('[data-po-unit]')?.dataset.selectedUnit || '';
+        if (variantId) loadUnits(line, variantId, selectedUnitId);
+    });
 
     document.querySelectorAll('[data-add-po-line]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -79,6 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 field.value = '';
                 field.setCustomValidity('');
             });
+            loadUnits(row, '');
             list.appendChild(row);
         });
     });
@@ -109,12 +160,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!search) return;
 
         const line = search.closest('[data-po-line]');
-        const unitCost = line?.querySelector('input[name$="[unit_cost]"]');
         const option = Array.from(search.list?.options || []).find((item) => item.value === search.value);
 
-        if (unitCost && option?.dataset.cost && !unitCost.value) {
-            unitCost.value = option.dataset.cost;
-        }
+        if (line && option?.dataset.variantId) loadUnits(line, option.dataset.variantId);
     });
 });
 </script>

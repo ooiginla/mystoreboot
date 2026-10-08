@@ -21,6 +21,7 @@ use Modules\Catalog\Models\ProductVariant;
 use Modules\Finance\Support\PaymentSourceAccounts;
 use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 use Modules\Inventory\Models\InventoryLocation;
+use Modules\Inventory\Support\ReorderLevels;
 use Modules\Procurement\Actions\ApprovePurchaseOrderAction;
 use Modules\Procurement\Actions\ReceivePurchaseOrderAction;
 use Modules\Procurement\Actions\RecordVendorPaymentAction;
@@ -76,13 +77,13 @@ final class ProcurementController extends Controller
         $allVendors = Vendor::query()->with('bankAccounts')->where('tenant_id', $tenant->id)->orderBy('name')->get();
         $locations = InventoryLocation::query()->where('tenant_id', $tenant->id)->orderBy('name')->get();
         $variants = ProductVariant::query()
-            ->with('product')
+            ->with(['product.unitCategory.units', 'baseUnit'])
             ->where('tenant_id', $tenant->id)
             ->whereHas('product', fn ($query) => $query->whereIn('product_type', array_map(fn (ProductType $t) => $t->value, ProductType::stockable())))
             ->orderBy('sku')
             ->get();
         $purchaseOrdersQuery = PurchaseOrder::query()
-            ->with(['vendor', 'items.variant.product', 'items.location', 'receipts', 'payments'])
+            ->with(['vendor', 'items.variant.product', 'items.variant.baseUnit', 'items.location', 'receipts', 'payments'])
             ->where('tenant_id', $tenant->id);
         $allPurchaseOrders = (clone $purchaseOrdersQuery)->latest()->get();
         $purchaseOrders = $purchaseOrdersQuery
@@ -105,6 +106,9 @@ final class ProcurementController extends Controller
             'allVendors' => $allVendors,
             'locations' => $locations,
             'variants' => $variants,
+            'purchaseOrderUnits' => $variants->mapWithKeys(fn (ProductVariant $variant): array => [
+                $variant->id => ReorderLevels::unitsOf($variant),
+            ])->all(),
             'purchaseOrders' => $purchaseOrders,
             'allPurchaseOrders' => $allPurchaseOrders,
             'payments' => $payments,
