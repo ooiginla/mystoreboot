@@ -105,12 +105,13 @@ final class MovementUnitConversionTest extends TestCase
         $this->actingAs($user)
             ->get(route('admin.inventory.index', ['tenant' => $tenant->id]).'#movements')
             ->assertOk()
-            ->assertSee('<th>Quantity &amp; cost</th>', false)
+            ->assertSee('<th>Quantity</th>', false)
+            ->assertSee('<th>Cost</th>', false)
             ->assertDontSee('<th>Reference</th>', false)
             ->assertSee('2 carton')
-            ->assertSee('48 pc base')
+            ->assertSee('48 pc in base unit')
             ->assertSee('NGN 5.00/pc')
-            ->assertSee('Total NGN 240.00');
+            ->assertSee('NGN 240.00');
     }
 
     public function test_a_transfer_entered_in_kg_moves_the_right_number_of_grams_and_the_dialog_shows_the_unit(): void

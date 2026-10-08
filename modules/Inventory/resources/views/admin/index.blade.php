@@ -173,7 +173,8 @@
                                 <th>Type</th>
                                 <th>Variant</th>
                                 <th>Location</th>
-                                <th>Quantity &amp; cost</th>
+                                <th>Quantity</th>
+                                <th>Cost</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -201,9 +202,7 @@
                                     <td class="movement-note">
                                         <strong>{{ \Modules\Inventory\Support\Quantity::format($enteredQuantity) }} {{ $enteredUnitCode }}</strong>
                                         <br><span class="subtle">
-                                            {{ \Modules\Inventory\Support\Quantity::format(abs((float) $movement->quantity)) }} {{ $baseUnitCode }} base
-                                            · {{ $tenant->currency_code }} {{ $money($movement->unit_cost_minor) }}/{{ $baseUnitCode }}
-                                            · Total {{ $tenant->currency_code }} {{ $money($movement->movement_value_minor) }}
+                                            {{ \Modules\Inventory\Support\Quantity::format(abs((float) $movement->quantity)) }} {{ $baseUnitCode }} in base unit
                                         </span>
                                         @if ($movement->batchAllocations->isNotEmpty())
                                             <br><span class="subtle">Lots:
@@ -213,9 +212,13 @@
                                             </span>
                                         @endif
                                     </td>
+                                    <td class="movement-note">
+                                        <strong>{{ $tenant->currency_code }} {{ $money($movement->movement_value_minor) }}</strong>
+                                        <br><span class="subtle">{{ $tenant->currency_code }} {{ $money($movement->unit_cost_minor) }}/{{ $baseUnitCode }}</span>
+                                    </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="5"><div class="empty">No inventory movements yet.</div></td></tr>
+                                <tr><td colspan="6"><div class="empty">No inventory movements yet.</div></td></tr>
                             @endforelse
                         </tbody>
                     </table>
