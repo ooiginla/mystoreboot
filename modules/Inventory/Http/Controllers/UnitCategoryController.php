@@ -57,7 +57,10 @@ final class UnitCategoryController extends Controller
         }
 
         $hasUnits = DB::table('units_of_measure')->where('unit_category_id', $unitCategory->id)->exists();
-        $hasProducts = DB::table('products')->where('unit_category_id', $unitCategory->id)->exists();
+        $hasProducts = DB::table('products')
+            ->where('unit_category_id', $unitCategory->id)
+            ->whereNull('deleted_at')
+            ->exists();
 
         if ($hasUnits || $hasProducts) {
             throw ValidationException::withMessages([

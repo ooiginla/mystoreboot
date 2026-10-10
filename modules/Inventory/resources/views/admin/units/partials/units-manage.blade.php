@@ -92,12 +92,18 @@
                             <input type="hidden" name="is_base_for_dimension" value="0">
                             <input type="checkbox" name="is_base_for_dimension" value="1" @checked($unit->is_base_for_dimension) style="width:auto;">
                         </label>
-                        <button class="icon-btn" type="submit" aria-label="Save unit" title="Save">{!! $saveIcon !!}</button>
+                        <button class="btn secondary" type="submit" aria-label="Update unit">
+                            {!! $saveIcon !!}
+                            <span>Update</span>
+                        </button>
                     </form>
                     <form method="POST" action="{{ route('admin.inventory.units.destroy', $unit->id) }}" onsubmit="return confirm('Remove this unit?');" style="margin:0;">
                         @csrf @method('DELETE')
                         <input type="hidden" name="tenant" value="{{ $tenantParam }}">
-                        <button class="icon-btn" type="submit" aria-label="Remove unit" title="Remove">{!! $trashIcon !!}</button>
+                        <button class="btn danger" type="submit" aria-label="Delete unit">
+                            {!! $trashIcon !!}
+                            <span>Delete</span>
+                        </button>
                     </form>
                 </div>
             @empty

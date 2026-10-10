@@ -104,7 +104,10 @@ final class UnitOfMeasureController extends Controller
             ],
             'code' => [
                 'required', 'string', 'max:20',
-                Rule::unique('units_of_measure', 'code')->where('tenant_id', $tenantId)->ignore($ignoreId),
+                Rule::unique('units_of_measure', 'code')
+                    ->where('tenant_id', $tenantId)
+                    ->where('unit_category_id', $request->input('unit_category_id'))
+                    ->ignore($ignoreId),
             ],
             'name' => ['required', 'string', 'max:80'],
             'dimension' => ['required', Rule::in(array_column(UnitDimension::cases(), 'value'))],

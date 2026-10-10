@@ -53,7 +53,11 @@ final class EnsureDefaultUnitsAction
             // on its old code "ea" when it was renamed to Piece. That row is still its
             // count base, so a second one is never created alongside it.
             if ($code === 'pc') {
-                $legacy = UnitOfMeasure::query()->where('tenant_id', $tenantId)->where('code', 'ea')->first();
+                $legacy = UnitOfMeasure::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('unit_category_id', $category->id)
+                    ->where('code', 'ea')
+                    ->first();
 
                 if ($legacy) {
                     return $legacy;
@@ -61,9 +65,8 @@ final class EnsureDefaultUnitsAction
             }
 
             return UnitOfMeasure::query()->updateOrCreate(
-                ['tenant_id' => $tenantId, 'code' => $code],
+                ['tenant_id' => $tenantId, 'unit_category_id' => $category->id, 'code' => $code],
                 [
-                    'unit_category_id' => $category->id,
                     'name' => $name,
                     'dimension' => $dimension->value,
                     'to_base_factor' => $factor,

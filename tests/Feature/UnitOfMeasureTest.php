@@ -98,6 +98,8 @@ final class UnitOfMeasureTest extends TestCase
                 'Group your measurements into categories',
                 'Okin Biscuit Measurement',
             ])
+            ->assertSee('aria-label="Update unit"', false)
+            ->assertSee('aria-label="Delete unit"', false)
             ->assertSee('<details class="panel unit-accordion" name="unit-categories" data-unit-accordion>', false)
             ->assertSee('1 unit')
             ->assertSee('data-unit-accordion][open]', false);
@@ -116,5 +118,81 @@ final class UnitOfMeasureTest extends TestCase
         $this->actingAs($user)->delete(route('admin.inventory.unit-categories.destroy', $category->id), ['tenant' => $tenant->id])
             ->assertRedirect()->assertSessionHasNoErrors();
         $this->assertDatabaseMissing('unit_categories', ['id' => $category->id]);
+    }
+
+    public function test_soft_deleted_products_do_not_prevent_unit_category_deletion(): void
+    {
+        $tenant = Tenant::query()->create([
+            'name' => 'Archived Products Co', 'slug' => 'archived-products-co', 'status' => TenantStatus::Active,
+            'business_type' => 'restaurant', 'country_code' => 'NG', 'timezone' => 'Africa/Lagos', 'currency_code' => 'NGN',
+        ]);
+        $user = User::factory()->create(['is_platform_admin' => true]);
+        $category = UnitCategory::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Archived measurement',
+            'is_default' => false,
+        ]);
+        $product = Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Archived ingredient',
+            'slug' => 'archived-ingredient',
+            'product_type' => ProductType::RawMaterial->value,
+            'status' => ProductStatus::Active->value,
+            'unit_category_id' => $category->id,
+        ]);
+        $product->delete();
+
+        $this->actingAs($user)
+            ->delete(route('admin.inventory.unit-categories.destroy', $category->id), ['tenant' => $tenant->id])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseMissing('unit_categories', ['id' => $category->id]);
+        $this->assertDatabaseHas('products', [
+            'id' => $product->id,
+            'unit_category_id' => null,
+        ]);
+    }
+
+    public function test_unit_codes_can_be_reused_in_different_categories(): void
+    {
+        $tenant = Tenant::query()->create([
+            'name' => 'Bulk Goods Co', 'slug' => 'bulk-goods-co', 'status' => TenantStatus::Active,
+            'business_type' => 'restaurant', 'country_code' => 'NG', 'timezone' => 'Africa/Lagos', 'currency_code' => 'NGN',
+        ]);
+        $user = User::factory()->create(['is_platform_admin' => true]);
+        $sugar = UnitCategory::query()->create([
+            'tenant_id' => $tenant->id, 'name' => 'Sugar', 'is_default' => false,
+        ]);
+        $flour = UnitCategory::query()->create([
+            'tenant_id' => $tenant->id, 'name' => 'Flour', 'is_default' => false,
+        ]);
+
+        foreach ([[$sugar, 60], [$flour, 80]] as [$category, $bagFactor]) {
+            $this->actingAs($user)->post(route('admin.inventory.units.store'), [
+                'tenant' => $tenant->id, 'unit_category_id' => $category->id,
+                'code' => 'kg', 'name' => 'Kilogram', 'dimension' => 'weight',
+                'to_base_factor' => 1, 'is_base_for_dimension' => true,
+            ])->assertRedirect()->assertSessionHasNoErrors();
+
+            $this->actingAs($user)->post(route('admin.inventory.units.store'), [
+                'tenant' => $tenant->id, 'unit_category_id' => $category->id,
+                'code' => 'bag', 'name' => 'Bag', 'dimension' => 'weight',
+                'to_base_factor' => $bagFactor,
+            ])->assertRedirect()->assertSessionHasNoErrors();
+        }
+
+        $this->assertDatabaseHas('units_of_measure', [
+            'unit_category_id' => $sugar->id, 'code' => 'bag', 'to_base_factor' => 60,
+        ]);
+        $this->assertDatabaseHas('units_of_measure', [
+            'unit_category_id' => $flour->id, 'code' => 'bag', 'to_base_factor' => 80,
+        ]);
+
+        $this->actingAs($user)->post(route('admin.inventory.units.store'), [
+            'tenant' => $tenant->id, 'unit_category_id' => $sugar->id,
+            'code' => 'kg', 'name' => 'Duplicate kilogram', 'dimension' => 'weight',
+            'to_base_factor' => 1,
+        ])->assertSessionHasErrors('code');
     }
 }
