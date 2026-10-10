@@ -1,6 +1,12 @@
 @php
     $money = fn (?int $minor): string => number_format(($minor ?? 0) / 100, 2);
     $variantLabel = fn ($variant): string => $variant->product?->name.' / '.$variant->variant_name.' ('.$variant->sku.')';
+    $unitCode = fn ($variant): string => ($variant->baseUnit?->code ?? 'pc') === 'ea' ? 'pc' : ($variant->baseUnit?->code ?? 'pc');
+    $availableDescription = fn ($level): string => \Modules\Inventory\Support\Quantity::describeInUnits(
+        $level->quantity_available,
+        $level->variant->product?->unitCategory?->units ?? collect(),
+        $level->variant->baseUnit,
+    );
     $activeBranchForView = app(\App\Support\ActiveBranchManager::class)->stateForRequest(request(), auth()->user())['activeBranch'];
     $activeBranchLocationId = $activeBranchForView ? $locations->firstWhere('branch_id', $activeBranchForView->id)?->id : null;
 @endphp
@@ -143,7 +149,6 @@
                             <tr>
                                 <th>Variant</th>
                                 <th>Location</th>
-                                <th>Unit</th>
                                 <th>On hand</th>
                                 <th>Available</th>
                                 <th>Reorder</th>
@@ -159,15 +164,14 @@
                                         <span class="subtle">{{ $level->variant->variant_name }} · {{ $level->variant->sku }}</span>
                                     </td>
                                     <td>{{ $level->location->name }}</td>
-                                    <td>{{ ($level->variant->baseUnit?->code ?? 'ea') === 'ea' ? 'pc' : $level->variant->baseUnit->code }}</td>
-                                    <td class="stock-status {{ $level->is_low_stock ? 'low' : 'ok' }}">{{ \Modules\Inventory\Support\Quantity::format($level->quantity_on_hand) }}</td>
-                                    <td>{{ \Modules\Inventory\Support\Quantity::format($level->quantity_available) }}</td>
+                                    <td class="stock-status {{ $level->is_low_stock ? 'low' : 'ok' }}">{{ \Modules\Inventory\Support\Quantity::format($level->quantity_on_hand) }} {{ $unitCode($level->variant) }}</td>
+                                    <td>{{ $availableDescription($level) }}</td>
                                     <td>{{ \Modules\Inventory\Support\Quantity::format($level->reorder_level) }}</td>
                                     <td>{{ $tenant->currency_code }} {{ $money($level->average_cost_minor) }}</td>
                                     <td>{{ $tenant->currency_code }} {{ $money($level->stock_value_minor) }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="8"><div class="empty">No stock levels yet. Post stock-in or opening stock to begin tracking inventory.</div></td></tr>
+                                <tr><td colspan="7"><div class="empty">No stock levels yet. Post stock-in or opening stock to begin tracking inventory.</div></td></tr>
                             @endforelse
                         </tbody>
                     </table>

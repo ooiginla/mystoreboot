@@ -85,7 +85,7 @@ final class InventoryController extends Controller
             ->get();
 
         $allStockLevels = InventoryStockLevel::query()
-            ->with(['location.branch', 'variant.baseUnit', 'variant.product.category', 'variant.optionValues.option'])
+            ->with(['location.branch', 'variant.baseUnit', 'variant.product.category', 'variant.product.unitCategory.units', 'variant.optionValues.option'])
             ->where('tenant_id', $tenant->id)
             ->latest('last_movement_at')
             ->get();

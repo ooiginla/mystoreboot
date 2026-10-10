@@ -21,6 +21,7 @@ use Modules\Inventory\Enums\StockCondition;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\InventoryStockLevel;
+use Modules\Inventory\Models\UnitCategory;
 use Modules\Inventory\Models\UnitOfMeasure;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
@@ -309,8 +310,9 @@ final class InventoryOpeningStockTest extends TestCase
             ->assertSee('name="stock_location"', false)
             ->assertSeeInOrder(['name="stock_product"', 'name="stock_location"'], false)
             ->assertSee('All locations')
-            ->assertSeeInOrder(['<th>Location</th>', '<th>Unit</th>', '<th>On hand</th>'], false)
-            ->assertSee('<td>g</td>', false)
+            ->assertSeeInOrder(['<th>Location</th>', '<th>On hand</th>', '<th>Available</th>'], false)
+            ->assertDontSee('<th>Unit</th>', false)
+            ->assertSee('5 g')
             ->assertSee('data-stock-location-id="'.$mainLocation->id.'"', false)
             ->assertSee('data-stock-location-id="'.$storeRoom->id.'"', false);
 
@@ -333,8 +335,47 @@ final class InventoryOpeningStockTest extends TestCase
         $this->actingAs($user)
             ->get(route('admin.inventory.index', ['tenant' => $tenant->id]))
             ->assertOk()
-            ->assertSee('<td>pc</td>', false)
-            ->assertDontSee('<td>ea</td>', false);
+            ->assertSee('5 pc')
+            ->assertDontSee('5 ea');
+    }
+
+    public function test_stock_visibility_describes_available_quantity_from_largest_to_smallest_unit(): void
+    {
+        [$tenant, $location, $variant] = $this->inventoryContext();
+        $category = UnitCategory::query()->create([
+            'tenant_id' => $tenant->id, 'name' => 'Sugar measurement', 'is_default' => false,
+        ]);
+        $kilogram = UnitOfMeasure::query()->create([
+            'tenant_id' => $tenant->id, 'unit_category_id' => $category->id,
+            'code' => 'kg', 'name' => 'Kilogram', 'dimension' => 'weight',
+            'to_base_factor' => 1, 'is_base_for_dimension' => true, 'status' => 'active',
+        ]);
+        UnitOfMeasure::query()->create([
+            'tenant_id' => $tenant->id, 'unit_category_id' => $category->id,
+            'code' => 'hb', 'name' => 'Half bag', 'dimension' => 'weight',
+            'to_base_factor' => 50, 'is_base_for_dimension' => false, 'status' => 'active',
+        ]);
+        UnitOfMeasure::query()->create([
+            'tenant_id' => $tenant->id, 'unit_category_id' => $category->id,
+            'code' => 'bag', 'name' => 'Bag', 'dimension' => 'weight',
+            'to_base_factor' => 100, 'is_base_for_dimension' => false, 'status' => 'active',
+        ]);
+        $variant->product()->update(['unit_category_id' => $category->id]);
+        $variant->update(['base_unit_id' => $kilogram->id]);
+        InventoryStockLevel::query()->create([
+            'tenant_id' => $tenant->id,
+            'inventory_location_id' => $location->id,
+            'product_variant_id' => $variant->id,
+            'quantity_on_hand' => 400,
+            'quantity_reserved' => 25,
+        ]);
+
+        $user = User::factory()->create(['is_platform_admin' => true]);
+        $this->actingAs($user)
+            ->get(route('admin.inventory.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('400 kg')
+            ->assertSee('3 bags, 1 hb, 25 kg');
     }
 
     public function test_stock_visibility_can_be_searched_by_product(): void
