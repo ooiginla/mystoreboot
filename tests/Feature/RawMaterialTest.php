@@ -13,6 +13,7 @@ use Modules\Catalog\Models\ProductVariant;
 use Modules\Customers\Models\Customer;
 use Modules\Inventory\Enums\InventoryLocationType;
 use Modules\Inventory\Models\InventoryLocation;
+use Modules\Inventory\Models\UnitCategory;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 use Tests\TestCase;
@@ -50,6 +51,32 @@ final class RawMaterialTest extends TestCase
                 ->whereIn('product_type', array_map(fn (ProductType $t) => $t->value, ProductType::sellable()))
                 ->whereKey($material->id)->exists()
         );
+    }
+
+    public function test_raw_material_list_displays_measurement_category_instead_of_sku(): void
+    {
+        [$tenant] = $this->context();
+        $user = User::factory()->create(['is_platform_admin' => true]);
+        $category = UnitCategory::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Flour measurement',
+            'is_default' => false,
+        ]);
+        Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Flour',
+            'slug' => 'flour',
+            'product_type' => ProductType::RawMaterial->value,
+            'status' => 'active',
+            'unit_category_id' => $category->id,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.catalog.raw-materials.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('<th>Measurement category</th>', false)
+            ->assertDontSee('<th>SKU</th>', false)
+            ->assertSee('Flour measurement');
     }
 
     public function test_raw_material_cannot_be_added_to_a_sale(): void

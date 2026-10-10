@@ -35,13 +35,13 @@
         <div class="panel-body">
             <div style="overflow-x:auto;">
                 <table class="table">
-                    <thead><tr><th>Name</th><th>SKU</th><th>On hand</th><th>Unit</th><th>Low-stock alert</th><th></th></tr></thead>
+                    <thead><tr><th>Name</th><th>Measurement category</th><th>On hand</th><th>Unit</th><th>Low-stock alert</th><th></th></tr></thead>
                     <tbody>
                         @forelse ($materials as $material)
                             @php $variant = $material->variants->first(); @endphp
                             <tr>
                                 <td>{{ $material->name }}</td>
-                                <td class="subtle">{{ $variant?->sku }}</td>
+                                <td>{{ $material->unitCategory?->name ?? 'Default (pc)' }}</td>
                                 @php $baseOnHand = (float) ($onHand[$variant?->id] ?? 0); $rmUnits = ($material->unitCategory?->units ?? collect())->filter(fn ($u) => $u->to_base_factor !== null)->values(); @endphp
                                 <td><span data-onhand-display data-base="{{ $baseOnHand }}">{{ $qty($baseOnHand) }}</span></td>
                                 <td>
