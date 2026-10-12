@@ -42,6 +42,17 @@ final class InventoryOpeningStockTest extends TestCase
             ->assertSee('value="opening_stock"', false)
             ->assertSee('Opening stock')
             ->assertSee('data-movement-total-cost', false)
+            ->assertSee('class="movement-item-row movement-item-context-row"', false)
+            ->assertSee('class="movement-item-row movement-item-details-row"', false)
+            ->assertSeeInOrder([
+                'data-item-movement-type-field',
+                'data-item-type-filter',
+                'data-item-batch-field',
+                'data-item-expiry-field',
+                'movement-item-variant',
+                'data-qty-input',
+                'data-item-total-cost-field',
+            ], false)
             ->assertSee("['opening_stock', 'stock_in']", false)
             ->assertSee('Enter the total paid for this entire line.');
 
@@ -310,8 +321,9 @@ final class InventoryOpeningStockTest extends TestCase
             ->assertSee('name="stock_location"', false)
             ->assertSeeInOrder(['name="stock_product"', 'name="stock_location"'], false)
             ->assertSee('All locations')
-            ->assertSeeInOrder(['<th>Location</th>', '<th>On hand</th>', '<th>Available</th>'], false)
+            ->assertSeeInOrder(['<th>Location</th>', '<th>Available</th>'], false)
             ->assertDontSee('<th>Unit</th>', false)
+            ->assertDontSee('<th>On hand</th>', false)
             ->assertSee('5 g')
             ->assertSee('data-stock-location-id="'.$mainLocation->id.'"', false)
             ->assertSee('data-stock-location-id="'.$storeRoom->id.'"', false);
@@ -374,7 +386,7 @@ final class InventoryOpeningStockTest extends TestCase
         $this->actingAs($user)
             ->get(route('admin.inventory.index', ['tenant' => $tenant->id]))
             ->assertOk()
-            ->assertSee('400 kg')
+            ->assertDontSee('<span class="subtle">On hand</span>', false)
             ->assertSee('3 bags, 1 hb, 25 kg');
     }
 

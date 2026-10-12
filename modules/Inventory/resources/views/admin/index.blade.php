@@ -1,7 +1,6 @@
 @php
     $money = fn (?int $minor): string => number_format(($minor ?? 0) / 100, 2);
     $variantLabel = fn ($variant): string => $variant->product?->name.' / '.$variant->variant_name.' ('.$variant->sku.')';
-    $unitCode = fn ($variant): string => ($variant->baseUnit?->code ?? 'pc') === 'ea' ? 'pc' : ($variant->baseUnit?->code ?? 'pc');
     $availableDescription = fn ($level): string => \Modules\Inventory\Support\Quantity::describeInUnits(
         $level->quantity_available,
         $level->variant->product?->unitCategory?->units ?? collect(),
@@ -49,7 +48,13 @@
         .movement-summary-cell strong, .movement-summary-cell span { display: block; }
         .movement-line-cost { min-height: 42px; display: flex; flex-direction: column; justify-content: center; }
         .movement-grand-total { border-top: 1px solid var(--line); font-size: 1.05rem; }
-        .movement-item-dialog { width: min(1040px, calc(100vw - 32px)); max-width: 1040px; }
+        .movement-item-dialog { width: min(980px, calc(100vw - 32px)); max-width: 980px; }
+        .movement-item-dialog .dialog-body { padding: 16px 20px 18px; }
+        .movement-item-editor { display: grid; gap: 14px; }
+        .movement-item-row { display: grid; gap: 12px; align-items: start; }
+        .movement-item-context-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .movement-item-details-row { grid-template-columns: minmax(280px, 2fr) minmax(180px, 1fr) minmax(180px, 1fr); }
+        .movement-item-dialog .button-row { margin-top: 14px; }
         @media (max-width: 900px) {
             .report-grid { grid-template-columns: 1fr; }
             .inventory-actions { width: 100%; }
@@ -61,6 +66,12 @@
             .movement-summary-row { grid-template-columns: 36px 1fr; align-items: start; }
             .movement-summary-cell { grid-column: 2; }
             .movement-summary-remove { grid-row: 1 / span 4; }
+            .movement-item-context-row, .movement-item-details-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .movement-item-details-row .movement-item-variant { grid-column: 1 / -1; }
+        }
+        @media (max-width: 620px) {
+            .movement-item-context-row, .movement-item-details-row { grid-template-columns: 1fr; }
+            .movement-item-details-row .movement-item-variant { grid-column: auto; }
         }
     </style>
 
@@ -98,7 +109,6 @@
     @endif
 
     <div class="stats-grid" style="margin-bottom: 18px;">
-        <div class="stat"><span class="subtle">On hand</span><strong>{{ number_format($stats['on_hand']) }}</strong></div>
         <div class="stat"><span class="subtle">Available</span><strong>{{ number_format($stats['available']) }}</strong></div>
         <div class="stat"><span class="subtle">Low stock</span><strong>{{ number_format($stats['low_stock']) }}</strong></div>
         <div class="stat"><span class="subtle">Stock value</span><strong>{{ $tenant->currency_code }} {{ $money($stats['valuation_minor']) }}</strong></div>
@@ -149,7 +159,6 @@
                             <tr>
                                 <th>Variant</th>
                                 <th>Location</th>
-                                <th>On hand</th>
                                 <th>Available</th>
                                 <th>Reorder</th>
                                 <th>Avg cost</th>
@@ -164,14 +173,13 @@
                                         <span class="subtle">{{ $level->variant->variant_name }} · {{ $level->variant->sku }}</span>
                                     </td>
                                     <td>{{ $level->location->name }}</td>
-                                    <td class="stock-status {{ $level->is_low_stock ? 'low' : 'ok' }}">{{ \Modules\Inventory\Support\Quantity::format($level->quantity_on_hand) }} {{ $unitCode($level->variant) }}</td>
-                                    <td>{{ $availableDescription($level) }}</td>
+                                    <td class="stock-status {{ $level->is_low_stock ? 'low' : 'ok' }}">{{ $availableDescription($level) }}</td>
                                     <td>{{ \Modules\Inventory\Support\Quantity::format($level->reorder_level) }}</td>
                                     <td>{{ $tenant->currency_code }} {{ $money($level->average_cost_minor) }}</td>
                                     <td>{{ $tenant->currency_code }} {{ $money($level->stock_value_minor) }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="7"><div class="empty">No stock levels yet. Post stock-in or opening stock to begin tracking inventory.</div></td></tr>
+                                <tr><td colspan="6"><div class="empty">No stock levels yet. Post stock-in or opening stock to begin tracking inventory.</div></td></tr>
                             @endforelse
                         </tbody>
                     </table>
