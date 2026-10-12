@@ -25,6 +25,7 @@ final class InventoryMovement extends Model
             'stock_condition' => StockCondition::class,
             'quantity' => 'decimal:4',
             'entered_quantity' => 'decimal:4',
+            'entered_unit_breakdown' => 'array',
             'stock_after' => 'decimal:4',
             'expiry_date' => 'date',
             'occurred_at' => 'datetime',

@@ -48,6 +48,10 @@ final class MovementUnitConversionTest extends TestCase
             'tenant_id' => $tenant->id, 'unit_category_id' => $category->id, 'code' => 'carton', 'name' => 'Carton',
             'dimension' => 'count', 'to_base_factor' => 24, 'is_base_for_dimension' => false, 'status' => 'active',
         ]);
+        $half = UnitOfMeasure::query()->create([
+            'tenant_id' => $tenant->id, 'unit_category_id' => $category->id, 'code' => 'half', 'name' => 'Half carton',
+            'dimension' => 'count', 'to_base_factor' => 12, 'is_base_for_dimension' => false, 'status' => 'active',
+        ]);
 
         $product = Product::query()->create([
             'tenant_id' => $tenant->id, 'name' => 'Biscuit', 'slug' => 'biscuit',
@@ -98,6 +102,38 @@ final class MovementUnitConversionTest extends TestCase
 
         $this->assertCount(2, InventoryMovement::query()->get());
 
+        // One movement line can combine several measurements for the same item.
+        // The submitted aggregate is deliberately wrong; the server recalculates it
+        // from the validated parts rather than trusting the browser.
+        $this->actingAs($user)->post(route('admin.inventory.movements.store'), [
+            'tenant_id' => $tenant->id,
+            'inventory_location_id' => $location->id,
+            'stock_condition' => StockCondition::Sellable->value,
+            'items' => [[
+                'product_variant_id' => $variant->id,
+                'movement_type' => InventoryMovementType::StockIn->value,
+                'quantity' => 1,
+                'total_cost' => '325',
+                'quantity_parts' => [
+                    ['quantity' => 2, 'unit_id' => $carton->id],
+                    ['quantity' => 1, 'unit_id' => $half->id],
+                    ['quantity' => 5, 'unit_id' => $base->id],
+                ],
+            ]],
+        ])->assertSessionHasNoErrors();
+
+        $compositeMovement = InventoryMovement::query()->latest('id')->firstOrFail();
+        $this->assertSame(65.0, abs((float) $compositeMovement->quantity));
+        $this->assertSame([
+            ['quantity' => 2, 'unit_id' => $carton->id, 'code' => 'carton'],
+            ['quantity' => 1, 'unit_id' => $half->id, 'code' => 'half'],
+            ['quantity' => 5, 'unit_id' => $base->id, 'code' => 'pc'],
+        ], $compositeMovement->entered_unit_breakdown);
+        $this->assertSame(123.0, (float) InventoryStockLevel::query()
+            ->where('inventory_location_id', $location->id)
+            ->where('product_variant_id', $variant->id)
+            ->value('quantity_on_hand'));
+
         $this->actingAs($user)
             ->get(route('admin.inventory.index', ['tenant' => $tenant->id]).'#movements')
             ->assertOk()
@@ -105,6 +141,7 @@ final class MovementUnitConversionTest extends TestCase
             ->assertSee('<th>Cost</th>', false)
             ->assertDontSee('<th>Reference</th>', false)
             ->assertSee('2 carton')
+            ->assertSee('2 carton + 1 half + 5 pc')
             ->assertSee('48 pc in base unit')
             ->assertSee('NGN 5.00/pc')
             ->assertSee('NGN 240.00');
@@ -190,7 +227,7 @@ final class MovementUnitConversionTest extends TestCase
 
         // Both parent dialogs add through the shared item editor, which carries the unit picker and item-type filter.
         $response = $this->actingAs($user)->get(route('admin.inventory.index', ['tenant' => $tenant->id]))->assertOk();
-        $this->assertSame(1, substr_count($response->getContent(), 'required data-qty-input>'));
+        $this->assertSame(1, substr_count($response->getContent(), 'required data-qty-input aria-label="Quantity">'));
         $this->assertSame(2, substr_count($response->getContent(), '<button class="btn secondary" type="button" data-open-item-editor'));
         $response->assertSee('data-item-type-filter', false)
             ->assertSee('"code":"kg"', false);

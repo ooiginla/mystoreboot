@@ -55,6 +55,13 @@
         .movement-item-context-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         .movement-item-details-row { grid-template-columns: minmax(280px, 2fr) minmax(180px, 1fr) minmax(180px, 1fr); }
         .movement-item-dialog .button-row { margin-top: 14px; }
+        .movement-quantity-parts { display: grid; gap: 7px; }
+        .movement-quantity-part { display: grid; grid-template-columns: minmax(0, 1fr) minmax(76px, auto) 32px; align-items: stretch; }
+        .movement-quantity-part input { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+        .movement-quantity-part select { min-width: 76px; margin-left: -1px; border-radius: 0; background: #f9fafb; font-weight: 700; }
+        .movement-quantity-part-remove { border: 1px solid var(--danger-border); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: #fff; color: var(--danger); cursor: pointer; font-size: 19px; line-height: 1; }
+        .movement-quantity-part-remove:hover { background: var(--danger); color: #fff; }
+        .movement-add-quantity-part { justify-self: start; padding: 6px 10px; font-size: 12px; }
         @media (max-width: 900px) {
             .report-grid { grid-template-columns: 1fr; }
             .inventory-actions { width: 100%; }
@@ -219,6 +226,9 @@
                                         @endif
                                     </td>
                                     @php
+                                        $enteredBreakdown = collect($movement->entered_unit_breakdown ?? [])
+                                            ->map(fn (array $part): string => \Modules\Inventory\Support\Quantity::format($part['quantity']).' '.$part['code'])
+                                            ->implode(' + ');
                                         $enteredQuantity = $movement->entered_quantity !== null
                                             ? abs((float) $movement->entered_quantity)
                                             : abs((float) $movement->quantity);
@@ -229,7 +239,7 @@
                                         $baseUnitCode = $movement->variant?->baseUnit?->code ?? 'pc';
                                     @endphp
                                     <td class="movement-note">
-                                        <strong>{{ \Modules\Inventory\Support\Quantity::format($enteredQuantity) }} {{ $enteredUnitCode }}</strong>
+                                        <strong>{{ $enteredBreakdown !== '' ? $enteredBreakdown : \Modules\Inventory\Support\Quantity::format($enteredQuantity).' '.$enteredUnitCode }}</strong>
                                         <br><span class="subtle">
                                             {{ \Modules\Inventory\Support\Quantity::format(abs((float) $movement->quantity)) }} {{ $baseUnitCode }} in base unit
                                         </span>
@@ -482,8 +492,7 @@
                     picker,
                     search: picker?.querySelector('[data-variant-search]'),
                     variantValue: picker?.querySelector('[data-variant-value]'),
-                    unit: editor.querySelector('[data-movement-unit]'),
-                    qty: editor.querySelector('[data-qty-input]'),
+                    quantityParts: Array.from(editor.querySelectorAll('[data-quantity-part]')),
                     hint: editor.querySelector('[data-measurement-hint]'),
                     type: editor.querySelector('[data-movement-type]'),
                     totalCost: editor.querySelector('[data-movement-total-cost]'),
@@ -496,27 +505,58 @@
 
             function loadUnits() {
                 const p = parts();
-                if (!p.unit) return;
+                p.quantityParts.forEach((row, index) => {
+                    const unit = row.querySelector('[data-movement-unit]');
+                    const selected = unit.value;
 
-                if (!p.units.length) {
-                    p.unit.innerHTML = '<option value="">—</option>';
-                    p.unit.disabled = true;
-                } else {
-                    p.unit.innerHTML = p.units.map((u) =>
+                    if (!p.units.length) {
+                        unit.innerHTML = '<option value="">—</option>';
+                        unit.disabled = true;
+                        return;
+                    }
+
+                    unit.innerHTML = p.units.map((u) =>
                         `<option value="${u.id ?? ''}" data-factor="${u.factor}" data-code="${u.code}">${u.code}</option>`
                     ).join('');
-                    const base = p.units.findIndex((u) => u.factor === 1);
-                    p.unit.selectedIndex = base >= 0 ? base : 0;
-                    // A plain count has nothing to choose and nothing to convert.
-                    p.unit.disabled = p.units.length === 1 && p.units[0].id === null;
-                }
+                    const selectedIndex = p.units.findIndex((u) => String(u.id ?? '') === selected);
+                    const baseIndex = p.units.findIndex((u) => u.factor === 1);
+                    unit.selectedIndex = selectedIndex >= 0 ? selectedIndex : (index === 0 && baseIndex >= 0 ? baseIndex : Math.min(index, p.units.length - 1));
+                    unit.disabled = p.units.length === 1 && p.units[0].id === null;
+                });
 
+                syncQuantityPartControls();
                 updateEditor();
+            }
+
+            function enteredParts(p = parts()) {
+                return p.quantityParts.map((row) => {
+                    const input = row.querySelector('[data-qty-input]');
+                    const unit = row.querySelector('[data-movement-unit]');
+                    const option = unit.selectedOptions[0];
+
+                    return {
+                        quantity: numberValue(input.value),
+                        unitId: option?.value || '',
+                        factor: numberValue(option?.dataset.factor) || 1,
+                        code: option?.dataset.code || '',
+                    };
+                }).filter((part) => part.quantity > 0);
+            }
+
+            function syncQuantityPartControls() {
+                const rows = Array.from(editor.querySelectorAll('[data-quantity-part]'));
+                const units = parts().units;
+                rows.forEach((row) => {
+                    row.querySelector('[data-remove-quantity-part]').hidden = rows.length === 1;
+                });
+                editor.querySelector('[data-add-quantity-part]').disabled = rows.length >= 12
+                    || !units.length
+                    || (units.length === 1 && units[0].id === null);
             }
 
             function updateEditor() {
                 const p = parts();
-                if (!p.hint || !p.unit) return;
+                if (!p.hint) return;
 
                 const mode = editor.dataset.itemMode || 'movement';
                 const movementType = mode === 'transfer' ? 'transfer_out' : p.type?.value;
@@ -533,33 +573,30 @@
                     return;
                 }
 
-                const option = p.unit.selectedOptions[0];
-                const factor = parseFloat(option?.dataset.factor) || 1;
-                const code = option?.dataset.code || '';
                 const base = p.units.find((u) => u.factor === 1) || p.units[0];
-                const qty = parseFloat(p.qty?.value);
+                const entered = enteredParts(p);
+                const baseQuantity = entered.reduce((sum, part) => sum + (part.quantity * part.factor), 0);
+                const enteredLabel = entered.map((part) => `${fmt(part.quantity)} ${part.code}`).join(' + ');
                 const bits = [];
 
                 if (p.units.length === 1 && p.units[0].id === null) {
-                    bits.push(`Counted in ${code}`);
-                } else if (factor !== 1) {
-                    bits.push(qty > 0
-                        ? `${fmt(qty)} ${code} = ${fmt(qty * factor)} ${base.code} in stock`
-                        : `Stock is kept in ${base.code} — ${code} is converted automatically`);
+                    bits.push(`Counted in ${base.code}`);
+                } else if (entered.length) {
+                    bits.push(`${enteredLabel} = ${fmt(baseQuantity)} ${base.code} in stock`);
                 } else {
-                    bits.push(`Stock is kept in ${code}`);
+                    bits.push(`Stock is kept in ${base.code} — add one or more measurements`);
                 }
 
                 if (p.location?.value) {
                     const level = (LEVELS[p.variantId] || {})[p.location.value];
                     const place = p.location.selectedOptions[0]?.textContent.trim() || 'this location';
-                    bits.push(`${fmt((level ? level.available : 0) / factor)} ${code} available at ${place}`);
+                    bits.push(`${fmt(level ? level.available : 0)} ${base.code} available at ${place}`);
                 }
 
                 p.hint.textContent = bits.join(' · ');
                 const level = p.location?.value ? (LEVELS[p.variantId] || {})[p.location.value] : null;
                 const averageMinor = level?.average_cost_minor || 0;
-                const calculatedTotal = (qty || 0) * factor * averageMinor / 100;
+                const calculatedTotal = baseQuantity * averageMinor / 100;
                 p.costHelp.textContent = acceptsTotal
                     ? 'Enter the total paid for this entire line.'
                     : `${money(averageMinor / 100)}/${base.code} · ${money(calculatedTotal)} line value`;
@@ -631,12 +668,17 @@
                     remove,
                     summaryCell(item.typeLabel),
                     summaryCell(item.itemLabel, item.lotLabel),
-                    summaryCell(`${fmt(item.enteredQuantity)} ${item.unitCode}`, item.baseQuantity !== item.enteredQuantity || item.unitCode !== item.baseCode ? `${fmt(item.baseQuantity)} ${item.baseCode} in base unit` : ''),
+                    summaryCell(item.quantityLabel, `${fmt(item.baseQuantity)} ${item.baseCode} in base unit`),
                     summaryCell(money(item.lineValue), `${money(item.unitCostMinor / 100)}/${item.baseCode}`),
                 );
 
                 Object.entries(item.fields).forEach(([key, value]) => {
                     if (value !== null && value !== '') row.appendChild(hiddenField(key, value));
+                });
+                item.quantityParts.forEach((part, index) => {
+                    if (!part.unitId) return;
+                    row.appendChild(hiddenField(`quantity_parts][${index}][quantity`, part.quantity));
+                    row.appendChild(hiddenField(`quantity_parts][${index}][unit_id`, part.unitId));
                 });
                 list.appendChild(row);
                 reindex(dialog);
@@ -671,12 +713,16 @@
 
             function clearEditor() {
                 editorForm.reset();
+                const quantityRows = Array.from(editor.querySelectorAll('[data-quantity-part]'));
+                quantityRows.slice(1).forEach((row) => row.remove());
                 const p = parts();
                 p.search.value = '';
                 p.search.setCustomValidity('');
                 p.variantValue.value = '';
-                p.unit.innerHTML = '<option value="">—</option>';
-                p.unit.disabled = true;
+                const unit = p.quantityParts[0].querySelector('[data-movement-unit]');
+                unit.innerHTML = '<option value="">—</option>';
+                unit.disabled = true;
+                syncQuantityPartControls();
                 applyItemFilter();
                 updateEditor();
             }
@@ -719,6 +765,26 @@
 
                 if (event.target.closest('[data-item-editor-cancel]')) {
                     returnToOwner();
+                    return;
+                }
+
+                if (event.target.closest('[data-add-quantity-part]')) {
+                    const container = editor.querySelector('[data-quantity-parts]');
+                    const row = container.querySelector('[data-quantity-part]').cloneNode(true);
+                    row.querySelector('[data-qty-input]').value = '';
+                    row.querySelector('[data-movement-unit]').value = '';
+                    container.appendChild(row);
+                    syncQuantityPartControls();
+                    loadUnits();
+                    row.querySelector('[data-qty-input]').focus();
+                    return;
+                }
+
+                const removeQuantityPart = event.target.closest('[data-remove-quantity-part]');
+                if (removeQuantityPart) {
+                    removeQuantityPart.closest('[data-quantity-part]').remove();
+                    syncQuantityPartControls();
+                    updateEditor();
                     return;
                 }
 
@@ -771,17 +837,16 @@
                 const mode = editor.dataset.itemMode;
                 const movementType = mode === 'transfer' ? 'transfer_out' : p.type.value;
                 const acceptsTotal = mode === 'movement' && ['opening_stock', 'stock_in'].includes(movementType);
-                const enteredQuantity = numberValue(p.qty.value);
-                const selectedUnit = p.unit.selectedOptions[0];
-                const factor = numberValue(selectedUnit?.dataset.factor) || 1;
+                const quantityParts = enteredParts(p);
                 const base = p.units.find((unit) => unit.factor === 1) || p.units[0];
                 const locationId = p.location?.value;
                 const level = (LEVELS[p.variantId] || {})[locationId] || null;
                 const averageMinor = level?.average_cost_minor || 0;
 
-                if (!editorForm.reportValidity() || !p.variantId || !base) return;
+                if (!editorForm.reportValidity() || !p.variantId || !base || !quantityParts.length) return;
 
-                const baseQuantity = enteredQuantity * factor;
+                const baseQuantity = quantityParts.reduce((sum, part) => sum + (part.quantity * part.factor), 0);
+                const quantityLabel = quantityParts.map((part) => `${fmt(part.quantity)} ${part.code}`).join(' + ');
                 const enteredTotal = acceptsTotal ? numberValue(p.totalCost.value) : null;
                 const unitCostMinor = acceptsTotal ? Math.round(enteredTotal * 100 / baseQuantity) : averageMinor;
                 const lineValue = acceptsTotal ? enteredTotal : baseQuantity * averageMinor / 100;
@@ -793,8 +858,8 @@
                     typeLabel: mode === 'transfer' ? 'Transfer' : p.type.selectedOptions[0].textContent.trim(),
                     itemLabel: p.search.value,
                     lotLabel,
-                    enteredQuantity,
-                    unitCode: selectedUnit?.dataset.code || base.code,
+                    quantityLabel,
+                    quantityParts,
                     baseQuantity,
                     baseCode: base.code,
                     lineValue,
@@ -810,8 +875,7 @@
                     fields: {
                         movement_type: movementType,
                         product_variant_id: p.variantId,
-                        quantity: enteredQuantity,
-                        unit_id: selectedUnit?.value || null,
+                        quantity: baseQuantity,
                         total_cost: acceptsTotal ? enteredTotal : null,
                         batch_number: mode === 'movement' ? batch : null,
                         expiry_date: mode === 'movement' ? expiry : null,

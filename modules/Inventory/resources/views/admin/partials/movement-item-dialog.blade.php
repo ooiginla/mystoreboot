@@ -32,10 +32,14 @@
                 <x-variant-picker name="editor_product_variant_id" label="Variant" class="movement-item-variant" options-id="movement-item-variant-options" />
                 <div class="field">
                     <label>Quantity</label>
-                    <div class="qty-unit">
-                        <input type="number" min="0" step="any" required data-qty-input>
-                        <select data-movement-unit aria-label="Measurement unit" disabled><option value="">—</option></select>
+                    <div class="movement-quantity-parts" data-quantity-parts>
+                        <div class="movement-quantity-part" data-quantity-part>
+                            <input type="number" min="0" step="any" required data-qty-input aria-label="Quantity">
+                            <select data-movement-unit aria-label="Measurement unit" disabled><option value="">—</option></select>
+                            <button class="movement-quantity-part-remove" type="button" data-remove-quantity-part aria-label="Remove measurement" hidden>×</button>
+                        </div>
                     </div>
+                    <button class="btn secondary movement-add-quantity-part" type="button" data-add-quantity-part>+ Add measurement</button>
                     <small class="subtle" data-measurement-hint>Choose an item to see how it is measured.</small>
                 </div>
                 <div class="field" data-item-total-cost-field>

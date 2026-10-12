@@ -280,6 +280,50 @@ final class InventoryController extends Controller
         $enteredQuantity = (float) $data['quantity'];
         $enteredUnit = null;
 
+        if (! empty($data['quantity_parts'])) {
+            $allowedUnits = collect(ReorderLevels::unitsOf($variant))
+                ->filter(fn (array $unit): bool => $unit['id'] !== null)
+                ->keyBy(fn (array $unit): int => (int) $unit['id']);
+            $baseQuantity = 0.0;
+            $breakdown = [];
+
+            foreach ($data['quantity_parts'] as $partIndex => $part) {
+                $unitId = (int) $part['unit_id'];
+                $unit = UnitOfMeasure::query()->where('tenant_id', $tenantId)->find($unitId);
+
+                if (! $unit || ! $allowedUnits->has($unitId) || ! $unit->isConvertible()) {
+                    throw ValidationException::withMessages([
+                        "{$errorPrefix}.quantity_parts.{$partIndex}.unit_id" => 'Choose a measurement unit configured for this item.',
+                    ]);
+                }
+
+                $partQuantity = (float) $part['quantity'];
+                $baseQuantity += app(UnitConverter::class)->toBase($partQuantity, $unit);
+                $breakdown[] = [
+                    'quantity' => Quantity::round($partQuantity),
+                    'unit_id' => $unit->id,
+                    'code' => $unit->code,
+                ];
+            }
+
+            $data['quantity'] = Quantity::round($baseQuantity);
+            $data['entered_quantity'] = null;
+            $data['entered_unit_id'] = null;
+            $data['entered_unit_code'] = null;
+            $data['entered_unit_breakdown'] = $breakdown;
+            unset($data['quantity_parts'], $data['unit_id']);
+
+            if (array_key_exists('total_cost', $data) && $data['total_cost'] !== null) {
+                $movementValueMinor = (int) round((float) $data['total_cost'] * 100);
+                $data['movement_value_minor'] = $movementValueMinor;
+                $data['unit_cost_minor'] = (int) round($movementValueMinor / (float) $data['quantity']);
+            }
+
+            unset($data['total_cost']);
+
+            return $this->finalizeMovementData($data);
+        }
+
         if (! empty($data['unit_id'])) {
             $enteredUnit = UnitOfMeasure::query()
                 ->where('tenant_id', $tenantId)
@@ -307,11 +351,20 @@ final class InventoryController extends Controller
             $data['unit_cost_minor'] = (int) round($movementValueMinor / (float) $data['quantity']);
         }
 
+        unset($data['total_cost'], $data['unit_id']);
+
+        return $this->finalizeMovementData($data);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function finalizeMovementData(array $data): array
+    {
         if ($data['movement_type'] === InventoryMovementType::Damaged->value) {
             $data['stock_condition'] = StockCondition::Damaged->value;
         }
-
-        unset($data['total_cost'], $data['unit_id']);
 
         return $data;
     }

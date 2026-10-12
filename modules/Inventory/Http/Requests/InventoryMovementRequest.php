@@ -96,6 +96,12 @@ final class InventoryMovementRequest extends FormRequest
                 'nullable', 'integer',
                 Rule::exists('units_of_measure', 'id')->where('tenant_id', $tenantId),
             ],
+            'items.*.quantity_parts' => ['nullable', 'array', 'min:1', 'max:12'],
+            'items.*.quantity_parts.*.quantity' => ['required', 'numeric', 'gt:0', 'max:999999999'],
+            'items.*.quantity_parts.*.unit_id' => [
+                'required', 'integer',
+                Rule::exists('units_of_measure', 'id')->where('tenant_id', $tenantId),
+            ],
             'items.*.batch_number' => ['nullable', 'string', 'max:120'],
             'items.*.expiry_date' => ['nullable', 'date'],
         ];
