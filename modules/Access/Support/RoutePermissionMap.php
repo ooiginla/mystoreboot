@@ -138,6 +138,7 @@ final class RoutePermissionMap
             'admin.inventory.location-types.update' => 'inventory.manage',
             'admin.inventory.location-types.destroy' => 'inventory.manage',
             'admin.inventory.movements.store' => ['inventory.receive', 'inventory.transfer', 'inventory.count', 'inventory.adjust'],
+            'admin.inventory.movements.reverse' => 'inventory.adjustments.approve',
             'admin.inventory.reorder.save' => 'inventory.manage',
             'admin.inventory.reorder-levels.index' => 'inventory.view',
             'admin.inventory.production.index' => 'inventory.view',

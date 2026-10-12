@@ -8,6 +8,7 @@ use App\Shared\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Inventory\Enums\StockCondition;
 use Modules\Inventory\Support\Quantity;
@@ -54,6 +55,11 @@ final class InventoryBatch extends Model
         return $this->belongsTo(self::class, 'source_inventory_batch_id');
     }
 
+    public function sourceMovement(): BelongsTo
+    {
+        return $this->belongsTo(InventoryMovement::class, 'source_inventory_movement_id');
+    }
+
     /**
      * Lots created downstream of this one by transfers out. Following these recursively
      * is what lets a recall chase stock across every store it reached.
@@ -66,9 +72,9 @@ final class InventoryBatch extends Model
     /**
      * Movements are stored with a signed delta, so outbound draws are the negative ones.
      *
-     * @return \Illuminate\Support\Collection<int, InventoryMovementBatch>
+     * @return Collection<int, InventoryMovementBatch>
      */
-    public function outboundAllocations(): \Illuminate\Support\Collection
+    public function outboundAllocations(): Collection
     {
         return $this->allocations
             ->filter(fn (InventoryMovementBatch $a): bool => (float) ($a->movement?->quantity ?? 0) < 0)

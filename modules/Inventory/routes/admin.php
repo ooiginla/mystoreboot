@@ -20,6 +20,7 @@ Route::post('/location-types', [LocationTypeController::class, 'store'])->name('
 Route::put('/location-types/{locationType}', [LocationTypeController::class, 'update'])->name('location-types.update');
 Route::delete('/location-types/{locationType}', [LocationTypeController::class, 'destroy'])->name('location-types.destroy');
 Route::post('/movements', [InventoryController::class, 'storeMovement'])->name('movements.store');
+Route::post('/movements/{movement}/reverse', [InventoryController::class, 'reverseMovement'])->name('movements.reverse');
 Route::post('/reorder-settings', [InventoryController::class, 'saveReorder'])->name('reorder.save');
 Route::get('/reorder-levels', [ReorderLevelController::class, 'index'])->name('reorder-levels.index');
 

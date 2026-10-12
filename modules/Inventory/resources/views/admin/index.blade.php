@@ -211,6 +211,7 @@
                                 <th>Location</th>
                                 <th>Quantity</th>
                                 <th>Cost</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -255,9 +256,21 @@
                                         <strong>{{ $tenant->currency_code }} {{ $money($movement->movement_value_minor) }}</strong>
                                         <br><span class="subtle">{{ $tenant->currency_code }} {{ $money($movement->unit_cost_minor) }}/{{ $baseUnitCode }}</span>
                                     </td>
+                                    <td style="text-align:right;">
+                                        @if ($movement->reference_type === 'inventory_reversal')
+                                            <span class="badge neutral">Reversal</span>
+                                        @elseif ($movement->reversal)
+                                            <span class="badge neutral">Reversed</span>
+                                        @elseif ($canReverseMovements && \Modules\Inventory\Actions\ReverseInventoryMovementAction::canReverse($movement))
+                                            <form method="POST" action="{{ route('admin.inventory.movements.reverse', $movement->id) }}" onsubmit="return confirm('Reverse this movement? This creates an opposite posting and cannot be undone from here.');">
+                                                @csrf
+                                                <button class="btn danger" type="submit">Reverse</button>
+                                            </form>
+                                        @endif
+                                    </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="6"><div class="empty">No inventory movements yet.</div></td></tr>
+                                <tr><td colspan="7"><div class="empty">No inventory movements yet.</div></td></tr>
                             @endforelse
                         </tbody>
                     </table>

@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Models;
 
+use App\Models\User;
 use App\Shared\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Enums\StockCondition;
@@ -50,6 +52,21 @@ final class InventoryMovement extends Model
     public function enteredUnit(): BelongsTo
     {
         return $this->belongsTo(UnitOfMeasure::class, 'entered_unit_id');
+    }
+
+    public function reversal(): HasOne
+    {
+        return $this->hasOne(self::class, 'reversal_of_movement_id');
+    }
+
+    public function reversedMovement(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'reversal_of_movement_id');
+    }
+
+    public function reversedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reversed_by_user_id');
     }
 
     /**

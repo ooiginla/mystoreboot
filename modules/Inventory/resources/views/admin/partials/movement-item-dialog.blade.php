@@ -29,7 +29,7 @@
                 <div class="field" data-item-expiry-field><label>Expiry date <span class="subtle">(optional)</span></label><input data-item-expiry-date type="date"></div>
             </div>
             <div class="movement-item-row movement-item-details-row">
-                <x-variant-picker name="editor_product_variant_id" label="Variant" class="movement-item-variant" options-id="movement-item-variant-options" />
+                <x-variant-picker name="editor_product_variant_id" label="Variant" class="movement-item-variant" options-id="movement-item-variant-options" enhanced />
                 <div class="field">
                     <label>Quantity</label>
                     <div class="movement-quantity-parts" data-quantity-parts>

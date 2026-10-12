@@ -119,7 +119,7 @@ final class UnitOfMeasureController extends Controller
     private function isInUse(string $tenantId, int $unitId): bool
     {
         return DB::table('product_variants')->where('tenant_id', $tenantId)
-                ->where(fn ($q) => $q->where('base_unit_id', $unitId)->orWhere('purchase_unit_id', $unitId))->exists()
+            ->where(fn ($q) => $q->where('base_unit_id', $unitId)->orWhere('purchase_unit_id', $unitId))->exists()
             || DB::table('recipes')->where('tenant_id', $tenantId)->where('yield_unit_id', $unitId)->exists()
             || DB::table('recipe_items')->where('tenant_id', $tenantId)->where('unit_id', $unitId)->exists()
             || DB::table('production_order_items')->where('tenant_id', $tenantId)->where('unit_id', $unitId)->exists()

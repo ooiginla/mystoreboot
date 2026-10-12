@@ -6,6 +6,7 @@ namespace Modules\Inventory\Actions;
 
 use Illuminate\Support\Collection;
 use Modules\Inventory\Enums\UnitDimension;
+use Modules\Inventory\Models\UnitCategory;
 use Modules\Inventory\Models\UnitOfMeasure;
 use Modules\Tenancy\Models\Tenant;
 
@@ -41,7 +42,7 @@ final class EnsureDefaultUnitsAction
     {
         $tenantId = $tenant instanceof Tenant ? $tenant->id : $tenant;
 
-        $category = \Modules\Inventory\Models\UnitCategory::query()->firstOrCreate(
+        $category = UnitCategory::query()->firstOrCreate(
             ['tenant_id' => $tenantId, 'name' => 'General'],
             ['is_default' => true],
         );

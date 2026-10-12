@@ -81,6 +81,7 @@ final class DepleteBatchesAction
                 'tenant_id' => $source->tenant_id,
                 'inventory_location_id' => $destinationLocationId,
                 'product_variant_id' => $source->product_variant_id,
+                'source_inventory_movement_id' => $inboundMovement->id,
                 // Keeps the recall chain intact when a lot crosses a store boundary.
                 'source_inventory_batch_id' => $source->id,
                 'batch_number' => $source->batch_number,

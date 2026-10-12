@@ -26,21 +26,21 @@ final class PostInventoryMovementAction
     /**
      * @param  array<string, mixed>  $data
      */
-    public function execute(array $data): void
+    public function execute(array $data): InventoryMovement
     {
-        $this->executeMovement($data, false);
+        return $this->executeMovement($data, false);
     }
 
     /**
      * @param  array<string, mixed>  $data
      */
-    public function executeFromSource(array $data, string $sourceType, int $sourceId): void
+    public function executeFromSource(array $data, string $sourceType, int $sourceId): InventoryMovement
     {
         if (! in_array($sourceType, self::SYSTEM_SOURCE_TYPES, true)) {
             throw new \InvalidArgumentException("Unsupported inventory movement source [{$sourceType}].");
         }
 
-        $this->executeMovement([
+        return $this->executeMovement([
             ...$data,
             'reference_type' => $sourceType,
             'reference_id' => $sourceId,
@@ -48,27 +48,36 @@ final class PostInventoryMovementAction
     }
 
     /**
+     * Post a compensating movement while accounting is reversed from the original
+     * journal by the reversal workflow.
+     *
      * @param  array<string, mixed>  $data
      */
-    private function executeMovement(array $data, bool $accountingHandledBySource): void
+    public function executeReversal(array $data): InventoryMovement
     {
-        DB::transaction(function () use ($data, $accountingHandledBySource): void {
+        return $this->executeMovement($data, true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function executeMovement(array $data, bool $accountingHandledBySource): InventoryMovement
+    {
+        return DB::transaction(function () use ($data, $accountingHandledBySource): InventoryMovement {
             $type = InventoryMovementType::from($data['movement_type']);
 
             if ($type === InventoryMovementType::TransferOut) {
-                $this->postTransfer($data);
-
-                return;
+                return $this->postTransfer($data, $accountingHandledBySource);
             }
 
-            $this->postSingleMovement($data, $type, $accountingHandledBySource);
+            return $this->postSingleMovement($data, $type, $accountingHandledBySource);
         });
     }
 
     /**
      * @param  array<string, mixed>  $data
      */
-    private function postTransfer(array $data): void
+    private function postTransfer(array $data, bool $accountingHandledBySource): InventoryMovement
     {
         $source = $this->stockLevel($data['tenant_id'], (int) $data['inventory_location_id'], (int) $data['product_variant_id']);
         $destination = $this->stockLevel($data['tenant_id'], (int) $data['destination_inventory_location_id'], (int) $data['product_variant_id']);
@@ -86,6 +95,8 @@ final class PostInventoryMovementAction
             ...$data,
             'inventory_location_id' => $data['destination_inventory_location_id'],
             'destination_inventory_location_id' => $data['inventory_location_id'],
+            'reversal_of_movement_id' => null,
+            'reversed_by_user_id' => null,
         ], InventoryMovementType::TransferIn, $destination, $quantity, $unitCostMinor);
 
         // Carry lot identity across the transfer: draw FEFO at the source, then recreate
@@ -99,7 +110,7 @@ final class PostInventoryMovementAction
 
         $valueMinor = (int) round($quantity * $unitCostMinor);
 
-        if ($valueMinor > 0) {
+        if ($valueMinor > 0 && ! $accountingHandledBySource) {
             $sourceBranchId = $source->loadMissing('location')->location?->branch_id;
             $destinationBranchId = $destination->loadMissing('location')->location?->branch_id;
 
@@ -116,12 +127,14 @@ final class PostInventoryMovementAction
                 'transferred',
             );
         }
+
+        return $transferOut;
     }
 
     /**
      * @param  array<string, mixed>  $data
      */
-    private function postSingleMovement(array $data, InventoryMovementType $type, bool $accountingHandledBySource): void
+    private function postSingleMovement(array $data, InventoryMovementType $type, bool $accountingHandledBySource): InventoryMovement
     {
         $stockLevel = $this->stockLevel($data['tenant_id'], (int) $data['inventory_location_id'], (int) $data['product_variant_id']);
         $quantity = Quantity::round((float) $data['quantity']);
@@ -153,11 +166,13 @@ final class PostInventoryMovementAction
 
         // Draw the outgoing quantity from existing lots *before* recording any new batch,
         // so a damaged write-off cannot consume the quarantine batch it is about to create.
-        if ($delta < 0) {
+        if ($delta < 0 && ! ($data['skip_batch_depletion'] ?? false)) {
             $this->depleteBatches->execute($movement, $delta);
         }
 
-        $this->recordBatchIfApplicable($data, $type, $delta, $unitCostMinor);
+        if (! ($data['skip_batch_creation'] ?? false)) {
+            $this->recordBatchIfApplicable($data, $type, $delta, $unitCostMinor, $movement);
+        }
 
         $this->postAccountingEntryIfApplicable(
             $data,
@@ -168,6 +183,8 @@ final class PostInventoryMovementAction
             $movement,
             $accountingHandledBySource,
         );
+
+        return $movement;
     }
 
     private function stockLevel(string $tenantId, int $locationId, int $variantId): InventoryStockLevel
@@ -228,6 +245,8 @@ final class PostInventoryMovementAction
             'entered_unit_id' => $data['entered_unit_id'] ?? null,
             'entered_unit_code' => $data['entered_unit_code'] ?? null,
             'entered_unit_breakdown' => $data['entered_unit_breakdown'] ?? null,
+            'reversal_of_movement_id' => $data['reversal_of_movement_id'] ?? null,
+            'reversed_by_user_id' => $data['reversed_by_user_id'] ?? null,
             'stock_after' => $stockLevel->quantity_on_hand,
             'unit_cost_minor' => $unitCostMinor,
             'movement_value_minor' => $movementValueMinor ?? (int) round(abs($delta) * $unitCostMinor),
@@ -244,8 +263,13 @@ final class PostInventoryMovementAction
     /**
      * @param  array<string, mixed>  $data
      */
-    private function recordBatchIfApplicable(array $data, InventoryMovementType $type, float $delta, int $unitCostMinor): void
-    {
+    private function recordBatchIfApplicable(
+        array $data,
+        InventoryMovementType $type,
+        float $delta,
+        int $unitCostMinor,
+        InventoryMovement $movement,
+    ): void {
         $condition = StockCondition::from($data['stock_condition'] ?? StockCondition::Sellable->value);
 
         if ($delta <= 0 && ! in_array($type, [InventoryMovementType::Damaged], true)) {
@@ -263,6 +287,7 @@ final class PostInventoryMovementAction
             'tenant_id' => $data['tenant_id'],
             'inventory_location_id' => $data['inventory_location_id'],
             'product_variant_id' => $data['product_variant_id'],
+            'source_inventory_movement_id' => $movement->id,
             'batch_number' => $batchNumber,
             'expiry_date' => $expiryDate,
             'stock_condition' => $condition->value,

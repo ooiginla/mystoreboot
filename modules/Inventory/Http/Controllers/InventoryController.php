@@ -23,6 +23,7 @@ use Modules\Catalog\Models\ProductVariant;
 use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 use Modules\Inventory\Actions\EnsureLocationTypesAction;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
+use Modules\Inventory\Actions\ReverseInventoryMovementAction;
 use Modules\Inventory\Actions\SaveReorderLevelsAction;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Enums\StockCondition;
@@ -115,7 +116,7 @@ final class InventoryController extends Controller
         $stockLevels = $stockLevels->values();
 
         $movements = InventoryMovement::query()
-            ->with(['location.branch', 'destinationLocation.branch', 'variant.product', 'variant.baseUnit', 'enteredUnit', 'batchAllocations.batch'])
+            ->with(['location.branch', 'destinationLocation.branch', 'variant.product', 'variant.baseUnit', 'enteredUnit', 'batchAllocations.batch', 'reversal'])
             ->where('tenant_id', $tenant->id)
             ->latest('occurred_at')
             ->limit(80)
@@ -134,6 +135,7 @@ final class InventoryController extends Controller
             'tenant' => $tenant,
             'tenants' => $tenants,
             'isPlatformAdmin' => $user->is_platform_admin,
+            'canReverseMovements' => $user->is_platform_admin || $user->hasPermission($tenant, 'inventory.adjustments.approve'),
             'branches' => Branch::query()->where('tenant_id', $tenant->id)->orderByDesc('is_primary')->orderBy('name')->get(),
             'locations' => $locations,
             'selectedStockLocationId' => $selectedStockLocationId,
@@ -263,6 +265,22 @@ final class InventoryController extends Controller
         };
 
         return redirect()->to($redirect)->with('status', $status);
+    }
+
+    public function reverseMovement(
+        Request $request,
+        InventoryMovement $movement,
+        ReverseInventoryMovementAction $action,
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+        $this->authorizeTenantIdAccess($user, (string) $movement->tenant_id);
+
+        $action->execute($movement, $user);
+
+        return redirect()
+            ->to(route('admin.inventory.index', ['tenant' => $movement->tenant_id]).'#movements')
+            ->with('status', 'Inventory movement reversed.');
     }
 
     /**
