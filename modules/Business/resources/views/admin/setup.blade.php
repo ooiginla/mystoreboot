@@ -1412,6 +1412,7 @@
                                                     <td>
                                                         <div class="cell-title">{{ $membership->user->name }}</div>
                                                         <div class="cell-sub">{{ $membership->user->email }}</div>
+                                                        <div class="cell-sub">{{ $membership->user->email_verified_at ? 'Email confirmed' : 'Awaiting email confirmation' }}</div>
                                                     </td>
                                                     <td>{{ $membership->role?->name ?? '—' }}</td>
                                                     <td>{{ $membership->branch?->name ?? 'All branches' }}</td>
@@ -1422,6 +1423,7 @@
                                                                 data-membership-id="{{ $membership->id }}"
                                                                 data-membership-name="{{ $membership->user->name }}"
                                                                 data-membership-email="{{ $membership->user->email }}"
+                                                                data-membership-email-verified="{{ $membership->user->email_verified_at ? '1' : '0' }}"
                                                                 data-membership-role="{{ $membership->role_id }}"
                                                                 data-membership-branch="{{ $membership->branch_id }}"
                                                                 data-membership-active="{{ $membership->status === \Modules\Access\Enums\MembershipStatus::Active ? '1' : '0' }}">Edit access</button>
@@ -1929,6 +1931,16 @@
                             <div class="field">
                                 <label>Email</label>
                                 <input name="email" type="email" required maxlength="255" data-membership-email-input>
+                                <span class="subtle" data-membership-verification-status></span>
+                            </div>
+                            <div class="field">
+                                <label>Email confirmation</label>
+                                <input type="hidden" name="skip_email_confirmation" value="0">
+                                <label class="check">
+                                    <input type="checkbox" name="skip_email_confirmation" value="1" data-membership-skip-confirmation>
+                                    Skip email confirmation
+                                </label>
+                                <span class="subtle">Use this when the worker cannot receive email. They can log in immediately with the email-shaped login ID and password.</span>
                             </div>
                             <div class="field">
                                 <label>New password</label>
@@ -1981,6 +1993,12 @@
                             <div class="field"><label>Name</label><input name="name" required placeholder="Jane Manager"></div>
                             <div class="field"><label>Email</label><input name="email" type="email" required placeholder="jane@example.com"></div>
                             <div class="field"><label>Temporary password</label><input name="password" type="password" required minlength="8"></div>
+                            <div class="field full">
+                                <label>Email confirmation</label>
+                                <input type="hidden" name="skip_email_confirmation" value="0">
+                                <label class="check"><input type="checkbox" name="skip_email_confirmation" value="1"> Skip email confirmation</label>
+                                <span class="subtle">Select this if the worker cannot receive email. The email must still be a unique email-shaped login ID.</span>
+                            </div>
                             <div class="field">
                                 <label>Role</label>
                                 <select name="role_id">
@@ -2833,6 +2851,8 @@
             const urlTemplate = @json(route('admin.access.memberships.update', ['membership' => '__ID__']));
             const nameInput = form.querySelector('[data-membership-name-input]');
             const emailInput = form.querySelector('[data-membership-email-input]');
+            const skipConfirmationInput = form.querySelector('[data-membership-skip-confirmation]');
+            const verificationStatus = form.querySelector('[data-membership-verification-status]');
             const roleSelect = form.querySelector('[data-membership-role-select]');
             const branchSelect = form.querySelector('[data-membership-branch-select]');
             const activeInput = form.querySelector('[data-membership-active-input]');
@@ -2849,6 +2869,8 @@
                     form.setAttribute('action', urlTemplate.replace('__ID__', button.dataset.membershipId));
                     if (nameInput) nameInput.value = button.dataset.membershipName || '';
                     if (emailInput) emailInput.value = button.dataset.membershipEmail || '';
+                    if (skipConfirmationInput) skipConfirmationInput.checked = false;
+                    if (verificationStatus) verificationStatus.textContent = button.dataset.membershipEmailVerified === '1' ? 'Email is currently confirmed.' : 'This user is awaiting email confirmation.';
                     if (roleSelect) roleSelect.value = button.dataset.membershipRole || '';
                     if (branchSelect) branchSelect.value = button.dataset.membershipBranch || '';
                     if (activeInput) activeInput.checked = button.dataset.membershipActive === '1';

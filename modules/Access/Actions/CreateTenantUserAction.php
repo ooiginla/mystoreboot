@@ -26,6 +26,14 @@ final class CreateTenantUserAction
                 ],
             );
 
+            if ((bool) ($data['skip_email_confirmation'] ?? false) && ! $user->email_verified_at) {
+                $user->forceFill([
+                    'email_verified_at' => now(),
+                    'email_verification_code' => null,
+                    'email_verification_code_expires_at' => null,
+                ])->save();
+            }
+
             TenantMembership::query()->updateOrCreate(
                 [
                     'tenant_id' => $data['tenant_id'],

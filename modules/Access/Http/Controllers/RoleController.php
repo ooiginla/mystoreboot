@@ -171,15 +171,17 @@ final class RoleController extends Controller
                 Rule::unique('users', 'email')->ignore($membership->user_id),
             ],
             'password' => ['nullable', 'string', 'min:8', 'max:255', 'confirmed'],
+            'skip_email_confirmation' => ['nullable', 'boolean'],
             'role_id' => ['nullable', Rule::exists('roles', 'id')->where('tenant_id', $tenant->id)],
             'branch_id' => ['nullable', Rule::exists('branches', 'id')->where('tenant_id', $tenant->id)],
             'is_active' => ['required', 'boolean'],
         ]);
 
         $isActive = $request->boolean('is_active');
+        $skipEmailConfirmation = $request->boolean('skip_email_confirmation');
         $user = $membership->user;
 
-        DB::transaction(function () use ($membership, $tenant, $data, $isActive, $user): void {
+        DB::transaction(function () use ($membership, $tenant, $data, $isActive, $skipEmailConfirmation, $user): void {
             $membership->newQuery()->whereKey($membership->id)->lockForUpdate()->firstOrFail();
 
             // Lockout protection: never demote or disable the last active Business Owner.
@@ -205,10 +207,24 @@ final class RoleController extends Controller
             }
 
             $emailChanged = $user->email !== $data['email'];
+            $verificationValues = match (true) {
+                $skipEmailConfirmation => [
+                    'email_verified_at' => now(),
+                    'email_verification_code' => null,
+                    'email_verification_code_expires_at' => null,
+                ],
+                $emailChanged => [
+                    'email_verified_at' => null,
+                    'email_verification_code' => null,
+                    'email_verification_code_expires_at' => null,
+                ],
+                default => [],
+            };
+
             $user->forceFill([
                 'name' => $data['name'],
                 'email' => $data['email'],
-                ...($emailChanged ? ['email_verified_at' => null] : []),
+                ...$verificationValues,
                 ...(! empty($data['password']) ? ['password' => $data['password']] : []),
             ])->save();
 
@@ -225,6 +241,7 @@ final class RoleController extends Controller
             'role_id' => $data['role_id'] ?: null,
             'branch_id' => $data['branch_id'] ?: null,
             'status' => $isActive ? MembershipStatus::Active->value : MembershipStatus::Inactive->value,
+            'email_confirmation_skipped' => $skipEmailConfirmation,
         ]);
 
         return redirect()

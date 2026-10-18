@@ -41,6 +41,7 @@ final class TenantUserManagementTest extends TestCase
             ->assertSee('Edit user and access')
             ->assertSee('data-membership-email="old@example.test"', false)
             ->assertSee('New password')
+            ->assertSee('Skip email confirmation')
             ->assertSee('Organization access');
 
         $this->actingAs($admin)
@@ -155,6 +156,73 @@ final class TenantUserManagementTest extends TestCase
         ])->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#users');
 
         $this->assertTrue(Hash::check('owner-reset-123', $staff->fresh()->password));
+    }
+
+    public function test_admin_can_skip_email_confirmation_when_creating_an_organization_user(): void
+    {
+        $admin = User::factory()->create(['is_platform_admin' => true]);
+        $tenant = $this->tenant();
+
+        $this->actingAs($admin)
+            ->post(route('admin.access.tenant-users.store'), [
+                'tenant_id' => $tenant->id,
+                'name' => 'Worker Without Inbox',
+                'email' => 'worker-login@example.test',
+                'password' => 'temporary-password',
+                'skip_email_confirmation' => '1',
+                'role_id' => null,
+                'branch_id' => null,
+            ])
+            ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#users');
+
+        $worker = User::query()->where('email', 'worker-login@example.test')->firstOrFail();
+        $this->assertNotNull($worker->email_verified_at);
+
+        $this->post(route('logout'));
+        $this->post(route('login.store'), [
+            'email' => 'worker-login@example.test',
+            'password' => 'temporary-password',
+        ])->assertRedirect(route('admin.home'));
+    }
+
+    public function test_admin_can_skip_confirmation_for_an_existing_pending_user(): void
+    {
+        $admin = User::factory()->create(['is_platform_admin' => true]);
+        $tenant = $this->tenant();
+        $worker = User::factory()->unverified()->create([
+            'email' => 'pending-worker@example.test',
+            'password' => 'existing-password',
+            'email_verification_code' => '123456',
+            'email_verification_code_expires_at' => now()->addMinutes(15),
+        ]);
+        $membership = TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $worker->id,
+            'status' => MembershipStatus::Active,
+            'joined_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->put(route('admin.access.memberships.update', $membership), [
+                'name' => $worker->name,
+                'email' => $worker->email,
+                'skip_email_confirmation' => '1',
+                'role_id' => null,
+                'branch_id' => null,
+                'is_active' => '1',
+            ])
+            ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#users');
+
+        $worker->refresh();
+        $this->assertNotNull($worker->email_verified_at);
+        $this->assertNull($worker->email_verification_code);
+        $this->assertNull($worker->email_verification_code_expires_at);
+
+        $this->post(route('logout'));
+        $this->post(route('login.store'), [
+            'email' => $worker->email,
+            'password' => 'existing-password',
+        ])->assertRedirect(route('admin.home'));
     }
 
     private function tenant(): Tenant
