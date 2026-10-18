@@ -171,17 +171,20 @@ final class RoleController extends Controller
                 Rule::unique('users', 'email')->ignore($membership->user_id),
             ],
             'password' => ['nullable', 'string', 'min:8', 'max:255', 'confirmed'],
-            'skip_email_confirmation' => ['nullable', 'boolean'],
+            'require_email_confirmation' => ['nullable', 'boolean'],
             'role_id' => ['nullable', Rule::exists('roles', 'id')->where('tenant_id', $tenant->id)],
             'branch_id' => ['nullable', Rule::exists('branches', 'id')->where('tenant_id', $tenant->id)],
             'is_active' => ['required', 'boolean'],
         ]);
 
         $isActive = $request->boolean('is_active');
-        $skipEmailConfirmation = $request->boolean('skip_email_confirmation');
         $user = $membership->user;
+        $requiresEmailConfirmation = $request->has('require_email_confirmation')
+            ? $request->boolean('require_email_confirmation')
+            : ! $user->email_verified_at;
+        $skipEmailConfirmation = ! $requiresEmailConfirmation;
 
-        DB::transaction(function () use ($membership, $tenant, $data, $isActive, $skipEmailConfirmation, $user): void {
+        DB::transaction(function () use ($membership, $tenant, $data, $isActive, $requiresEmailConfirmation, $skipEmailConfirmation, $user): void {
             $membership->newQuery()->whereKey($membership->id)->lockForUpdate()->firstOrFail();
 
             // Lockout protection: never demote or disable the last active Business Owner.
@@ -206,14 +209,13 @@ final class RoleController extends Controller
                 abort_unless($otherOwners, 422, 'This is the last active Business Owner. Assign another owner before changing or disabling this one.');
             }
 
-            $emailChanged = $user->email !== $data['email'];
             $verificationValues = match (true) {
                 $skipEmailConfirmation => [
                     'email_verified_at' => now(),
                     'email_verification_code' => null,
                     'email_verification_code_expires_at' => null,
                 ],
-                $emailChanged => [
+                $requiresEmailConfirmation => [
                     'email_verified_at' => null,
                     'email_verification_code' => null,
                     'email_verification_code_expires_at' => null,

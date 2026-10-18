@@ -1935,12 +1935,12 @@
                             </div>
                             <div class="field">
                                 <label>Email confirmation</label>
-                                <input type="hidden" name="skip_email_confirmation" value="0">
-                                <label class="check">
-                                    <input type="checkbox" name="skip_email_confirmation" value="1" data-membership-skip-confirmation>
-                                    Skip email confirmation
+                                <input type="hidden" name="require_email_confirmation" value="0">
+                                <label class="switch-wrap" style="justify-content:flex-start; gap:10px; min-height:42px;">
+                                    <input type="checkbox" name="require_email_confirmation" value="1" data-membership-require-confirmation>
+                                    <span data-membership-confirmation-label>Required</span>
                                 </label>
-                                <span class="subtle">Use this when the worker cannot receive email. They can log in immediately with the email-shaped login ID and password.</span>
+                                <span class="subtle">Turn this off to skip confirmation and allow immediate login with the email-shaped login ID and password.</span>
                             </div>
                             <div class="field">
                                 <label>New password</label>
@@ -1995,9 +1995,9 @@
                             <div class="field"><label>Temporary password</label><input name="password" type="password" required minlength="8"></div>
                             <div class="field full">
                                 <label>Email confirmation</label>
-                                <input type="hidden" name="skip_email_confirmation" value="0">
-                                <label class="check"><input type="checkbox" name="skip_email_confirmation" value="1"> Skip email confirmation</label>
-                                <span class="subtle">Select this if the worker cannot receive email. The email must still be a unique email-shaped login ID.</span>
+                                <input type="hidden" name="require_email_confirmation" value="0">
+                                <label class="switch-wrap" style="justify-content:flex-start; gap:10px; min-height:42px;"><input type="checkbox" name="require_email_confirmation" value="1" checked> <span>Required</span></label>
+                                <span class="subtle">Turn this off if the worker cannot receive email. The email must still be a unique email-shaped login ID.</span>
                             </div>
                             <div class="field">
                                 <label>Role</label>
@@ -2851,7 +2851,8 @@
             const urlTemplate = @json(route('admin.access.memberships.update', ['membership' => '__ID__']));
             const nameInput = form.querySelector('[data-membership-name-input]');
             const emailInput = form.querySelector('[data-membership-email-input]');
-            const skipConfirmationInput = form.querySelector('[data-membership-skip-confirmation]');
+            const requireConfirmationInput = form.querySelector('[data-membership-require-confirmation]');
+            const confirmationLabel = form.querySelector('[data-membership-confirmation-label]');
             const verificationStatus = form.querySelector('[data-membership-verification-status]');
             const roleSelect = form.querySelector('[data-membership-role-select]');
             const branchSelect = form.querySelector('[data-membership-branch-select]');
@@ -2862,14 +2863,19 @@
             const syncActiveLabel = () => {
                 if (activeLabel && activeInput) activeLabel.textContent = activeInput.checked ? 'Enabled' : 'Disabled';
             };
+            const syncConfirmationLabel = () => {
+                if (confirmationLabel && requireConfirmationInput) confirmationLabel.textContent = requireConfirmationInput.checked ? 'Required' : 'Skipped';
+            };
             activeInput?.addEventListener('change', syncActiveLabel);
+            requireConfirmationInput?.addEventListener('change', syncConfirmationLabel);
 
             document.querySelectorAll('[data-edit-membership]').forEach((button) => {
                 button.addEventListener('click', () => {
                     form.setAttribute('action', urlTemplate.replace('__ID__', button.dataset.membershipId));
                     if (nameInput) nameInput.value = button.dataset.membershipName || '';
                     if (emailInput) emailInput.value = button.dataset.membershipEmail || '';
-                    if (skipConfirmationInput) skipConfirmationInput.checked = false;
+                    if (requireConfirmationInput) requireConfirmationInput.checked = button.dataset.membershipEmailVerified !== '1';
+                    syncConfirmationLabel();
                     if (verificationStatus) verificationStatus.textContent = button.dataset.membershipEmailVerified === '1' ? 'Email is currently confirmed.' : 'This user is awaiting email confirmation.';
                     if (roleSelect) roleSelect.value = button.dataset.membershipRole || '';
                     if (branchSelect) branchSelect.value = button.dataset.membershipBranch || '';

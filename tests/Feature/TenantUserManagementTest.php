@@ -41,7 +41,7 @@ final class TenantUserManagementTest extends TestCase
             ->assertSee('Edit user and access')
             ->assertSee('data-membership-email="old@example.test"', false)
             ->assertSee('New password')
-            ->assertSee('Skip email confirmation')
+            ->assertSee('Turn this off to skip confirmation')
             ->assertSee('Organization access');
 
         $this->actingAs($admin)
@@ -50,6 +50,7 @@ final class TenantUserManagementTest extends TestCase
                 'email' => 'updated@example.test',
                 'password' => 'new-password-123',
                 'password_confirmation' => 'new-password-123',
+                'require_email_confirmation' => '1',
                 'role_id' => null,
                 'branch_id' => null,
                 'is_active' => '0',
@@ -169,7 +170,7 @@ final class TenantUserManagementTest extends TestCase
                 'name' => 'Worker Without Inbox',
                 'email' => 'worker-login@example.test',
                 'password' => 'temporary-password',
-                'skip_email_confirmation' => '1',
+                'require_email_confirmation' => '0',
                 'role_id' => null,
                 'branch_id' => null,
             ])
@@ -203,10 +204,16 @@ final class TenantUserManagementTest extends TestCase
         ]);
 
         $this->actingAs($admin)
+            ->get(route('admin.business.index', ['tenant' => $tenant->id]).'#users')
+            ->assertOk()
+            ->assertSee('data-membership-email-verified="0"', false)
+            ->assertSee("requireConfirmationInput.checked = button.dataset.membershipEmailVerified !== '1'", false);
+
+        $this->actingAs($admin)
             ->put(route('admin.access.memberships.update', $membership), [
                 'name' => $worker->name,
                 'email' => $worker->email,
-                'skip_email_confirmation' => '1',
+                'require_email_confirmation' => '0',
                 'role_id' => null,
                 'branch_id' => null,
                 'is_active' => '1',

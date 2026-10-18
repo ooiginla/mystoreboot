@@ -26,7 +26,9 @@ final class CreateTenantUserAction
                 ],
             );
 
-            if ((bool) ($data['skip_email_confirmation'] ?? false) && ! $user->email_verified_at) {
+            $requiresEmailConfirmation = (bool) ($data['require_email_confirmation'] ?? true);
+
+            if (! $requiresEmailConfirmation && ! $user->email_verified_at) {
                 $user->forceFill([
                     'email_verified_at' => now(),
                     'email_verification_code' => null,

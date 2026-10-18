@@ -24,7 +24,7 @@ final class TenantUserRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email:rfc', 'max:255'],
             'password' => ['required', 'string', 'min:8', 'max:255'],
-            'skip_email_confirmation' => ['nullable', 'boolean'],
+            'require_email_confirmation' => ['nullable', 'boolean'],
             'role_id' => [
                 'nullable',
                 'integer',
