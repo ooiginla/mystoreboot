@@ -1421,8 +1421,10 @@
                                                                 data-edit-membership
                                                                 data-membership-id="{{ $membership->id }}"
                                                                 data-membership-name="{{ $membership->user->name }}"
+                                                                data-membership-email="{{ $membership->user->email }}"
                                                                 data-membership-role="{{ $membership->role_id }}"
-                                                                data-membership-branch="{{ $membership->branch_id }}">Edit access</button>
+                                                                data-membership-branch="{{ $membership->branch_id }}"
+                                                                data-membership-active="{{ $membership->status === \Modules\Access\Enums\MembershipStatus::Active ? '1' : '0' }}">Edit access</button>
                                                     </td>
                                                 </tr>
                                             @endforeach
@@ -1914,12 +1916,28 @@
             @endforeach
 
             <dialog class="dialog" id="membership-dialog">
-                <div class="dialog-header"><div><h2 class="panel-title">Edit user access</h2><p class="subtle" data-membership-target>Change the role and branch scope for this user.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
+                <div class="dialog-header"><div><h2 class="panel-title">Edit user and access</h2><p class="subtle" data-membership-target>Update this user's information and organization access.</p></div><button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button></div>
                 <div class="dialog-body">
                     <form class="mini-form" method="POST" action="{{ route('admin.access.roles.store') }}" data-membership-form>
                         @csrf
                         @method('PUT')
                         <div class="form-grid">
+                            <div class="field">
+                                <label>Name</label>
+                                <input name="name" required maxlength="255" data-membership-name-input>
+                            </div>
+                            <div class="field">
+                                <label>Email</label>
+                                <input name="email" type="email" required maxlength="255" data-membership-email-input>
+                            </div>
+                            <div class="field">
+                                <label>New password</label>
+                                <input name="password" type="password" minlength="8" maxlength="255" autocomplete="new-password" placeholder="Leave blank to keep current password">
+                            </div>
+                            <div class="field">
+                                <label>Confirm new password</label>
+                                <input name="password_confirmation" type="password" minlength="8" maxlength="255" autocomplete="new-password">
+                            </div>
                             <div class="field">
                                 <label>Role</label>
                                 <select name="role_id" data-membership-role-select>
@@ -1938,8 +1956,17 @@
                                     @endforeach
                                 </select>
                             </div>
+                            <div class="field">
+                                <label>Organization access</label>
+                                <input type="hidden" name="is_active" value="0">
+                                <label class="switch-wrap" style="justify-content:flex-start; gap:10px; min-height:42px;">
+                                    <input type="checkbox" name="is_active" value="1" data-membership-active-input>
+                                    <span data-membership-active-label>Enabled</span>
+                                </label>
+                                <span class="subtle">Disabled users cannot access this organization, but their account and history are retained.</span>
+                            </div>
                         </div>
-                        <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Cancel</button><button class="btn primary" type="submit">Save access</button></div>
+                        <div class="button-row"><button class="btn secondary" type="button" data-dialog-close>Cancel</button><button class="btn primary" type="submit">Save user and access</button></div>
                     </form>
                 </div>
             </dialog>
@@ -2804,16 +2831,29 @@
             if (!dialog || !form) return;
 
             const urlTemplate = @json(route('admin.access.memberships.update', ['membership' => '__ID__']));
+            const nameInput = form.querySelector('[data-membership-name-input]');
+            const emailInput = form.querySelector('[data-membership-email-input]');
             const roleSelect = form.querySelector('[data-membership-role-select]');
             const branchSelect = form.querySelector('[data-membership-branch-select]');
+            const activeInput = form.querySelector('[data-membership-active-input]');
+            const activeLabel = form.querySelector('[data-membership-active-label]');
             const target = dialog.querySelector('[data-membership-target]');
+
+            const syncActiveLabel = () => {
+                if (activeLabel && activeInput) activeLabel.textContent = activeInput.checked ? 'Enabled' : 'Disabled';
+            };
+            activeInput?.addEventListener('change', syncActiveLabel);
 
             document.querySelectorAll('[data-edit-membership]').forEach((button) => {
                 button.addEventListener('click', () => {
                     form.setAttribute('action', urlTemplate.replace('__ID__', button.dataset.membershipId));
+                    if (nameInput) nameInput.value = button.dataset.membershipName || '';
+                    if (emailInput) emailInput.value = button.dataset.membershipEmail || '';
                     if (roleSelect) roleSelect.value = button.dataset.membershipRole || '';
                     if (branchSelect) branchSelect.value = button.dataset.membershipBranch || '';
-                    if (target) target.textContent = `Change the role and branch scope for ${button.dataset.membershipName}.`;
+                    if (activeInput) activeInput.checked = button.dataset.membershipActive === '1';
+                    syncActiveLabel();
+                    if (target) target.textContent = `Update ${button.dataset.membershipName}'s information and organization access.`;
                     dialog.showModal();
                 });
             });

@@ -19,6 +19,7 @@ final class HrPayrollItem extends Model
     {
         return [
             'deduction_breakdown' => 'array',
+            'bonus_breakdown' => 'array',
         ];
     }
 

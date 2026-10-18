@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\HrPayroll\Models\HrPayrollRun;
 use Modules\HrPayroll\Models\HrStaff;
+use Modules\HrPayroll\Models\HrStaffBonus;
 use Modules\HrPayroll\Models\HrStaffDeduction;
 
 /**
@@ -34,7 +35,7 @@ final class RunPayrollAction
             abort_if($existing, 422, 'Payroll has already been posted for this month.');
 
             $staff = HrStaff::query()
-                ->with('deductions')
+                ->with(['deductions', 'bonuses'])
                 ->where('tenant_id', $data['tenant_id'])
                 ->where('status', 'active')
                 ->orderBy('first_name')
@@ -46,6 +47,7 @@ final class RunPayrollAction
                 'payroll_month' => $data['payroll_month'],
                 'posted_at' => now()->toDateString(),
                 'gross_salary_minor' => $rows->sum('gross_minor'),
+                'bonus_minor' => $rows->sum('bonus_minor'),
                 'deduction_minor' => $rows->sum('deduction_minor'),
                 'net_salary_minor' => $rows->sum('net_minor'),
                 'posted_by' => $userId,
@@ -58,6 +60,7 @@ final class RunPayrollAction
                     'hr_staff_id' => $row['staff']->id,
                     'branch_id' => $row['staff']->branch_id,
                     'gross_salary_minor' => $row['gross_minor'],
+                    'bonus_minor' => $row['bonus_minor'],
                     'deduction_minor' => $row['deduction_minor'],
                     'net_salary_minor' => $row['net_minor'],
                     'deduction_breakdown' => $row['deductions']->map(fn (HrStaffDeduction $deduction): array => [
@@ -66,10 +69,20 @@ final class RunPayrollAction
                         'amount_minor' => $deduction->amount_minor,
                         'reason' => $deduction->reason,
                     ])->values()->all(),
+                    'bonus_breakdown' => $row['bonuses']->map(fn (HrStaffBonus $bonus): array => [
+                        'id' => $bonus->id,
+                        'type' => $bonus->bonus_type,
+                        'amount_minor' => $bonus->amount_minor,
+                        'reason' => $bonus->reason,
+                    ])->values()->all(),
                 ]);
 
                 HrStaffDeduction::query()
                     ->whereIn('id', $row['deductions']->pluck('id'))
+                    ->update(['status' => 'applied']);
+
+                HrStaffBonus::query()
+                    ->whereIn('id', $row['bonuses']->pluck('id'))
                     ->update(['status' => 'applied']);
             }
 
@@ -81,7 +94,7 @@ final class RunPayrollAction
                     $branchDeductionReceivableMinor = $branchRows->sum(fn (array $row): int => (int) $row['deductions']->whereIn('deduction_type', ['fine', 'other'])->sum('amount_minor'));
 
                     return [
-                        ['account_code' => 'EXP-6030', 'branch_id' => $branchIdValue, 'debit_minor' => $branchRows->sum('gross_minor'), 'memo' => 'Gross salaries and wages'],
+                        ['account_code' => 'EXP-6030', 'branch_id' => $branchIdValue, 'debit_minor' => $branchRows->sum('gross_minor') + $branchRows->sum('bonus_minor'), 'memo' => 'Gross salaries, wages and bonuses'],
                         ['account_code' => $data['funding_account_code'], 'branch_id' => $branchIdValue, 'credit_minor' => $branchRows->sum('net_minor'), 'memo' => 'Net wages paid from funding account'],
                         ['account_code' => '1300', 'branch_id' => $branchIdValue, 'credit_minor' => $branchSalaryAdvanceMinor, 'memo' => 'Clear salary advances'],
                         ['account_code' => '1310', 'branch_id' => $branchIdValue, 'credit_minor' => $branchDeductionReceivableMinor, 'memo' => 'Clear staff deduction receivables'],
@@ -112,7 +125,7 @@ final class RunPayrollAction
     public function projectedNetMinor(array $data): int
     {
         $staff = HrStaff::query()
-            ->with('deductions')
+            ->with(['deductions', 'bonuses'])
             ->where('tenant_id', $data['tenant_id'])
             ->where('status', 'active')
             ->get();
@@ -132,13 +145,20 @@ final class RunPayrollAction
                 ->where('status', 'pending')
                 ->values();
             $deductionMinor = (int) $deductions->sum('amount_minor');
+            $bonuses = $staff->bonuses
+                ->where('bonus_month', $payrollMonth)
+                ->where('status', 'pending')
+                ->values();
+            $bonusMinor = (int) $bonuses->sum('amount_minor');
             $grossMinor = (int) $staff->monthly_salary_minor;
 
             return [
                 'staff' => $staff,
                 'gross_minor' => $grossMinor,
+                'bonus_minor' => $bonusMinor,
                 'deduction_minor' => $deductionMinor,
-                'net_minor' => max(0, $grossMinor - $deductionMinor),
+                'net_minor' => max(0, $grossMinor + $bonusMinor - $deductionMinor),
+                'bonuses' => $bonuses,
                 'deductions' => $deductions,
             ];
         })->values();

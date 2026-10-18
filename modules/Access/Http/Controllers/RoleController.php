@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Modules\Access\Actions\CreateTenantUserAction;
@@ -159,39 +160,76 @@ final class RoleController extends Controller
         $tenant = $this->tenant($membership->tenant_id);
         $this->authorizeManageUsers($request->user(), $tenant);
 
+        $membership->loadMissing('user');
+
         $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => [
+                'required',
+                'email:rfc',
+                'max:255',
+                Rule::unique('users', 'email')->ignore($membership->user_id),
+            ],
+            'password' => ['nullable', 'string', 'min:8', 'max:255', 'confirmed'],
             'role_id' => ['nullable', Rule::exists('roles', 'id')->where('tenant_id', $tenant->id)],
             'branch_id' => ['nullable', Rule::exists('branches', 'id')->where('tenant_id', $tenant->id)],
+            'is_active' => ['required', 'boolean'],
         ]);
 
-        // Lockout protection: never strip the last active Business Owner of the owner role.
-        $ownerRole = Role::query()->where('tenant_id', $tenant->id)->where('slug', 'business-owner')->first();
+        $isActive = $request->boolean('is_active');
+        $user = $membership->user;
 
-        if ($ownerRole && (int) $membership->role_id === $ownerRole->id && (int) ($data['role_id'] ?? 0) !== $ownerRole->id) {
-            $otherOwners = TenantMembership::query()
+        DB::transaction(function () use ($membership, $tenant, $data, $isActive, $user): void {
+            $membership->newQuery()->whereKey($membership->id)->lockForUpdate()->firstOrFail();
+
+            // Lockout protection: never demote or disable the last active Business Owner.
+            $ownerRole = Role::query()
                 ->where('tenant_id', $tenant->id)
-                ->where('role_id', $ownerRole->id)
-                ->where('status', MembershipStatus::Active->value)
-                ->where('id', '!=', $membership->id)
-                ->exists();
+                ->where('slug', 'business-owner')
+                ->first();
 
-            abort_unless($otherOwners, 422, 'This is the last Business Owner. Assign another owner before changing this one.');
-        }
+            $removesActiveOwner = $ownerRole
+                && (int) $membership->role_id === $ownerRole->id
+                && $membership->status === MembershipStatus::Active
+                && (! $isActive || (int) ($data['role_id'] ?? 0) !== $ownerRole->id);
 
-        $membership->update([
-            'role_id' => $data['role_id'] ?: null,
-            'branch_id' => $data['branch_id'] ?: null,
-        ]);
+            if ($removesActiveOwner) {
+                $otherOwners = TenantMembership::query()
+                    ->where('tenant_id', $tenant->id)
+                    ->where('role_id', $ownerRole->id)
+                    ->where('status', MembershipStatus::Active->value)
+                    ->where('id', '!=', $membership->id)
+                    ->exists();
+
+                abort_unless($otherOwners, 422, 'This is the last active Business Owner. Assign another owner before changing or disabling this one.');
+            }
+
+            $emailChanged = $user->email !== $data['email'];
+            $user->forceFill([
+                'name' => $data['name'],
+                'email' => $data['email'],
+                ...($emailChanged ? ['email_verified_at' => null] : []),
+                ...(! empty($data['password']) ? ['password' => $data['password']] : []),
+            ])->save();
+
+            $membership->update([
+                'role_id' => $data['role_id'] ?: null,
+                'branch_id' => $data['branch_id'] ?: null,
+                'status' => $isActive ? MembershipStatus::Active : MembershipStatus::Inactive,
+            ]);
+        });
 
         $newRole = $data['role_id'] ? Role::find($data['role_id'])?->name : 'no role';
-        app(AuditLogger::class)->log($tenant->id, $request->user(), 'membership.updated', "Set {$membership->user->name}'s role to {$newRole}.", 'access', 'membership', (string) $membership->id, [
+        $accessState = $isActive ? 'enabled' : 'disabled';
+        app(AuditLogger::class)->log($tenant->id, $request->user(), 'membership.updated', "Updated {$user->name}'s profile and {$accessState} their access with {$newRole}.", 'access', 'membership', (string) $membership->id, [
             'role_id' => $data['role_id'] ?: null,
             'branch_id' => $data['branch_id'] ?: null,
+            'status' => $isActive ? MembershipStatus::Active->value : MembershipStatus::Inactive->value,
         ]);
 
         return redirect()
             ->to(route('admin.business.index', ['tenant' => $tenant->id]).'#users')
-            ->with('status', "Access updated for {$membership->user->name}.");
+            ->with('status', "User information and access updated for {$user->name}.");
     }
 
     /**

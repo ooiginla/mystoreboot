@@ -265,6 +265,7 @@ final class RoutePermissionMap
             'admin.hr-payroll.index' => 'hr.staff.view',
             'admin.hr-payroll.staff.store' => 'hr.staff.manage',
             'admin.hr-payroll.staff.update' => 'hr.staff.manage',
+            'admin.hr-payroll.bonuses.store' => 'hr.staff.manage',
             'admin.hr-payroll.deductions.store' => 'hr.staff.manage',
             'admin.hr-payroll.payroll-runs.store' => ['payroll.run', 'payroll.prepare'],
 

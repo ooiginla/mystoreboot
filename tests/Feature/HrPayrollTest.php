@@ -9,6 +9,7 @@ use Modules\Finance\Models\FinanceJournalEntry;
 use Modules\HrPayroll\Models\HrPayrollItem;
 use Modules\HrPayroll\Models\HrPayrollRun;
 use Modules\HrPayroll\Models\HrStaff;
+use Modules\HrPayroll\Models\HrStaffBonus;
 use Modules\HrPayroll\Models\HrStaffDeduction;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
@@ -18,7 +19,7 @@ class HrPayrollTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_staff_deduction_and_monthly_payroll_can_be_saved(): void
+    public function test_staff_bonus_deduction_and_monthly_payroll_can_be_saved(): void
     {
         $tenant = Tenant::query()->create([
             'name' => 'Payroll Shop',
@@ -43,6 +44,8 @@ class HrPayrollTest extends TestCase
             ->assertOk()
             ->assertSee('HR &amp; Payroll', false)
             ->assertSee('Staff records')
+            ->assertSee('Staff bonuses')
+            ->assertSee('Add bonus')
             ->assertSee('Monthly salary schedule')
             ->assertSee('Pay wages from')
             ->assertSee('Overall total net')
@@ -79,6 +82,24 @@ class HrPayrollTest extends TestCase
             ->assertRedirect();
 
         $this->actingAs($user)
+            ->post(route('admin.hr-payroll.bonuses.store'), [
+                'tenant_id' => $tenant->id,
+                'hr_staff_id' => $staff->id,
+                'bonus_type' => 'performance',
+                'bonus_month' => '2026-06',
+                'bonus_date' => '2026-06-10',
+                'amount' => '10000',
+                'reason' => 'Exceeded sales target',
+            ])
+            ->assertRedirect(route('admin.hr-payroll.index', ['tenant' => $tenant->id, 'payroll_month' => '2026-06']).'#bonuses');
+
+        $this->get(route('admin.hr-payroll.index', ['tenant' => $tenant->id, 'payroll_month' => '2026-06']).'#salaries')
+            ->assertOk()
+            ->assertSee('NGN 10,000.00')
+            ->assertSee('NGN 135,000.00')
+            ->assertSee('Performance');
+
+        $this->actingAs($user)
             ->post(route('admin.hr-payroll.payroll-runs.store'), [
                 'tenant_id' => $tenant->id,
                 'payroll_month' => '2026-06',
@@ -91,8 +112,11 @@ class HrPayrollTest extends TestCase
         $item = HrPayrollItem::query()->where('hr_payroll_run_id', $run->id)->where('hr_staff_id', $staff->id)->firstOrFail();
 
         $this->assertSame(15000000, $item->gross_salary_minor);
+        $this->assertSame(1000000, $item->bonus_minor);
         $this->assertSame(2500000, $item->deduction_minor);
-        $this->assertSame(12500000, $item->net_salary_minor);
+        $this->assertSame(13500000, $item->net_salary_minor);
+        $this->assertSame('performance', $item->bonus_breakdown[0]['type']);
+        $this->assertSame('applied', HrStaffBonus::query()->firstOrFail()->status);
         $this->assertSame('applied', HrStaffDeduction::query()->firstOrFail()->status);
 
         $deductionJournal = FinanceJournalEntry::query()->with('lines')->where('tenant_id', $tenant->id)->where('source_type', 'hr_staff_deduction')->where('source_event', 'posted')->firstOrFail();
@@ -104,10 +128,10 @@ class HrPayrollTest extends TestCase
             ->where('source_event', 'posted')
             ->firstOrFail();
 
-        $this->assertSame(15000000, (int) $payrollJournal->lines->sum('debit_minor'));
-        $this->assertSame(15000000, (int) $payrollJournal->lines->sum('credit_minor'));
-        $this->assertTrue($payrollJournal->lines->contains(fn ($line): bool => $line->account->code === 'EXP-6030' && $line->debit_minor === 15000000));
-        $this->assertTrue($payrollJournal->lines->contains(fn ($line): bool => $line->account->code === '1000' && $line->credit_minor === 12500000));
+        $this->assertSame(16000000, (int) $payrollJournal->lines->sum('debit_minor'));
+        $this->assertSame(16000000, (int) $payrollJournal->lines->sum('credit_minor'));
+        $this->assertTrue($payrollJournal->lines->contains(fn ($line): bool => $line->account->code === 'EXP-6030' && $line->debit_minor === 16000000));
+        $this->assertTrue($payrollJournal->lines->contains(fn ($line): bool => $line->account->code === '1000' && $line->credit_minor === 13500000));
         $this->assertTrue($payrollJournal->lines->every(fn ($line): bool => $line->branch_id === $branch->id));
     }
 }

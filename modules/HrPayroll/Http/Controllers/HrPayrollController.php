@@ -18,11 +18,13 @@ use Modules\Finance\Actions\EnsureDefaultChartOfAccountsAction;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Finance\Support\PaymentSourceAccounts;
 use Modules\HrPayroll\Http\Requests\PayrollRunRequest;
+use Modules\HrPayroll\Http\Requests\StaffBonusRequest;
 use Modules\HrPayroll\Http\Requests\StaffDeductionRequest;
 use Modules\HrPayroll\Http\Requests\StaffRequest;
 use Modules\HrPayroll\Models\HrPayrollItem;
 use Modules\HrPayroll\Models\HrPayrollRun;
 use Modules\HrPayroll\Models\HrStaff;
+use Modules\HrPayroll\Models\HrStaffBonus;
 use Modules\HrPayroll\Models\HrStaffBranchTransfer;
 use Modules\HrPayroll\Models\HrStaffDeduction;
 use Modules\Tenancy\Models\Tenant;
@@ -40,9 +42,10 @@ final class HrPayrollController extends Controller
 
         $payrollMonth = $request->string('payroll_month')->toString() ?: now()->format('Y-m');
         $branches = Branch::query()->where('tenant_id', $tenant->id)->orderByDesc('is_primary')->orderBy('name')->get();
-        $staff = HrStaff::query()->with(['branch', 'deductions'])->where('tenant_id', $tenant->id)->orderBy('first_name')->get();
+        $staff = HrStaff::query()->with(['branch', 'deductions', 'bonuses'])->where('tenant_id', $tenant->id)->orderBy('first_name')->get();
         $activeStaff = $staff->where('status', 'active')->values();
         $deductions = HrStaffDeduction::query()->with('staff.branch')->where('tenant_id', $tenant->id)->latest('deduction_date')->get();
+        $bonuses = HrStaffBonus::query()->with('staff.branch')->where('tenant_id', $tenant->id)->latest('bonus_date')->get();
         app(EnsureDefaultChartOfAccountsAction::class)->execute($tenant->id);
         $payrollFundingAccounts = PaymentSourceAccounts::query($tenant->id)
             ->orderBy('code')
@@ -67,6 +70,7 @@ final class HrPayrollController extends Controller
             'branches' => $branches,
             'staff' => $staff,
             'deductions' => $deductions,
+            'bonuses' => $bonuses,
             'payrollMonth' => $payrollMonth,
             'scheduleRows' => $this->salarySchedule($activeStaff, $payrollMonth),
             'payrollFundingAccounts' => $payrollFundingAccounts,
@@ -77,6 +81,7 @@ final class HrPayrollController extends Controller
                 'staff' => $staff->count(),
                 'active_staff' => $activeStaff->count(),
                 'gross_minor' => $activeStaff->sum('monthly_salary_minor'),
+                'bonus_minor' => $bonuses->where('bonus_month', $payrollMonth)->where('status', 'pending')->sum('amount_minor'),
                 'deduction_minor' => $deductions->where('deduction_month', $payrollMonth)->where('status', 'pending')->sum('amount_minor'),
             ],
         ]);
@@ -160,6 +165,36 @@ final class HrPayrollController extends Controller
         return redirect()->to(route('admin.hr-payroll.index', ['tenant' => $deduction->tenant_id, 'payroll_month' => $deduction->deduction_month]).'#deductions')->with('status', 'Staff deduction posted.');
     }
 
+    public function storeBonus(StaffBonusRequest $request): RedirectResponse
+    {
+        $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
+        $data = $request->validated();
+
+        abort_if(
+            HrPayrollRun::query()
+                ->where('tenant_id', $data['tenant_id'])
+                ->where('payroll_month', $data['bonus_month'])
+                ->exists(),
+            422,
+            'Payroll has already been posted for this month.',
+        );
+
+        $bonus = HrStaffBonus::query()->create([
+            'tenant_id' => $data['tenant_id'],
+            'hr_staff_id' => $data['hr_staff_id'],
+            'bonus_type' => $data['bonus_type'],
+            'bonus_month' => $data['bonus_month'],
+            'bonus_date' => $data['bonus_date'],
+            'amount_minor' => $this->moneyToMinor($data['amount']),
+            'status' => 'pending',
+            'reason' => $data['reason'] ?? null,
+        ]);
+
+        return redirect()
+            ->to(route('admin.hr-payroll.index', ['tenant' => $bonus->tenant_id, 'payroll_month' => $bonus->bonus_month]).'#bonuses')
+            ->with('status', 'Staff bonus added to the payroll month.');
+    }
+
     public function storePayrollRun(PayrollRunRequest $request, \Modules\HrPayroll\Actions\RunPayrollAction $runPayroll, \Modules\Access\Support\ApprovalService $approvals): RedirectResponse
     {
         /** @var User $user */
@@ -195,13 +230,20 @@ final class HrPayrollController extends Controller
                 ->where('status', 'pending')
                 ->values();
             $deductionMinor = (int) $deductions->sum('amount_minor');
+            $bonuses = $staff->bonuses
+                ->where('bonus_month', $payrollMonth)
+                ->where('status', 'pending')
+                ->values();
+            $bonusMinor = (int) $bonuses->sum('amount_minor');
             $grossMinor = (int) $staff->monthly_salary_minor;
 
             return [
                 'staff' => $staff,
                 'gross_minor' => $grossMinor,
+                'bonus_minor' => $bonusMinor,
                 'deduction_minor' => $deductionMinor,
-                'net_minor' => max(0, $grossMinor - $deductionMinor),
+                'net_minor' => max(0, $grossMinor + $bonusMinor - $deductionMinor),
+                'bonuses' => $bonuses,
                 'deductions' => $deductions,
             ];
         })->values();

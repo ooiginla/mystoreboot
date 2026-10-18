@@ -23,7 +23,7 @@
         <div>
             <div class="eyebrow">Module 9</div>
             <h1>HR & Payroll</h1>
-            <p class="subtle">Staff records, branch assignment, deductions, monthly salary schedules, payroll posting, and payslips for {{ $tenant->name }}.</p>
+            <p class="subtle">Staff records, branch assignment, bonuses, deductions, monthly salary schedules, payroll posting, and payslips for {{ $tenant->name }}.</p>
         </div>
         @if ($isPlatformAdmin)
             <form method="GET" action="{{ route('admin.hr-payroll.index') }}" style="min-width: 260px;">
@@ -48,12 +48,14 @@
         <div class="stat"><span class="subtle">Staff</span><strong>{{ $stats['staff'] }}</strong></div>
         <div class="stat"><span class="subtle">Active staff</span><strong>{{ $stats['active_staff'] }}</strong></div>
         <div class="stat"><span class="subtle">Gross salaries</span><strong>{{ $money($stats['gross_minor']) }}</strong></div>
+        <div class="stat"><span class="subtle">Pending bonuses</span><strong>{{ $money($stats['bonus_minor']) }}</strong></div>
         <div class="stat"><span class="subtle">Pending deductions</span><strong>{{ $money($stats['deduction_minor']) }}</strong></div>
     </div>
 
     <div class="tab-layout">
         <nav class="pill-nav" aria-label="HR and payroll sections" role="tablist">
             <a href="#staff" role="tab" data-tab-target="staff">Staff <span class="badge neutral">{{ $staff->count() }}</span></a>
+            <a href="#bonuses" role="tab" data-tab-target="bonuses">Bonuses <span class="badge neutral">{{ $bonuses->where('status', 'pending')->count() }}</span></a>
             <a href="#deductions" role="tab" data-tab-target="deductions">Deductions <span class="badge neutral">{{ $deductions->where('status', 'pending')->count() }}</span></a>
             <a href="#salaries" role="tab" data-tab-target="salaries">Salaries</a>
             <a href="#payslips" role="tab" data-tab-target="payslips">Payslips</a>
@@ -86,6 +88,25 @@
                 </div>
             </section>
 
+            <section class="panel tab-panel" id="bonuses" role="tabpanel" data-tab-panel hidden>
+                <div class="panel-header">
+                    <div><h2 class="panel-title">Staff bonuses</h2><p class="subtle">Add performance, commission, overtime, holiday, or other bonuses to a payroll month.</p></div>
+                    <button class="btn accent" type="button" data-dialog-open="bonus-dialog">Add bonus</button>
+                </div>
+                <div class="panel-body" style="overflow-x: auto;">
+                    <table class="table">
+                        <thead><tr><th>Staff</th><th>Month</th><th>Date</th><th>Type</th><th>Amount</th><th>Status</th><th>Reason</th></tr></thead>
+                        <tbody>
+                            @forelse ($bonuses as $bonus)
+                                <tr><td>{{ $bonus->staff->name }}</td><td>{{ $bonus->bonus_month }}</td><td>{{ $bonus->bonus_date->format('M j, Y') }}</td><td>{{ $headline($bonus->bonus_type) }}</td><td>{{ $money($bonus->amount_minor) }}</td><td><span class="badge {{ $bonus->status === 'pending' ? 'neutral' : '' }}">{{ $headline($bonus->status) }}</span></td><td>{{ $bonus->reason ?: 'Not set' }}</td></tr>
+                            @empty
+                                <tr><td colspan="7"><div class="empty">No staff bonuses yet.</div></td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
             <section class="panel tab-panel" id="deductions" role="tabpanel" data-tab-panel hidden>
                 <div class="panel-header">
                     <div><h2 class="panel-title">Staff deductions</h2><p class="subtle">Post fines, salary advances, and other deductions against a payroll month.</p></div>
@@ -107,7 +128,7 @@
 
             <section class="panel tab-panel" id="salaries" role="tabpanel" data-tab-panel hidden>
                 <div class="panel-header">
-                    <div><h2 class="panel-title">Monthly salary schedule</h2><p class="subtle">Calculate gross salary, deductions, and net pay for all active staff before posting the month.</p></div>
+                    <div><h2 class="panel-title">Monthly salary schedule</h2><p class="subtle">Calculate base salary, bonuses, deductions, and net pay for all active staff before posting the month.</p></div>
                 </div>
                 <div class="panel-body">
                     <form class="payroll-filter" method="GET" action="{{ route('admin.hr-payroll.index') }}#salaries">
@@ -117,19 +138,20 @@
                     </form>
                     <div style="overflow-x: auto;">
                         <table class="table">
-                            <thead><tr><th>Staff</th><th>Branch</th><th>Gross salary</th><th>Deductions</th><th>Net salary</th><th>Deduction detail</th></tr></thead>
+                            <thead><tr><th>Staff</th><th>Branch</th><th>Base salary</th><th>Bonuses</th><th>Deductions</th><th>Net salary</th><th>Details</th></tr></thead>
                             <tbody>
                                 @forelse ($scheduleRows as $row)
                                     <tr>
                                         <td>{{ $row['staff']->name }}<br><span class="subtle">{{ $row['staff']->staff_number }}</span></td>
                                         <td>{{ $row['staff']->branch?->name ?? 'Unassigned' }}</td>
                                         <td>{{ $money($row['gross_minor']) }}</td>
+                                        <td>{{ $money($row['bonus_minor']) }}</td>
                                         <td>{{ $money($row['deduction_minor']) }}</td>
                                         <td><strong>{{ $money($row['net_minor']) }}</strong></td>
-                                        <td>@forelse ($row['deductions'] as $deduction)<div>{{ $headline($deduction->deduction_type) }}: {{ $money($deduction->amount_minor) }}</div>@empty<span class="subtle">No deductions</span>@endforelse</td>
+                                        <td>@foreach ($row['bonuses'] as $bonus)<div style="color:var(--brand-strong);">+ {{ $headline($bonus->bonus_type) }}: {{ $money($bonus->amount_minor) }}</div>@endforeach @foreach ($row['deductions'] as $deduction)<div>- {{ $headline($deduction->deduction_type) }}: {{ $money($deduction->amount_minor) }}</div>@endforeach @if ($row['bonuses']->isEmpty() && $row['deductions']->isEmpty())<span class="subtle">No adjustments</span>@endif</td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="6"><div class="empty">No active staff to calculate.</div></td></tr>
+                                    <tr><td colspan="7"><div class="empty">No active staff to calculate.</div></td></tr>
                                 @endforelse
                             </tbody>
                         </table>
@@ -160,7 +182,7 @@
                     </form>
                     @if ($payrollRuns->isNotEmpty())
                         <h3 class="panel-title" style="margin-top: 22px;">Posted payroll months</h3>
-                        <table class="table"><thead><tr><th>Month</th><th>Staff</th><th>Gross</th><th>Deductions</th><th>Net</th><th>Posted</th></tr></thead><tbody>@foreach ($payrollRuns as $run)<tr><td>{{ $run->payroll_month }}</td><td>{{ $run->items_count }}</td><td>{{ $money($run->gross_salary_minor) }}</td><td>{{ $money($run->deduction_minor) }}</td><td>{{ $money($run->net_salary_minor) }}</td><td>{{ $run->posted_at->format('M j, Y') }}</td></tr>@endforeach</tbody></table>
+                        <table class="table"><thead><tr><th>Month</th><th>Staff</th><th>Base salary</th><th>Bonuses</th><th>Deductions</th><th>Net</th><th>Posted</th></tr></thead><tbody>@foreach ($payrollRuns as $run)<tr><td>{{ $run->payroll_month }}</td><td>{{ $run->items_count }}</td><td>{{ $money($run->gross_salary_minor) }}</td><td>{{ $money($run->bonus_minor) }}</td><td>{{ $money($run->deduction_minor) }}</td><td>{{ $money($run->net_salary_minor) }}</td><td>{{ $run->posted_at->format('M j, Y') }}</td></tr>@endforeach</tbody></table>
                     @endif
                 </div>
             </section>
@@ -169,12 +191,12 @@
                 <div class="panel-header"><div><h2 class="panel-title">Payslips</h2><p class="subtle">Generate an employee payslip from a saved payroll month.</p></div></div>
                 <div class="panel-body" style="overflow-x: auto;">
                     <table class="table">
-                        <thead><tr><th>Employee</th><th>Month</th><th>Branch</th><th>Gross</th><th>Deductions</th><th>Net</th><th></th></tr></thead>
+                        <thead><tr><th>Employee</th><th>Month</th><th>Branch</th><th>Base salary</th><th>Bonuses</th><th>Deductions</th><th>Net</th><th></th></tr></thead>
                         <tbody>
                             @forelse ($payslipItems as $item)
-                                <tr><td>{{ $item->staff->name }}<br><span class="subtle">{{ $item->staff->staff_number }}</span></td><td>{{ $item->run->payroll_month }}</td><td>{{ $item->branch?->name ?? $item->staff->branch?->name ?? 'Unassigned' }}</td><td>{{ $money($item->gross_salary_minor) }}</td><td>{{ $money($item->deduction_minor) }}</td><td><strong>{{ $money($item->net_salary_minor) }}</strong></td><td><button class="btn secondary" type="button" data-dialog-open="payslip-{{ $item->id }}">Generate payslip</button></td></tr>
+                                <tr><td>{{ $item->staff->name }}<br><span class="subtle">{{ $item->staff->staff_number }}</span></td><td>{{ $item->run->payroll_month }}</td><td>{{ $item->branch?->name ?? $item->staff->branch?->name ?? 'Unassigned' }}</td><td>{{ $money($item->gross_salary_minor) }}</td><td>{{ $money($item->bonus_minor) }}</td><td>{{ $money($item->deduction_minor) }}</td><td><strong>{{ $money($item->net_salary_minor) }}</strong></td><td><button class="btn secondary" type="button" data-dialog-open="payslip-{{ $item->id }}">Generate payslip</button></td></tr>
                             @empty
-                                <tr><td colspan="7"><div class="empty">No saved payroll items yet.</div></td></tr>
+                                <tr><td colspan="8"><div class="empty">No saved payroll items yet.</div></td></tr>
                             @endforelse
                         </tbody>
                     </table>
@@ -188,6 +210,7 @@
         @include('hr-payroll::admin.partials.staff-dialog', ['dialogId' => 'staff-edit-'.$employee->id, 'selectedStaff' => $employee])
     @endforeach
     @include('hr-payroll::admin.partials.deduction-dialog')
+    @include('hr-payroll::admin.partials.bonus-dialog')
     @foreach ($payslipItems as $item)
         @include('hr-payroll::admin.partials.payslip-dialog', ['item' => $item])
     @endforeach

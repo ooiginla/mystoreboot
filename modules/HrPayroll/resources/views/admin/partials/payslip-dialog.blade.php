@@ -33,9 +33,20 @@
             </div>
             <table class="table">
                 <tbody>
-                    <tr><th>Gross salary</th><td>{{ $money($item->gross_salary_minor) }}</td></tr>
+                    <tr><th>Base salary</th><td>{{ $money($item->gross_salary_minor) }}</td></tr>
+                    <tr><th>Bonuses</th><td>{{ $money($item->bonus_minor) }}</td></tr>
                     <tr><th>Deductions</th><td>{{ $money($item->deduction_minor) }}</td></tr>
                     <tr><th>Net salary</th><td><strong>{{ $money($item->net_salary_minor) }}</strong></td></tr>
+                </tbody>
+            </table>
+            <table class="table">
+                <thead><tr><th>Bonus</th><th>Reason</th><th>Amount</th></tr></thead>
+                <tbody>
+                    @forelse (($item->bonus_breakdown ?? []) as $bonus)
+                        <tr><td>{{ $headline($bonus['type'] ?? '') }}</td><td>{{ $bonus['reason'] ?? 'Not set' }}</td><td>{{ $money($bonus['amount_minor'] ?? 0) }}</td></tr>
+                    @empty
+                        <tr><td colspan="3"><div class="empty">No bonuses for this payroll item.</div></td></tr>
+                    @endforelse
                 </tbody>
             </table>
             <table class="table">

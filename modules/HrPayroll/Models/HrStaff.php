@@ -35,6 +35,11 @@ final class HrStaff extends Model
         return $this->hasMany(HrStaffDeduction::class);
     }
 
+    public function bonuses(): HasMany
+    {
+        return $this->hasMany(HrStaffBonus::class);
+    }
+
     public function payrollItems(): HasMany
     {
         return $this->hasMany(HrPayrollItem::class);
