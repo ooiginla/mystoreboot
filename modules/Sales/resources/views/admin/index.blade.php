@@ -664,7 +664,8 @@
                 if (otherPicker === currentPicker) return;
                 const otherInput = otherPicker.querySelector('input[role="combobox"]');
                 const otherPanel = otherPicker.querySelector('[data-sales-search-options]');
-                if (otherPanel) otherPanel.hidden = true;
+                if (!otherPanel || otherPanel.hidden) return;
+                otherPanel.hidden = true;
                 if (otherInput) otherInput.setAttribute('aria-expanded', 'false');
             });
         };
@@ -749,7 +750,6 @@
                 activeIndex = -1;
             };
 
-            input.addEventListener('focus', () => closeOtherSearchPickers(picker));
             input.addEventListener('input', () => render(false));
             input.addEventListener('keydown', (event) => {
                 if (event.key === 'Escape') {
@@ -781,12 +781,16 @@
             });
         });
 
-        document.addEventListener('click', (event) => {
+        // Close an open picker before the browser performs the target's default action.
+        // Mutating the DOM from a trailing click event can dismiss native <select>
+        // popovers immediately after they open in Safari and some mobile browsers.
+        document.addEventListener('pointerdown', (event) => {
             document.querySelectorAll('[data-sales-search-picker]').forEach((picker) => {
                 if (picker.contains(event.target)) return;
                 const input = picker.querySelector('input[role="combobox"]');
                 const panel = picker.querySelector('[data-sales-search-options]');
-                if (panel) panel.hidden = true;
+                if (!panel || panel.hidden) return;
+                panel.hidden = true;
                 if (input) input.setAttribute('aria-expanded', 'false');
             });
         });
