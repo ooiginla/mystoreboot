@@ -902,7 +902,7 @@
         function setSalesEntryMode(form, mode, focusField = false, persist = true) {
             if (!form) return;
             const selectedMode = mode === 'manual' ? 'manual' : 'catalog';
-            form.dataset.salesEntryMode = selectedMode;
+            form.dataset.salesEntryActive = selectedMode;
 
             form.querySelectorAll('[data-sales-entry-mode]').forEach((button) => {
                 const selected = button.dataset.salesEntryMode === selectedMode;
@@ -927,7 +927,7 @@
                 const val = (sel) => form.querySelector(sel)?.value ?? null;
                 sessionStorage.setItem(posStateKey(form), JSON.stringify({
                     cart,
-                    entryMode: form.dataset.salesEntryMode || 'catalog',
+                    entryMode: form.dataset.salesEntryActive || 'catalog',
                     customerId: val('[data-sales-customer-value]'),
                     customerLabel: val('[data-sales-customer-search]'),
                     coupon: val('[data-sales-coupon-code]'),
@@ -1353,7 +1353,7 @@
         }
 
         document.addEventListener('keydown', (event) => {
-            const entryMode = event.target.closest('[data-sales-entry-mode]');
+            const entryMode = event.target.closest('[role="tab"][data-sales-entry-mode]');
             if (entryMode && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
                 const form = entryMode.closest('form');
                 const mode = ['ArrowRight', 'End'].includes(event.key) ? 'manual' : 'catalog';
@@ -1373,7 +1373,7 @@
         });
 
         document.addEventListener('click', (event) => {
-            const entryMode = event.target.closest('[data-sales-entry-mode]');
+            const entryMode = event.target.closest('[role="tab"][data-sales-entry-mode]');
             if (entryMode) {
                 setSalesEntryMode(entryMode.closest('form'), entryMode.dataset.salesEntryMode, true);
                 return;
