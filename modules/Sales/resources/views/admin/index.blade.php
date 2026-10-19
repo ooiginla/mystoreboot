@@ -160,13 +160,10 @@
         .sales-inline-check { margin-top: 14px; display: inline-flex; align-items: center; gap: 10px; color: var(--ink-soft); font-size: 14px; font-weight: 700; cursor: pointer; }
         .sales-input-error { border-color: var(--danger) !important; box-shadow: 0 0 0 3.5px rgba(220,38,38,.15) !important; }
         .sales-search-picker { position: relative; }
-        .sales-search-control { display: grid; grid-template-columns: minmax(0, 1fr) 48px; border: 1px solid #d4ddd8; border-radius: var(--radius-sm); background: #fff; overflow: hidden; transition: border-color .15s, box-shadow .15s; }
+        .sales-search-control { display: block; border: 1px solid #d4ddd8; border-radius: var(--radius-sm); background: #fff; overflow: hidden; transition: border-color .15s, box-shadow .15s; }
         .sales-search-control:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3.5px var(--brand-ring); }
         .sales-search-control input { min-width: 0; border: 0; border-radius: 0; box-shadow: none; }
         .sales-search-control input:focus { border: 0; box-shadow: none; }
-        .sales-search-button { display: grid; place-items: center; border: 0; border-left: 1px solid var(--brand-strong); background: var(--brand); color: #fff; cursor: pointer; }
-        .sales-search-button:hover { background: var(--brand-strong); }
-        .sales-search-button svg { width: 22px; height: 22px; }
         .sales-search-options { position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; right: 0; max-height: 280px; overflow-y: auto; border: 1px solid #d4ddd8; border-radius: var(--radius-sm); background: #fff; padding: 6px; box-shadow: 0 14px 30px -10px rgba(16,24,40,.28); }
         .sales-search-options[hidden] { display: none; }
         .sales-search-option { width: 100%; display: block; border: 0; border-radius: 7px; background: #fff; color: var(--ink); padding: 11px 12px; cursor: pointer; text-align: left; font-size: 14px; font-weight: 700; line-height: 1.35; }
@@ -350,9 +347,6 @@
                                             <div class="sales-search-picker" data-sales-search-picker>
                                                 <div class="sales-search-control">
                                                     <input type="text" data-sales-customer-search data-sales-options-id="sales-customer-options" value="{{ $walkInCustomer->name }} · {{ $walkInCustomer->phone }}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" required>
-                                                    <button class="sales-search-button" type="button" data-sales-search-toggle aria-label="Search customers">
-                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg>
-                                                    </button>
                                                 </div>
                                                 <div class="sales-search-options" data-sales-search-options role="listbox" hidden></div>
                                             </div>
@@ -374,9 +368,6 @@
                                                     <div class="sales-search-picker" data-sales-search-picker>
                                                         <div class="sales-search-control">
                                                             <input type="text" data-sales-product-search data-sales-options-id="sales-product-options" placeholder="Type to search..." autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false">
-                                                            <button class="sales-search-button" type="button" data-sales-search-toggle aria-label="Search products">
-                                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg>
-                                                            </button>
                                                         </div>
                                                         <div class="sales-search-options" data-sales-search-options role="listbox" hidden></div>
                                                     </div>
@@ -673,8 +664,7 @@
         document.querySelectorAll('[data-sales-search-picker]').forEach((picker, pickerIndex) => {
             const input = picker.querySelector('input[role="combobox"]');
             const panel = picker.querySelector('[data-sales-search-options]');
-            const toggle = picker.querySelector('[data-sales-search-toggle]');
-            if (!input || !panel || !toggle) return;
+            if (!input || !panel) return;
 
             const panelId = `sales-search-options-${pickerIndex}`;
             const isCustomerPicker = !!picker.closest('[data-sales-customer-picker]');
@@ -717,12 +707,18 @@
                     addCustomer.className = 'sales-search-option add-customer';
                     addCustomer.dataset.salesSearchOption = 'add-customer';
                     addCustomer.textContent = '+ Add new customer';
-                    addCustomer.addEventListener('mousedown', (event) => event.preventDefault());
-                    addCustomer.addEventListener('click', () => {
+                    const openCustomerDialog = () => {
                         close();
                         const dialog = document.getElementById('record-sale-customer-dialog');
                         dialog?.showModal();
                         window.setTimeout(() => dialog?.querySelector('[name="first_name"]')?.focus(), 0);
+                    };
+                    addCustomer.addEventListener('pointerdown', (event) => {
+                        event.preventDefault();
+                        openCustomerDialog();
+                    });
+                    addCustomer.addEventListener('click', (event) => {
+                        if (event.detail === 0) openCustomerDialog();
                     });
                     panel.append(addCustomer);
                 }
@@ -740,8 +736,15 @@
                         row.className = 'sales-search-option';
                         row.dataset.salesSearchOption = String(index);
                         row.textContent = option.value;
-                        row.addEventListener('mousedown', (event) => event.preventDefault());
-                        row.addEventListener('click', () => select(option));
+                        row.addEventListener('pointerdown', (event) => {
+                            event.preventDefault();
+                            select(option);
+                        });
+                        // Keyboard activation produces a click with detail 0. Pointer
+                        // activation was already completed above and must not repeat.
+                        row.addEventListener('click', (event) => {
+                            if (event.detail === 0) select(option);
+                        });
                         panel.append(row);
                     });
                 }
@@ -750,6 +753,11 @@
                 activeIndex = -1;
             };
 
+            input.addEventListener('focus', () => {
+                // Make the default walk-in value easy to replace, but do not open a
+                // menu simply because the pointer passed over or focused the field.
+                if (isCustomerPicker && selectedDataOption(input)) input.select();
+            });
             input.addEventListener('input', () => render(false));
             input.addEventListener('keydown', (event) => {
                 if (event.key === 'Escape') {
@@ -768,31 +776,20 @@
                     panel.querySelectorAll('[data-sales-search-option]')[activeIndex]?.click();
                 }
             });
-            toggle.addEventListener('click', () => {
-                if (panel.hidden) {
-                    render(true);
-                    input.focus();
-                } else {
-                    close();
-                }
-            });
             picker.addEventListener('focusout', (event) => {
+                // Changing a native select while a custom picker is open must not
+                // mutate the page during the select's opening gesture. Safari and
+                // mobile browsers can otherwise dismiss the native menu instantly.
+                if (event.relatedTarget instanceof HTMLSelectElement) return;
                 if (!picker.contains(event.relatedTarget)) close();
             });
         });
 
-        // Close an open picker before the browser performs the target's default action.
-        // Mutating the DOM from a trailing click event can dismiss native <select>
-        // popovers immediately after they open in Safari and some mobile browsers.
-        document.addEventListener('pointerdown', (event) => {
-            document.querySelectorAll('[data-sales-search-picker]').forEach((picker) => {
-                if (picker.contains(event.target)) return;
-                const input = picker.querySelector('input[role="combobox"]');
-                const panel = picker.querySelector('[data-sales-search-options]');
-                if (!panel || panel.hidden) return;
-                panel.hidden = true;
-                if (input) input.setAttribute('aria-expanded', 'false');
-            });
+        // Moving between the customer and product inputs closes only the other
+        // picker. Outside clicks are already handled by each picker's focusout.
+        document.addEventListener('focusin', (event) => {
+            const currentPicker = event.target.closest('[data-sales-search-picker]');
+            if (currentPicker) closeOtherSearchPickers(currentPicker);
         });
 
         const recordSaleCustomerForm = document.querySelector('[data-record-sale-customer-form]');
@@ -1256,6 +1253,9 @@
             const recordAs = event.target.closest('[data-sales-record-as]');
             if (recordAs) {
                 const form = recordAs.closest('[data-pos-form]');
+                // The native menu has completed its selection now, so it is safe
+                // to dismiss any custom search panel left open beside it.
+                closeOtherSearchPickers(null);
                 syncRecordAs(form);
                 if (form) renderSummary(form);
             }
