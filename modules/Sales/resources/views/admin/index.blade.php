@@ -659,6 +659,15 @@
         const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
         const dataOptionsFor = (input) => Array.from(document.getElementById(input?.dataset.salesOptionsId || '')?.options || []);
         const selectedDataOption = (input) => dataOptionsFor(input).find((option) => option.value === input?.value);
+        const closeOtherSearchPickers = (currentPicker) => {
+            document.querySelectorAll('[data-sales-search-picker]').forEach((otherPicker) => {
+                if (otherPicker === currentPicker) return;
+                const otherInput = otherPicker.querySelector('input[role="combobox"]');
+                const otherPanel = otherPicker.querySelector('[data-sales-search-options]');
+                if (otherPanel) otherPanel.hidden = true;
+                if (otherInput) otherInput.setAttribute('aria-expanded', 'false');
+            });
+        };
 
         document.querySelectorAll('[data-sales-search-picker]').forEach((picker, pickerIndex) => {
             const input = picker.querySelector('input[role="combobox"]');
@@ -693,6 +702,7 @@
                 input.focus();
             };
             const render = (showAll = false) => {
+                closeOtherSearchPickers(picker);
                 const query = showAll ? '' : input.value.trim().toLowerCase();
                 const matches = dataOptionsFor(input)
                     .filter((option) => !query || option.value.toLowerCase().includes(query) || (option.dataset.sku || '').toLowerCase().includes(query))
@@ -739,7 +749,7 @@
                 activeIndex = -1;
             };
 
-            input.addEventListener('focus', () => render(selectedDataOption(input) !== undefined));
+            input.addEventListener('focus', () => closeOtherSearchPickers(picker));
             input.addEventListener('input', () => render(false));
             input.addEventListener('keydown', (event) => {
                 if (event.key === 'Escape') {
