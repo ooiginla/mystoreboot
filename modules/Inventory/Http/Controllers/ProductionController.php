@@ -6,12 +6,14 @@ namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\ActiveBranchManager;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
+use Modules\Business\Models\Branch;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Enums\StockPolicy;
 use Modules\Catalog\Models\Product;
@@ -32,7 +34,10 @@ use Modules\Tenancy\Models\Tenant;
 
 final class ProductionController extends Controller
 {
-    public function __construct(private readonly UnitConverter $converter) {}
+    public function __construct(
+        private readonly UnitConverter $converter,
+        private readonly ActiveBranchManager $branches,
+    ) {}
 
     /** Finished-products listing. */
     public function index(Request $request): View
@@ -87,12 +92,22 @@ final class ProductionController extends Controller
     {
         $tenant = $this->tenantFromRequest($request);
         abort_unless($product->tenant_id === $tenant->id && $product->is_finished_product, 404);
+        $activeBranch = $this->activeBranch($request, $tenant);
 
         $variant = $product->variants()->oldest('id')->first();
         abort_if(! $variant, 404);
 
         $recipe = Recipe::query()
-            ->with(['items.componentVariant.product', 'items.unit', 'yieldUnit', 'prepStation'])
+            ->with([
+                'items.componentVariant.product',
+                'items.unit',
+                'yieldUnit',
+                'prepStation' => fn ($query) => $query->when(
+                    $activeBranch,
+                    fn ($query) => $query->where('branch_id', $activeBranch->id),
+                    fn ($query) => $query->whereRaw('1 = 0'),
+                ),
+            ])
             ->where('tenant_id', $tenant->id)
             ->where('output_product_variant_id', $variant->id)
             ->where('is_active', true)
@@ -101,6 +116,7 @@ final class ProductionController extends Controller
 
         $costMap = InventoryStockLevel::query()
             ->where('tenant_id', $tenant->id)
+            ->when($activeBranch, fn ($query) => $query->whereHas('location', fn ($location) => $location->where('branch_id', $activeBranch->id)), fn ($query) => $query->whereRaw('1 = 0'))
             ->get(['product_variant_id', 'average_cost_minor'])
             ->groupBy('product_variant_id')
             ->map(fn (Collection $rows): int => (int) $rows->max('average_cost_minor'));
@@ -138,6 +154,9 @@ final class ProductionController extends Controller
                 ->with(['sourceLocation', 'outputLocation'])
                 ->where('tenant_id', $tenant->id)
                 ->where('output_product_variant_id', $variant->id)
+                ->when($activeBranch, fn ($query) => $query
+                    ->whereHas('sourceLocation', fn ($location) => $location->where('branch_id', $activeBranch->id))
+                    ->whereHas('outputLocation', fn ($location) => $location->where('branch_id', $activeBranch->id)), fn ($query) => $query->whereRaw('1 = 0'))
                 ->latest('id')
                 ->limit(50)
                 ->get(),
@@ -147,10 +166,17 @@ final class ProductionController extends Controller
                 ->where('tenant_id', $tenant->id)
                 ->where('output_product_variant_id', $variant->id)
                 ->where('status', ProductionOrder::STATUS_IN_PROGRESS)
+                ->when($activeBranch, fn ($query) => $query
+                    ->whereHas('sourceLocation', fn ($location) => $location->where('branch_id', $activeBranch->id))
+                    ->whereHas('outputLocation', fn ($location) => $location->where('branch_id', $activeBranch->id)), fn ($query) => $query->whereRaw('1 = 0'))
                 ->oldest('started_at')
                 ->get(),
-            'locations' => InventoryLocation::query()->where('tenant_id', $tenant->id)->orderBy('name')->get(),
-            'prepStations' => InventoryLocation::query()->where('tenant_id', $tenant->id)->where('is_prep_station', true)->orderBy('name')->get(),
+            'locations' => InventoryLocation::query()->where('tenant_id', $tenant->id)
+                ->when($activeBranch, fn ($query) => $query->where('branch_id', $activeBranch->id), fn ($query) => $query->whereRaw('1 = 0'))
+                ->where('status', 'active')->orderBy('name')->get(),
+            'prepStations' => InventoryLocation::query()->where('tenant_id', $tenant->id)
+                ->when($activeBranch, fn ($query) => $query->where('branch_id', $activeBranch->id), fn ($query) => $query->whereRaw('1 = 0'))
+                ->where('status', 'active')->where('is_prep_station', true)->orderBy('name')->get(),
             'unitCategories' => $unitCategories = UnitCategory::query()->with('units')->where('tenant_id', $tenant->id)->orderByDesc('is_default')->orderBy('name')->get(),
             'unitDimensions' => UnitDimension::options(),
             'outputCategoryId' => $product->unit_category_id,
@@ -163,18 +189,21 @@ final class ProductionController extends Controller
             'jsVariantCat' => $variants->mapWithKeys(fn ($v): array => [$v->id => $v->product?->unit_category_id])->all(),
             // Available stock per location per variant, so the produce dialog can show
             // what the chosen source store actually holds before anyone commits a batch.
-            'jsStock' => $this->availabilityMap($tenant->id),
+            'jsStock' => $this->availabilityMap($tenant->id, $activeBranch?->id),
         ]);
     }
 
     /**
      * @return array<string, array<string, float>>
      */
-    private function availabilityMap(string $tenantId): array
+    private function availabilityMap(string $tenantId, ?int $branchId): array
     {
         $map = [];
 
-        foreach (InventoryStockLevel::query()->where('tenant_id', $tenantId)->get() as $level) {
+        foreach (InventoryStockLevel::query()
+            ->where('tenant_id', $tenantId)
+            ->when($branchId, fn ($query) => $query->whereHas('location', fn ($location) => $location->where('branch_id', $branchId)), fn ($query) => $query->whereRaw('1 = 0'))
+            ->get() as $level) {
             $map[(string) $level->inventory_location_id][(string) $level->product_variant_id] = round($level->quantity_available, 4);
         }
 
@@ -194,6 +223,7 @@ final class ProductionController extends Controller
     {
         $tenant = $this->tenantFromRequest($request);
         abort_unless($product->tenant_id === $tenant->id && $product->is_finished_product, 404);
+        $activeBranch = $this->activeBranchOrFail($request, $tenant);
 
         $policy = StockPolicy::tryFrom((string) $request->string('stock_policy'));
 
@@ -207,6 +237,7 @@ final class ProductionController extends Controller
         // down again, so say so rather than letting it sit there quietly.
         $onHand = (float) InventoryStockLevel::query()
             ->where('tenant_id', $tenant->id)
+            ->whereHas('location', fn ($query) => $query->where('branch_id', $activeBranch->id))
             ->whereIn('product_variant_id', $product->variants()->pluck('id'))
             ->sum('quantity_on_hand');
 
@@ -246,6 +277,8 @@ final class ProductionController extends Controller
     public function storeRecipe(RecipeRequest $request): RedirectResponse
     {
         $tenant = $this->tenantFromRequest($request);
+        $activeBranch = $this->activeBranchOrFail($request, $tenant);
+        $this->assertOptionalLocationInBranch($tenant, $activeBranch, $request->integer('prep_station_id'));
 
         $recipe = Recipe::query()->create([
             'tenant_id' => $tenant->id,
@@ -268,6 +301,8 @@ final class ProductionController extends Controller
     {
         $tenant = $this->tenantFromRequest($request);
         abort_unless($recipe->tenant_id === $tenant->id, 403);
+        $activeBranch = $this->activeBranchOrFail($request, $tenant);
+        $this->assertOptionalLocationInBranch($tenant, $activeBranch, $request->integer('prep_station_id'));
 
         $recipe->update([
             'yield_unit_id' => $request->input('yield_unit_id') ? (int) $request->integer('yield_unit_id') : null,
@@ -297,7 +332,10 @@ final class ProductionController extends Controller
     public function record(ProductionRequest $request, RecordProductionAction $action): RedirectResponse
     {
         $tenant = $this->tenantFromRequest($request);
+        $activeBranch = $this->activeBranchOrFail($request, $tenant);
         $recipe = Recipe::query()->where('tenant_id', $tenant->id)->findOrFail((int) $request->integer('recipe_id'));
+        $this->locationInBranch($tenant, $activeBranch, (int) $request->integer('source_location_id'));
+        $this->assertOptionalLocationInBranch($tenant, $activeBranch, $request->integer('output_location_id'));
 
         $action->execute([
             'tenant_id' => $tenant->id,
@@ -321,6 +359,7 @@ final class ProductionController extends Controller
     public function start(Request $request, RecordProductionAction $action): RedirectResponse
     {
         $tenant = $this->tenantFromRequest($request);
+        $activeBranch = $this->activeBranchOrFail($request, $tenant);
 
         $data = $request->validate([
             'recipe_id' => ['required', 'integer'],
@@ -332,9 +371,9 @@ final class ProductionController extends Controller
         ]);
 
         $recipe = Recipe::query()->where('tenant_id', $tenant->id)->findOrFail((int) $data['recipe_id']);
-        $source = InventoryLocation::query()->where('tenant_id', $tenant->id)->findOrFail((int) $data['source_location_id']);
+        $source = $this->locationInBranch($tenant, $activeBranch, (int) $data['source_location_id']);
         $output = ! empty($data['output_location_id'])
-            ? InventoryLocation::query()->where('tenant_id', $tenant->id)->findOrFail((int) $data['output_location_id'])
+            ? $this->locationInBranch($tenant, $activeBranch, (int) $data['output_location_id'])
             : null;
 
         $result = $action->start([
@@ -365,6 +404,8 @@ final class ProductionController extends Controller
     {
         $tenant = $this->tenantFromRequest($request);
         abort_unless($order->tenant_id === $tenant->id, 404);
+        $activeBranch = $this->activeBranchOrFail($request, $tenant);
+        $this->assertOrderInBranch($order, $activeBranch);
 
         $data = $request->validate([
             'actual_yield_quantity' => ['required', 'numeric', 'gt:0', 'max:999999999'],
@@ -375,7 +416,7 @@ final class ProductionController extends Controller
         ]);
 
         if (! empty($data['output_location_id'])) {
-            InventoryLocation::query()->where('tenant_id', $tenant->id)->findOrFail((int) $data['output_location_id']);
+            $this->locationInBranch($tenant, $activeBranch, (int) $data['output_location_id']);
         }
 
         $order = $action->complete($order, $data);
@@ -390,6 +431,7 @@ final class ProductionController extends Controller
     {
         $tenant = $this->tenantFromRequest($request);
         abort_unless($order->tenant_id === $tenant->id, 404);
+        $this->assertOrderInBranch($order, $this->activeBranchOrFail($request, $tenant));
 
         $action->cancel($order, $request->string('reason')->toString() ?: null);
 
@@ -462,6 +504,49 @@ final class ProductionController extends Controller
         abort_if(! $tenant, 403);
 
         return $tenant;
+    }
+
+    private function activeBranch(Request $request, Tenant $tenant): ?Branch
+    {
+        $state = $this->branches->stateForRequest($request, $request->user());
+
+        return $state['tenant']?->id === $tenant->id ? $state['activeBranch'] : null;
+    }
+
+    private function activeBranchOrFail(Request $request, Tenant $tenant): Branch
+    {
+        $branch = $this->activeBranch($request, $tenant);
+        abort_unless($branch instanceof Branch, 403, 'Select an active branch before working with inventory.');
+
+        return $branch;
+    }
+
+    private function locationInBranch(Tenant $tenant, Branch $branch, int $locationId): InventoryLocation
+    {
+        return InventoryLocation::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('branch_id', $branch->id)
+            ->where('status', 'active')
+            ->findOrFail($locationId);
+    }
+
+    private function assertOptionalLocationInBranch(Tenant $tenant, Branch $branch, int $locationId): void
+    {
+        if ($locationId > 0) {
+            $this->locationInBranch($tenant, $branch, $locationId);
+        }
+    }
+
+    private function assertOrderInBranch(ProductionOrder $order, Branch $branch): void
+    {
+        $locationIds = collect([$order->source_location_id, $order->output_location_id])->filter()->unique()->values();
+        $belongs = InventoryLocation::query()
+            ->where('tenant_id', $order->tenant_id)
+            ->where('branch_id', $branch->id)
+            ->whereIn('id', $locationIds)
+            ->count() === $locationIds->count();
+
+        abort_unless($locationIds->isNotEmpty() && $belongs, 404);
     }
 
     /**

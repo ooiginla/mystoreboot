@@ -75,6 +75,8 @@ final class RawMaterialTest extends TestCase
             ->get(route('admin.catalog.raw-materials.index', ['tenant' => $tenant->id]))
             ->assertOk()
             ->assertSee('<th>Measurement category</th>', false)
+            ->assertDontSee('<th>On hand</th>', false)
+            ->assertDontSee('data-onhand-unit', false)
             ->assertDontSee('<th>SKU</th>', false)
             ->assertSee('Flour measurement');
     }

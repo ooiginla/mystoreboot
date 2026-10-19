@@ -6,6 +6,7 @@ namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\ActiveBranchManager;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -44,6 +45,8 @@ use Modules\Tenancy\Models\Tenant;
 
 final class InventoryController extends Controller
 {
+    public function __construct(private readonly ActiveBranchManager $activeBranches) {}
+
     public function index(
         Request $request,
         EnsureInventoryLocationsAction $inventoryLocations,
@@ -55,6 +58,8 @@ final class InventoryController extends Controller
         $tenant = $this->resolveTenant($request, $tenants);
 
         abort_if(! $tenant, 403);
+        $branchState = $this->activeBranches->stateForRequest($request, $user);
+        $activeBranch = $branchState['tenant']?->id === $tenant->id ? $branchState['activeBranch'] : null;
 
         $inventoryLocations->forTenant($tenant);
         app(EnsureLocationTypesAction::class)->forTenant($tenant->id);
@@ -69,6 +74,7 @@ final class InventoryController extends Controller
         $locations = InventoryLocation::query()
             ->with('branch')
             ->where('tenant_id', $tenant->id)
+            ->when($activeBranch, fn ($query) => $query->where('branch_id', $activeBranch->id), fn ($query) => $query->whereRaw('1 = 0'))
             ->orderBy('name')
             ->get();
 
@@ -88,6 +94,7 @@ final class InventoryController extends Controller
         $allStockLevels = InventoryStockLevel::query()
             ->with(['location.branch', 'variant.baseUnit', 'variant.product.category', 'variant.product.unitCategory.units', 'variant.optionValues.option'])
             ->where('tenant_id', $tenant->id)
+            ->when($activeBranch, fn ($query) => $query->whereHas('location', fn ($location) => $location->where('branch_id', $activeBranch->id)), fn ($query) => $query->whereRaw('1 = 0'))
             ->latest('last_movement_at')
             ->get();
 
@@ -118,6 +125,7 @@ final class InventoryController extends Controller
         $movements = InventoryMovement::query()
             ->with(['location.branch', 'destinationLocation.branch', 'variant.product', 'variant.baseUnit', 'enteredUnit', 'batchAllocations.batch', 'reversal'])
             ->where('tenant_id', $tenant->id)
+            ->when($activeBranch, fn ($query) => $query->whereHas('location', fn ($location) => $location->where('branch_id', $activeBranch->id)), fn ($query) => $query->whereRaw('1 = 0'))
             ->latest('occurred_at')
             ->limit(80)
             ->get();
@@ -125,6 +133,7 @@ final class InventoryController extends Controller
         $batches = InventoryBatch::query()
             ->with(['location.branch', 'variant.product'])
             ->where('tenant_id', $tenant->id)
+            ->when($activeBranch, fn ($query) => $query->whereHas('location', fn ($location) => $location->where('branch_id', $activeBranch->id)), fn ($query) => $query->whereRaw('1 = 0'))
             ->where('quantity_remaining', '>', 0)
             ->latest()
             ->get();
@@ -136,7 +145,7 @@ final class InventoryController extends Controller
             'tenants' => $tenants,
             'isPlatformAdmin' => $user->is_platform_admin,
             'canReverseMovements' => $user->is_platform_admin || $user->hasPermission($tenant, 'inventory.adjustments.approve'),
-            'branches' => Branch::query()->where('tenant_id', $tenant->id)->orderByDesc('is_primary')->orderBy('name')->get(),
+            'branches' => $activeBranch ? collect([$activeBranch]) : collect(),
             'locations' => $locations,
             'selectedStockLocationId' => $selectedStockLocationId,
             'stockProductSearch' => $stockProductSearch,
@@ -158,7 +167,7 @@ final class InventoryController extends Controller
             'reorderUnits' => $variants->mapWithKeys(fn (ProductVariant $variant): array => [
                 $variant->id => ReorderLevels::unitsOf($variant),
             ])->all(),
-            'reorderLevels' => ReorderLevels::levelsFor($tenant->id),
+            'reorderLevels' => ReorderLevels::levelsFor($tenant->id, $locations->pluck('id')->all()),
             'movementTypes' => InventoryMovementType::options(),
             'stockConditions' => StockCondition::options(),
             'stats' => [
@@ -173,8 +182,10 @@ final class InventoryController extends Controller
     public function storeLocation(InventoryLocationRequest $request): RedirectResponse
     {
         $this->authorizeTenantIdAccess($request->user(), $request->string('tenant_id')->toString());
+        $tenant = Tenant::query()->findOrFail($request->string('tenant_id')->toString());
+        $activeBranch = $this->activeBranchOrFail($request, $tenant);
 
-        $location = InventoryLocation::query()->create($request->validated());
+        $location = InventoryLocation::query()->create([...$request->validated(), 'branch_id' => $activeBranch->id]);
 
         return redirect()
             ->to(route('admin.inventory.index', ['tenant' => $location->tenant_id]).'#locations')
@@ -184,6 +195,8 @@ final class InventoryController extends Controller
     public function updateLocation(Request $request, InventoryLocation $location): RedirectResponse
     {
         $this->authorizeTenantIdAccess($request->user(), (string) $location->tenant_id);
+        $tenant = Tenant::query()->findOrFail($location->tenant_id);
+        abort_unless($location->branch_id === $this->activeBranchOrFail($request, $tenant)->id, 404);
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:140'],
@@ -225,6 +238,11 @@ final class InventoryController extends Controller
         $data = $request->validated();
         $redirect = route('admin.inventory.index', ['tenant' => $tenantId]).'#movements';
         $tenant = Tenant::query()->findOrFail($tenantId);
+        $activeBranch = $this->activeBranchOrFail($request, $tenant);
+        $this->assertLocationInBranch($tenant, $activeBranch, (int) $data['inventory_location_id']);
+        if (! empty($data['destination_inventory_location_id'])) {
+            $this->assertLocationInBranch($tenant, $activeBranch, (int) $data['destination_inventory_location_id']);
+        }
         $items = $data['items'] ?? [[
             'product_variant_id' => $data['product_variant_id'],
             'movement_type' => $data['movement_type'],
@@ -275,6 +293,8 @@ final class InventoryController extends Controller
         /** @var User $user */
         $user = $request->user();
         $this->authorizeTenantIdAccess($user, (string) $movement->tenant_id);
+        $tenant = Tenant::query()->findOrFail($movement->tenant_id);
+        $this->assertLocationInBranch($tenant, $this->activeBranchOrFail($request, $tenant), (int) $movement->inventory_location_id);
 
         $action->execute($movement, $user);
 
@@ -467,6 +487,15 @@ final class InventoryController extends Controller
     {
         $tenantId = $request->string('tenant_id')->toString();
         $this->authorizeTenantIdAccess($request->user(), $tenantId);
+        $tenant = Tenant::query()->findOrFail($tenantId);
+        $activeBranch = $this->activeBranchOrFail($request, $tenant);
+        foreach ($request->validated('rows') as $index => $row) {
+            if (! $this->locationBelongsToBranch($tenant, $activeBranch, (int) $row['inventory_location_id'])) {
+                throw ValidationException::withMessages([
+                    "rows.{$index}.product_variant_id" => 'That item or location is not available in the active branch.',
+                ]);
+            }
+        }
 
         $saved = $action->execute($tenantId, $request->validated('rows'));
         $fragment = $request->validated('fragment');
@@ -478,6 +507,29 @@ final class InventoryController extends Controller
                 1 => 'Reorder level saved.',
                 default => "{$saved} reorder levels saved.",
             });
+    }
+
+    private function activeBranchOrFail(Request $request, Tenant $tenant): Branch
+    {
+        $state = $this->activeBranches->stateForRequest($request, $request->user());
+        $branch = $state['tenant']?->id === $tenant->id ? $state['activeBranch'] : null;
+        abort_unless($branch instanceof Branch, 403, 'Select an active branch before working with inventory.');
+
+        return $branch;
+    }
+
+    private function assertLocationInBranch(Tenant $tenant, Branch $branch, int $locationId): void
+    {
+        abort_unless($this->locationBelongsToBranch($tenant, $branch, $locationId), 404);
+    }
+
+    private function locationBelongsToBranch(Tenant $tenant, Branch $branch, int $locationId): bool
+    {
+        return InventoryLocation::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('branch_id', $branch->id)
+            ->whereKey($locationId)
+            ->exists();
     }
 
     /**

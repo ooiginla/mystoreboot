@@ -6,10 +6,10 @@ namespace Modules\Catalog\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\ActiveBranchManager;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
@@ -20,16 +20,18 @@ use Modules\Catalog\Enums\TaxBehavior;
 use Modules\Catalog\Http\Requests\RawMaterialRequest;
 use Modules\Catalog\Models\Product;
 use Modules\Inventory\Models\InventoryLocation;
-use Modules\Inventory\Models\InventoryStockLevel;
 use Modules\Inventory\Models\UnitCategory;
 use Modules\Inventory\Support\ReorderLevels;
 use Modules\Tenancy\Models\Tenant;
 
 final class RawMaterialController extends Controller
 {
+    public function __construct(private readonly ActiveBranchManager $branches) {}
+
     public function index(Request $request): View
     {
         [$tenant, $tenants, $user] = $this->context($request);
+        $activeBranch = $this->branches->stateForRequest($request, $user)['activeBranch'];
 
         $materials = Product::query()
             ->with(['variants', 'unitCategory.units'])
@@ -38,22 +40,22 @@ final class RawMaterialController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        $onHand = InventoryStockLevel::query()
+        $reorderLocations = InventoryLocation::query()
             ->where('tenant_id', $tenant->id)
-            ->get(['product_variant_id', 'quantity_on_hand'])
-            ->groupBy('product_variant_id')
-            ->map(fn (Collection $rows): float => (float) $rows->sum('quantity_on_hand'));
+            ->when($activeBranch, fn ($query) => $query->where('branch_id', $activeBranch->id), fn ($query) => $query->whereRaw('1 = 0'))
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
         return view('catalog::admin.raw-materials.index', [
             'tenant' => $tenant,
             'tenants' => $tenants,
             'isPlatformAdmin' => $user->is_platform_admin,
             'materials' => $materials,
-            'onHand' => $onHand,
             'unitCategories' => UnitCategory::query()->where('tenant_id', $tenant->id)->orderByDesc('is_default')->orderBy('name')->get(),
-            'reorderLocations' => InventoryLocation::query()->where('tenant_id', $tenant->id)->where('status', 'active')->orderBy('name')->get(['id', 'name']),
+            'reorderLocations' => $reorderLocations,
             'reorderUnits' => ReorderLevels::unitsFor($tenant->id),
-            'reorderLevels' => ReorderLevels::levelsFor($tenant->id),
+            'reorderLevels' => ReorderLevels::levelsFor($tenant->id, $reorderLocations->pluck('id')->all()),
             'canManageReorder' => $user->is_platform_admin || $user->hasPermission($tenant, 'inventory.manage'),
         ]);
     }

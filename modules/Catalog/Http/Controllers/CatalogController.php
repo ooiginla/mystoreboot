@@ -6,6 +6,7 @@ namespace Modules\Catalog\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\ActiveBranchManager;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -15,7 +16,6 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
-use Modules\Business\Models\Branch;
 use Modules\Catalog\Actions\CreateCategoryAction;
 use Modules\Catalog\Actions\DeleteCategoryAction;
 use Modules\Catalog\Actions\GenerateProductContentAction;
@@ -421,14 +421,16 @@ final class CatalogController extends Controller
 
         // Guarantee at least one inventory location so the Inventory tab always works.
         app(EnsureInventoryLocationsAction::class)->forTenant($tenant);
+        $branchState = app(ActiveBranchManager::class)->stateForRequest(request(), request()->user());
+        $activeBranch = $branchState['tenant']?->id === $tenant->id ? $branchState['activeBranch'] : null;
 
         $locations = InventoryLocation::query()
             ->where('tenant_id', $tenant->id)
+            ->when($activeBranch, fn ($query) => $query->where('branch_id', $activeBranch->id), fn ($query) => $query->whereRaw('1 = 0'))
             ->where('status', 'active')
             ->orderBy('name')
             ->get(['id', 'name', 'branch_id']);
-        $primaryBranchId = Branch::query()->where('tenant_id', $tenant->id)->orderByDesc('is_primary')->orderBy('id')->value('id');
-        $defaultLocationId = optional($locations->firstWhere('branch_id', $primaryBranchId))->id ?? optional($locations->first())->id;
+        $defaultLocationId = optional($locations->first())->id;
 
         return [
             'enabled' => true,
@@ -436,12 +438,13 @@ final class CatalogController extends Controller
             'vendors' => Vendor::query()->where('tenant_id', $tenant->id)->orderBy('name')->get(['id', 'name']),
             'variantStock' => InventoryStockLevel::query()
                 ->where('tenant_id', $tenant->id)
+                ->whereIn('inventory_location_id', $locations->pluck('id'))
                 ->with('location:id,name')
                 ->get()
                 ->groupBy('product_variant_id'),
             'defaultLocationId' => $defaultLocationId,
             'reorderUnits' => ReorderLevels::unitsFor($tenant->id),
-            'reorderLevels' => ReorderLevels::levelsFor($tenant->id),
+            'reorderLevels' => ReorderLevels::levelsFor($tenant->id, $locations->pluck('id')->all()),
         ];
     }
 

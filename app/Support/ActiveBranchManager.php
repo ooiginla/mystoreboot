@@ -135,7 +135,8 @@ final class ActiveBranchManager
     private function resolveTenant(Request $request, User $user): ?Tenant
     {
         $visibleTenants = $this->visibleTenantsFor($user);
-        $tenantId = $request->string('tenant')->toString();
+        $tenantId = $request->string('tenant')->toString()
+            ?: $request->string('tenant_id')->toString();
 
         if ($tenantId !== '') {
             $tenant = $visibleTenants->firstWhere('id', $tenantId);

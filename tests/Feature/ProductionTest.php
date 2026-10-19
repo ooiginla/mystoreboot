@@ -6,12 +6,14 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Modules\Business\Models\Branch;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\Product;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
+use Modules\Inventory\Actions\RecordProductionAction;
 use Modules\Inventory\Enums\InventoryLocationType;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Models\InventoryLocation;
@@ -279,13 +281,56 @@ final class ProductionTest extends TestCase
             'yield_quantity' => 10, 'version' => 1, 'is_active' => true, 'status' => 'active',
         ]);
 
-        app(\Modules\Inventory\Actions\RecordProductionAction::class)->execute([
+        app(RecordProductionAction::class)->execute([
             'tenant_id' => $tenant->id, 'recipe_id' => $recipe->id, 'source_location_id' => $location->id,
             'actual_yield_quantity' => 9,
             'items' => [['component_product_variant_id' => $rice->id, 'actual_quantity' => 20]],
         ]);
 
         $this->assertSame(10.0, (float) ProductionOrder::query()->firstOrFail()->planned_quantity);
+    }
+
+    public function test_production_locations_and_writes_are_limited_to_the_active_branch(): void
+    {
+        [$tenant, $mainLocation, $rice, $oil, $jollof] = $this->productionContext();
+        $jollof->product->update(['is_finished_product' => true]);
+        $mainBranch = $mainLocation->branch;
+        $annexBranch = Branch::query()->create([
+            'tenant_id' => $tenant->id, 'name' => 'Annex', 'code' => 'ANNEX', 'status' => 'active', 'is_primary' => false,
+        ]);
+        $annexLocation = InventoryLocation::query()->create([
+            'tenant_id' => $tenant->id, 'branch_id' => $annexBranch->id, 'name' => 'Annex Secret Store', 'code' => 'ANNEX-STORE',
+            'location_type' => InventoryLocationType::Branch->value, 'status' => 'active',
+        ]);
+        $recipe = Recipe::query()->create([
+            'tenant_id' => $tenant->id, 'output_product_variant_id' => $jollof->id, 'name' => 'Jollof tray',
+            'yield_quantity' => 10, 'version' => 1, 'is_active' => true, 'status' => 'active',
+        ]);
+        $recipe->items()->create([
+            'tenant_id' => $tenant->id, 'component_product_variant_id' => $rice->id, 'quantity' => 20, 'sort_order' => 0,
+        ]);
+        $user = User::factory()->create(['is_platform_admin' => true]);
+        $session = ['active_branch_ids' => [$tenant->id => $mainBranch->id]];
+
+        $this->actingAs($user)
+            ->withSession($session)
+            ->get(route('admin.inventory.production.show', ['product' => $jollof->product_id, 'tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee($mainLocation->name)
+            ->assertDontSee('Annex Secret Store');
+
+        $this->actingAs($user)
+            ->withSession($session)
+            ->post(route('admin.inventory.production.record'), [
+                'tenant' => $tenant->id,
+                'recipe_id' => $recipe->id,
+                'source_location_id' => $annexLocation->id,
+                'actual_yield_quantity' => 10,
+                'items' => [['component_product_variant_id' => $rice->id, 'actual_quantity' => 20]],
+            ])
+            ->assertNotFound();
+
+        $this->assertDatabaseCount('production_orders', 0);
     }
 
     /**
@@ -354,7 +399,7 @@ final class ProductionTest extends TestCase
 
         $make = function (string $name, string $sku) use ($tenant): ProductVariant {
             $product = Product::query()->create([
-                'tenant_id' => $tenant->id, 'name' => $name, 'slug' => \Illuminate\Support\Str::slug($name),
+                'tenant_id' => $tenant->id, 'name' => $name, 'slug' => Str::slug($name),
                 'product_type' => ProductType::Product->value, 'status' => ProductStatus::Active->value,
             ]);
 

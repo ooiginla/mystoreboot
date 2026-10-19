@@ -6,6 +6,7 @@ namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\ActiveBranchManager;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -26,12 +27,16 @@ use Modules\Tenancy\Models\Tenant;
  */
 final class ReorderLevelController extends Controller
 {
+    public function __construct(private readonly ActiveBranchManager $branches) {}
+
     public function index(Request $request): View
     {
         $tenant = $this->tenantFromRequest($request, $tenants, $user);
+        $activeBranch = $this->branches->stateForRequest($request, $user)['activeBranch'];
 
         $locations = InventoryLocation::query()
             ->where('tenant_id', $tenant->id)
+            ->when($activeBranch, fn ($query) => $query->where('branch_id', $activeBranch->id), fn ($query) => $query->whereRaw('1 = 0'))
             ->where('status', 'active')
             ->orderBy('name')
             ->get();

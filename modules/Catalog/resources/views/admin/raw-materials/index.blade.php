@@ -1,6 +1,4 @@
 @php
-    $qty = fn ($value): string => \Modules\Inventory\Support\Quantity::format($value ?? 0);
-    $money = fn (?int $minor): string => number_format(($minor ?? 0) / 100, 2);
     $tenantParam = request('tenant');
 @endphp
 
@@ -35,24 +33,13 @@
         <div class="panel-body">
             <div style="overflow-x:auto;">
                 <table class="table">
-                    <thead><tr><th>Name</th><th>Measurement category</th><th>On hand</th><th>Unit</th><th>Low-stock alert</th><th></th></tr></thead>
+                    <thead><tr><th>Name</th><th>Measurement category</th><th>Low-stock alert</th><th></th></tr></thead>
                     <tbody>
                         @forelse ($materials as $material)
                             @php $variant = $material->variants->first(); @endphp
                             <tr>
                                 <td>{{ $material->name }}</td>
                                 <td>{{ $material->unitCategory?->name ?? 'Default (pc)' }}</td>
-                                @php $baseOnHand = (float) ($onHand[$variant?->id] ?? 0); $rmUnits = ($material->unitCategory?->units ?? collect())->filter(fn ($u) => $u->to_base_factor !== null)->values(); @endphp
-                                <td><span data-onhand-display data-base="{{ $baseOnHand }}">{{ $qty($baseOnHand) }}</span></td>
-                                <td>
-                                    <select data-onhand-unit>
-                                        @forelse ($rmUnits as $u)
-                                            <option value="{{ $u->to_base_factor }}">{{ $u->code }}</option>
-                                        @empty
-                                            <option value="1">pc</option>
-                                        @endforelse
-                                    </select>
-                                </td>
                                 @php
                                     $watched = collect($reorderLevels[$variant?->id] ?? [])->filter(fn (array $l): bool => $l['level'] > 0);
                                     $lowAt = $watched->filter(fn (array $l): bool => $l['available'] <= $l['level'])->count();
@@ -88,7 +75,7 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="6" class="subtle">No raw materials yet. Add rice, oil, flour, packaging, etc.</td></tr>
+                            <tr><td colspan="4" class="subtle">No raw materials yet. Add rice, oil, flour, packaging, etc.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -147,19 +134,6 @@
         (function () {
             const form = document.querySelector('[data-rm-form]');
             if (! form) return;
-            // On-hand column: show the stored base quantity in the selected unit.
-            const fmtQty = (n) => (Math.round(n * 10000) / 10000).toString();
-            document.querySelectorAll('[data-onhand-unit]').forEach(function (sel) {
-                const row = sel.closest('tr');
-                const display = row && row.querySelector('[data-onhand-display]');
-                if (! display) return;
-                const base = parseFloat(display.dataset.base) || 0;
-                sel.addEventListener('change', function () {
-                    const factor = parseFloat(sel.value) || 1;
-                    display.textContent = fmtQty(base / factor);
-                });
-            });
-
             window.__rmEdit = function (rm) {
                 const title = form.closest('dialog').querySelector('[data-rm-title]');
                 if (rm && rm.id) {

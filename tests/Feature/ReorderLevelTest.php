@@ -142,6 +142,34 @@ final class ReorderLevelTest extends TestCase
         ])->assertSessionHasErrors('rows.0.product_variant_id');
     }
 
+    public function test_locations_and_reorder_writes_are_limited_to_the_active_branch(): void
+    {
+        $mainBranch = $this->store->branch;
+        $otherBranch = Branch::query()->create([
+            'tenant_id' => $this->tenant->id, 'name' => 'Annex', 'code' => 'ANNEX', 'status' => 'active', 'is_primary' => false,
+        ]);
+        $otherLocation = $this->location($otherBranch, 'Annex Secret Store', 'ANNEX-STORE');
+
+        $session = ['active_branch_ids' => [$this->tenant->id => $mainBranch->id]];
+
+        $this->actingAs($this->user)
+            ->withSession($session)
+            ->get(route('admin.inventory.reorder-levels.index', ['tenant' => $this->tenant->id]))
+            ->assertOk()
+            ->assertSee('Central Store')
+            ->assertDontSee('Annex Secret Store');
+
+        $this->actingAs($this->user)
+            ->withSession($session)
+            ->post(route('admin.inventory.reorder.save'), [
+                'tenant_id' => $this->tenant->id,
+                'rows' => [$this->row($otherLocation, 5, 0)],
+            ])
+            ->assertSessionHasErrors('rows.0.product_variant_id');
+
+        $this->assertNull($this->levelAt($otherLocation));
+    }
+
     public function test_bulk_page_shows_each_item_with_its_status_at_the_location(): void
     {
         $this->stock($this->store, 2000, level: 2500);
