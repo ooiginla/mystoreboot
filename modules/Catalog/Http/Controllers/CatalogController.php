@@ -72,7 +72,12 @@ final class CatalogController extends Controller
 
         abort_if(! $tenant, 403);
 
-        $productQuery = fn (ProductType $type) => Product::query()
+        $catalogFilters = [
+            'products' => $this->catalogFilters($request, 'products'),
+            'services' => $this->catalogFilters($request, 'services'),
+        ];
+
+        $productQuery = fn (ProductType $type, ?array $filters = null) => Product::query()
             ->with([
                 'badges',
                 'category',
@@ -89,13 +94,31 @@ final class CatalogController extends Controller
             ])
             ->where('tenant_id', $tenant->id)
             ->where('product_type', $type->value)
+            ->when($filters !== null && $filters['q'] !== '', function ($query) use ($filters): void {
+                $term = '%'.$filters['q'].'%';
+
+                $query->where(function ($query) use ($term): void {
+                    $query->where('name', 'like', $term)
+                        ->orWhere('brand', 'like', $term)
+                        ->orWhereHas('category', fn ($category) => $category->where('name', 'like', $term))
+                        ->orWhereHas('variants', fn ($variant) => $variant
+                            ->where('sku', 'like', $term)
+                            ->orWhere('barcode', 'like', $term)
+                            ->orWhere('variant_name', 'like', $term))
+                        ->orWhereHas('suppliers', fn ($supplier) => $supplier->where('name', 'like', $term))
+                        ->orWhereHas('tags', fn ($tag) => $tag->where('name', 'like', $term))
+                        ->orWhereHas('attributeValues', fn ($attribute) => $attribute->where('value', 'like', $term));
+                });
+            })
+            ->when($filters !== null && $filters['status'] !== '', fn ($query) => $query->where('status', $filters['status']))
+            ->when($filters !== null && $filters['category'] !== null, fn ($query) => $query->where('category_id', $filters['category']))
             ->orderByDesc('id');
 
-        $productItems = $productQuery(ProductType::Product)
+        $productItems = $productQuery(ProductType::Product, $catalogFilters['products'])
             ->paginate(20, ['*'], 'products_page')
             ->withQueryString()
             ->fragment('products');
-        $serviceItems = $productQuery(ProductType::Service)
+        $serviceItems = $productQuery(ProductType::Service, $catalogFilters['services'])
             ->paginate(20, ['*'], 'services_page')
             ->withQueryString()
             ->fragment('services');
@@ -135,6 +158,7 @@ final class CatalogController extends Controller
             'products' => $visibleProducts,
             'productItems' => $productItems,
             'serviceItems' => $serviceItems,
+            'catalogFilters' => $catalogFilters,
             'customProducts' => $customProducts,
             'customDefinitions' => $customDefinitions,
             'categories' => $categories,
@@ -167,6 +191,21 @@ final class CatalogController extends Controller
                 'variants' => ProductVariant::query()->where('tenant_id', $tenant->id)->count(),
             ],
         ]);
+    }
+
+    /**
+     * @return array{q: string, status: string, category: ?int}
+     */
+    private function catalogFilters(Request $request, string $scope): array
+    {
+        $status = $request->string($scope.'_status')->toString();
+        $category = $request->integer($scope.'_category');
+
+        return [
+            'q' => trim($request->string($scope.'_q')->toString()),
+            'status' => ProductStatus::tryFrom($status)?->value ?? '',
+            'category' => $category > 0 ? $category : null,
+        ];
     }
 
     public function storeProduct(ProductRequest $request, SaveProductAction $action): RedirectResponse

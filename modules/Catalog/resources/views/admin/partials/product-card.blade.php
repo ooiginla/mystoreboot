@@ -23,7 +23,7 @@
         || ! app(\Modules\Access\Support\PermissionService::class)->enforcementEnabled($tenant)
         || $catalogUser?->hasPermission($tenant, 'catalog.update');
 
-    // Total stock available across all variants and locations (products only).
+    // Total stock available across this active branch's locations (products only).
     $totalOnHand = null;
     if (($inventoryEnabled ?? false) && $item->product_type === \Modules\Catalog\Enums\ProductType::Product) {
         $variantStockMap = $variantStock ?? collect();
@@ -61,7 +61,7 @@
                 @if (! $item->track_inventory)
                     <span class="badge neutral" title="Made to order — stock isn't tracked">Made to order</span>
                 @else
-                    <span class="badge {{ $totalOnHand > 0 ? 'success' : 'neutral' }}" title="Total available stock across all locations">{{ number_format($totalOnHand) }} in stock</span>
+                    <span class="badge {{ $totalOnHand > 0 ? 'success' : 'neutral' }}" title="Total available stock in the active branch">{{ number_format($totalOnHand) }} in stock</span>
                 @endif
             @endif
         </div>

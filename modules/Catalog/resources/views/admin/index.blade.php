@@ -382,6 +382,7 @@
                         'scope' => 'products',
                         'categories' => $productCategories,
                         'statuses' => $productStatuses,
+                        'filters' => $catalogFilters['products'],
                     ])
 
                     <div class="product-card-list" data-catalog-list="products">
@@ -393,9 +394,8 @@
                                 'imageUrl' => $imageUrl,
                             ])
                         @empty
-                            <div class="empty">No products yet. Add products with SKU, pricing, cost, barcode, stock, and variant fields for future analytics.</div>
+                            <div class="empty">{{ collect($catalogFilters['products'])->filter(fn ($value) => filled($value))->isNotEmpty() ? 'No products match these filters.' : 'No products yet. Add products with SKU, pricing, cost, barcode, stock, and variant fields for future analytics.' }}</div>
                         @endforelse
-                        <div class="empty" data-catalog-empty="products" hidden>No products match this filter.</div>
                     </div>
                     @if ($productItems->hasPages())
                         <div style="margin-top: 14px;">
@@ -418,6 +418,7 @@
                         'scope' => 'services',
                         'categories' => $serviceCategories,
                         'statuses' => $productStatuses,
+                        'filters' => $catalogFilters['services'],
                     ])
 
                     <div class="product-card-list" data-catalog-list="services">
@@ -429,9 +430,8 @@
                                 'imageUrl' => $imageUrl,
                             ])
                         @empty
-                            <div class="empty">No services yet. Add services so sales can capture non-stock revenue correctly.</div>
+                            <div class="empty">{{ collect($catalogFilters['services'])->filter(fn ($value) => filled($value))->isNotEmpty() ? 'No services match these filters.' : 'No services yet. Add services so sales can capture non-stock revenue correctly.' }}</div>
                         @endforelse
-                        <div class="empty" data-catalog-empty="services" hidden>No services match this filter.</div>
                     </div>
                     @if ($serviceItems->hasPages())
                         <div style="margin-top: 14px;">
@@ -1577,37 +1577,32 @@
                 });
             }).observe(document.body, { childList: true, subtree: true });
 
-            function applyCatalogFilter(scope) {
-                const list = document.querySelector(`[data-catalog-list="${scope}"]`);
-                const search = document.querySelector(`[data-catalog-search="${scope}"]`);
-                const category = document.querySelector(`[data-catalog-category="${scope}"]`);
-                const status = document.querySelector(`[data-catalog-status="${scope}"]`);
-                const empty = document.querySelector(`[data-catalog-empty="${scope}"]`);
+            const catalogFilterTimers = {};
 
-                if (!list || !search) return;
+            function applyCatalogFilter(control, immediate = false) {
+                const scope = control.dataset.catalogSearch || control.dataset.catalogCategory || control.dataset.catalogStatus;
+                const update = () => {
+                    const url = new URL(window.location.href);
+                    const value = control.value.trim();
 
-                const query = search.value.trim().toLowerCase();
-                const categoryValue = category?.value || '';
-                const statusValue = status?.value || '';
-                let visible = 0;
+                    if (value) url.searchParams.set(control.dataset.catalogQueryParam, value);
+                    else url.searchParams.delete(control.dataset.catalogQueryParam);
 
-                list.querySelectorAll('[data-catalog-card]').forEach((card) => {
-                    const matchesQuery = !query || card.dataset.search.includes(query);
-                    const matchesCategory = !categoryValue || card.dataset.category === categoryValue;
-                    const matchesStatus = !statusValue || card.dataset.status === statusValue;
-                    const isVisible = matchesQuery && matchesCategory && matchesStatus;
+                    url.searchParams.delete(`${scope}_page`);
+                    url.hash = scope;
+                    window.location.assign(url.toString());
+                };
 
-                    card.hidden = !isVisible;
-                    visible += isVisible ? 1 : 0;
-                });
-
-                if (empty) empty.hidden = visible > 0;
+                window.clearTimeout(catalogFilterTimers[scope]);
+                catalogFilterTimers[scope] = window.setTimeout(update, immediate ? 0 : 350);
             }
 
-            document.querySelectorAll('[data-catalog-search], [data-catalog-category], [data-catalog-status]').forEach((control) => {
-                const scope = control.dataset.catalogSearch || control.dataset.catalogCategory || control.dataset.catalogStatus;
-                control.addEventListener('input', () => applyCatalogFilter(scope));
-                control.addEventListener('change', () => applyCatalogFilter(scope));
+            document.querySelectorAll('[data-catalog-search]').forEach((control) => {
+                control.addEventListener('input', () => applyCatalogFilter(control));
+            });
+
+            document.querySelectorAll('[data-catalog-category], [data-catalog-status]').forEach((control) => {
+                control.addEventListener('change', () => applyCatalogFilter(control, true));
             });
 
             document.querySelectorAll('[data-filter-toggle]').forEach((button) => {

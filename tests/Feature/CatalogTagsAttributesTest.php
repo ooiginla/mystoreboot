@@ -339,6 +339,15 @@ class CatalogTagsAttributesTest extends TestCase
         ]);
         $user = User::factory()->create(['is_platform_admin' => true]);
 
+        Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'category_id' => $productCategory->id,
+            'product_type' => ProductType::Product->value,
+            'name' => 'Buried Search Needle',
+            'slug' => 'buried-search-needle',
+            'status' => ProductStatus::Draft->value,
+        ]);
+
         foreach (range(1, 21) as $index) {
             Product::query()->create([
                 'tenant_id' => $tenant->id,
@@ -376,5 +385,17 @@ class CatalogTagsAttributesTest extends TestCase
             ->assertOk()
             ->assertSee('Paged Service 1')
             ->assertSee('services_page=1', false);
+
+        $this->actingAs($user)
+            ->get(route('admin.catalog.index', [
+                'tenant' => $tenant->id,
+                'products_q' => 'Buried Search Needle',
+                'products_status' => ProductStatus::Draft->value,
+            ]).'#products')
+            ->assertOk()
+            ->assertViewHas('productItems', fn ($items): bool => $items->total() === 1
+                && $items->first()?->name === 'Buried Search Needle')
+            ->assertSee('value="Buried Search Needle"', false)
+            ->assertSee('value="draft" selected', false);
     }
 }
