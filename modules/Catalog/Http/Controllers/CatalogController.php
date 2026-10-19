@@ -7,6 +7,7 @@ namespace Modules\Catalog\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\ActiveBranchManager;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -48,6 +49,7 @@ use Modules\Catalog\Models\ProductCustomDefinition;
 use Modules\Catalog\Models\ProductTag;
 use Modules\Catalog\Models\ProductTax;
 use Modules\Catalog\Models\ProductVariant;
+use Modules\Catalog\Support\ProductSearchQuery;
 use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
 use Modules\Inventory\Enums\InventoryMovementType;
@@ -77,42 +79,31 @@ final class CatalogController extends Controller
             'services' => $this->catalogFilters($request, 'services'),
         ];
 
-        $productQuery = fn (ProductType $type, ?array $filters = null) => Product::query()
-            ->with([
-                'badges',
-                'category',
-                'collections',
-                'images',
-                'options.values',
-                'externalImages',
-                'supplierReferences',
-                'suppliers',
-                'tags',
-                'taxes',
-                'attributeValues.definition',
-                'variants' => fn ($query) => $query->with('optionValues.option')->oldest('id'),
-            ])
-            ->where('tenant_id', $tenant->id)
-            ->where('product_type', $type->value)
-            ->when($filters !== null && $filters['q'] !== '', function ($query) use ($filters): void {
-                $term = '%'.$filters['q'].'%';
+        $productQuery = function (ProductType $type, ?array $filters = null) use ($tenant): Builder {
+            $query = Product::query()
+                ->with([
+                    'badges',
+                    'category',
+                    'collections',
+                    'images',
+                    'options.values',
+                    'externalImages',
+                    'supplierReferences',
+                    'suppliers',
+                    'tags',
+                    'taxes',
+                    'attributeValues.definition',
+                    'variants' => fn ($query) => $query->with('optionValues.option')->oldest('id'),
+                ])
+                ->where('products.tenant_id', $tenant->id)
+                ->where('products.product_type', $type->value)
+                ->when($filters !== null && $filters['status'] !== '', fn ($query) => $query->where('products.status', $filters['status']))
+                ->when($filters !== null && $filters['category'] !== null, fn ($query) => $query->where('products.category_id', $filters['category']));
 
-                $query->where(function ($query) use ($term): void {
-                    $query->where('name', 'like', $term)
-                        ->orWhere('brand', 'like', $term)
-                        ->orWhereHas('category', fn ($category) => $category->where('name', 'like', $term))
-                        ->orWhereHas('variants', fn ($variant) => $variant
-                            ->where('sku', 'like', $term)
-                            ->orWhere('barcode', 'like', $term)
-                            ->orWhere('variant_name', 'like', $term))
-                        ->orWhereHas('suppliers', fn ($supplier) => $supplier->where('name', 'like', $term))
-                        ->orWhereHas('tags', fn ($tag) => $tag->where('name', 'like', $term))
-                        ->orWhereHas('attributeValues', fn ($attribute) => $attribute->where('value', 'like', $term));
-                });
-            })
-            ->when($filters !== null && $filters['status'] !== '', fn ($query) => $query->where('status', $filters['status']))
-            ->when($filters !== null && $filters['category'] !== null, fn ($query) => $query->where('category_id', $filters['category']))
-            ->orderByDesc('id');
+            return $filters !== null && $filters['q'] !== ''
+                ? app(ProductSearchQuery::class)->apply($query, $tenant->id, $filters['q'])
+                : $query->orderByDesc('products.id');
+        };
 
         $productItems = $productQuery(ProductType::Product, $catalogFilters['products'])
             ->paginate(20, ['*'], 'products_page')

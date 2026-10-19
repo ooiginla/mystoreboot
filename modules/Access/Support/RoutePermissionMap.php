@@ -205,6 +205,7 @@ final class RoutePermissionMap
             'admin.sales.index' => 'sales.create',
             'admin.sales.orders.index' => 'sales.view',
             'admin.sales.retail-pos' => 'sales.create',
+            'admin.sales.retail-pos.catalog' => 'sales.create',
             'admin.sales.customers.quick' => 'customers.create',
             'admin.sales.tills.open' => 'sales.till.manage',
             // Restaurant POS

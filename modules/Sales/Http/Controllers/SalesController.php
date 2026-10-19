@@ -15,7 +15,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -28,6 +27,7 @@ use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Catalog\Models\ProductVariant;
+use Modules\Catalog\Support\CatalogRevisionManager;
 use Modules\Customers\Models\Customer;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Finance\Models\FinanceAccount;
@@ -56,6 +56,7 @@ use Modules\Sales\Models\SalesCashLocation;
 use Modules\Sales\Models\SalesCoupon;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesTillSession;
+use Modules\Sales\Support\PosCatalog;
 use Modules\Subscriptions\Support\TenantModuleAccess;
 use Modules\Tenancy\Models\Tenant;
 
@@ -229,18 +230,6 @@ final class SalesController extends Controller
             ->limit(10)
             ->get();
         $customers = Customer::query()->where('tenant_id', $tenant->id)->orderBy('first_name')->get();
-        $variants = ProductVariant::query()
-            ->with(['product', 'product.category', 'product.taxes'])
-            ->where('tenant_id', $tenant->id)
-            ->whereHas('product', fn ($query) => $query->where('product_type', ProductType::Product->value))
-            ->orderBy('sku')
-            ->get();
-        $categories = $variants
-            ->map(fn (ProductVariant $variant) => $variant->product?->category)
-            ->filter()
-            ->unique('id')
-            ->sortBy('name')
-            ->values();
         $coupons = SalesCoupon::query()->where('tenant_id', $tenant->id)->latest()->get();
         $sessionOrders = $activeTill
             ? SalesOrder::query()
@@ -272,8 +261,6 @@ final class SalesController extends Controller
             'activeTillRows' => $activeTillRows,
             'recentTillSessions' => $recentTillSessions,
             'customers' => $customers,
-            'variants' => $variants,
-            'categories' => $categories,
             'coupons' => $coupons,
             'recentOrders' => $recentOrders,
             'sessionOrders' => $sessionOrders,
@@ -281,6 +268,55 @@ final class SalesController extends Controller
             'paymentAccounts' => $this->paymentAccountsFor($tenant->id, $activeTill?->branch_id),
             'deliveryMethods' => $branches->flatMap(fn (Branch $branch) => collect($branch->settings['delivery_methods'] ?? []))->where('status', 'active')->values(),
         ]);
+    }
+
+    public function retailPosCatalog(
+        Request $request,
+        CatalogRevisionManager $revisions,
+        PosCatalog $catalog,
+    ): JsonResponse {
+        /** @var User $user */
+        $user = $request->user();
+        $tenants = $this->visibleTenantsFor($user);
+        $tenant = $this->resolveTenant($request, $tenants);
+
+        abort_if(! $tenant, 403);
+
+        $activeTill = SalesTillSession::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'open')
+            ->latest('opened_at')
+            ->first();
+
+        if (! $activeTill) {
+            return response()->json(['message' => 'Open a till before loading the POS catalogue.'], 409);
+        }
+
+        $revision = $revisions->current((string) $tenant->id);
+        $etag = '"'.hash('sha256', implode(':', [
+            $tenant->id,
+            $user->id,
+            $activeTill->branch_id,
+            $activeTill->inventory_location_id,
+            $revision,
+        ])).'"';
+
+        if ($request->header('If-None-Match') === $etag) {
+            return response()->json(null, 304)->header('ETag', $etag);
+        }
+
+        $payload = $catalog->forTill($activeTill);
+
+        return response()->json([
+            'revision' => $revision,
+            'tenant_id' => (string) $tenant->id,
+            'user_id' => (int) $user->id,
+            'branch_id' => (int) $activeTill->branch_id,
+            'inventory_location_id' => (int) $activeTill->inventory_location_id,
+            'items' => $payload['items'],
+            'categories' => $payload['categories'],
+        ])->header('ETag', $etag);
     }
 
     public function storeQuickCustomer(Request $request): JsonResponse

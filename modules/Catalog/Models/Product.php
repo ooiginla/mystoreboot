@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Catalog\Actions\EnsureDefaultProductCategoryAction;
 use Modules\Catalog\Enums\ProductStatus;
@@ -59,6 +60,11 @@ final class Product extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProductCategory::class, 'category_id');
+    }
+
+    public function searchDocument(): HasOne
+    {
+        return $this->hasOne(ProductSearchDocument::class);
     }
 
     public function prepStation(): BelongsTo

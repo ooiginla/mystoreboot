@@ -4,11 +4,6 @@
     $currency = $currencySymbols[$tenant->currency_code] ?? $tenant->currency_code;
     $signedMoney = fn (int $minor): string => ($minor < 0 ? '-' : '').$currency.' '.number_format(abs($minor) / 100, 2);
     $sellableLocations = $locations->where('is_sellable_point', true)->values();
-    $tileName = fn ($v): string => $v->product?->name.($v->variant_name && $v->variant_name !== 'Default' ? ' · '.$v->variant_name : '');
-    $tileImage = function ($v): ?string {
-        $path = $v->image_path ?: $v->product?->image_path;
-        return $path ? asset('storage/'.ltrim($path, '/')) : null;
-    };
     $movementTypes = [
         'cash_in' => 'Cash In',
         'cash_out' => 'Cash Out',
@@ -360,6 +355,10 @@
     @else
     <div class="rpos" data-rpos
          data-tenant="{{ $tenant->id }}"
+         data-user="{{ $cashier->id }}"
+         data-branch="{{ $activeTill->branch_id }}"
+         data-location="{{ (int) ($activeTill->inventory_location_id ?? 0) }}"
+         data-catalog-url="{{ route('admin.sales.retail-pos.catalog', ['tenant' => $tenant->id]) }}"
          data-currency="{{ $currency }}"
          data-walkin-id="{{ $walkInCustomer->id }}"
          data-walkin-name="{{ $walkInCustomer->name }}"
@@ -456,39 +455,10 @@
                 <div class="rpos-cats" data-cats>
                     <button class="rpos-cat active" type="button" data-cat="pinned"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m12 3 2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5L12 3Z"/></svg>Pinned</button>
                     <button class="rpos-cat" type="button" data-cat="all">All items</button>
-                    @foreach ($categories as $category)
-                        <button class="rpos-cat" type="button" data-cat="{{ $category->id }}">{{ $category->name }}</button>
-                    @endforeach
                 </div>
 
                 <div class="rpos-grid" data-grid>
-                    @forelse ($variants as $variant)
-                        @php
-                            $selectedTaxRate = $variant->product?->taxes?->sum(fn ($tax) => (float) $tax->rate) ?? 0;
-                            $taxRate = $variant->tax_behavior->value === 'taxable' ? (float) ($selectedTaxRate > 0 ? $selectedTaxRate : ($variant->tax_rate ?? $variant->product?->tax_rate ?? 0)) : 0;
-                            $catId = $variant->product?->category?->id ?? 0;
-                            $hue = crc32((string) ($variant->product?->name ?? $variant->sku)) % 360;
-                        @endphp
-                        <div class="rpos-tile" role="button" tabindex="0"
-                            data-tile
-                            data-variant-id="{{ $variant->id }}"
-                            data-category-id="{{ $catId }}"
-                            data-name="{{ $tileName($variant) }}"
-                            data-price="{{ $variant->selling_price_minor / 100 }}"
-                            data-tax-rate="{{ $taxRate }}"
-                            data-sku="{{ $variant->sku }}">
-                            <button class="rpos-pin" type="button" data-pin aria-label="Pin product"><svg fill="currentColor" viewBox="0 0 24 24"><path d="M14 3l7 7-4 1-4 4-1 5-2-2-4 4-1-1 4-4-2-2 5-1 4-4 1-4Z"/></svg></button>
-                            @php $tileImg = $tileImage($variant); @endphp
-                            <span class="rpos-tile-img" style="background: hsl({{ $hue }} 55% 42%);">{{ strtoupper(mb_substr($variant->product?->name ?? 'P', 0, 1)) }}@if ($tileImg)<img src="{{ $tileImg }}" alt="" loading="lazy" onerror="this.remove()">@endif</span>
-                            <span class="rpos-tile-name">{{ $tileName($variant) }}</span>
-                            <span class="rpos-tile-foot">
-                                <span class="rpos-tile-price">{{ $currency }} {{ $money($variant->selling_price_minor) }}</span>
-                            </span>
-                        </div>
-                        {{-- SKU kept in data-sku for search --}}
-                    @empty
-                        <div class="rpos-grid-empty">No products yet. Add products in <a href="{{ route('admin.catalog.index', ['tenant' => $tenant->id]) }}">Product &amp; Services</a>.</div>
-                    @endforelse
+                    <div class="rpos-grid-empty" data-grid-loading>Loading catalogue…</div>
                     <div class="rpos-grid-empty" data-grid-empty hidden>No products match this view.</div>
                 </div>
             </section>
@@ -569,7 +539,8 @@
 
     <div class="rpos-toast" data-toast></div>
 
-    <script src="{{ asset('js/retail-pos.js') }}?v=8"></script>
+    <script src="{{ asset('js/retail-pos-catalog.js') }}?v=1"></script>
+    <script src="{{ asset('js/retail-pos.js') }}?v=9"></script>
     <script>
         window.storebootReceiptOrderId = @json(session('receipt_order_id'));
     </script>

@@ -17,6 +17,7 @@ use Modules\Catalog\Models\ProductOption;
 use Modules\Catalog\Models\ProductTag;
 use Modules\Catalog\Models\ProductTax;
 use Modules\Catalog\Models\ProductVariant;
+use Modules\Catalog\Support\ProductSearchDocumentBuilder;
 use Modules\Procurement\Models\Vendor;
 
 final class SaveProductAction
@@ -109,6 +110,7 @@ final class SaveProductAction
             $this->syncSupplierReferences($product, $data);
             $this->syncExternalImages($product, $data);
             $this->syncProductImages($product, $data);
+            app(ProductSearchDocumentBuilder::class)->rebuild($product);
 
             return $product->refresh()->load(['badges', 'category', 'collections', 'images', 'options.values', 'variants.optionValues.option', 'tags', 'taxes', 'attributeValues.definition', 'suppliers', 'supplierReferences', 'externalImages']);
         });

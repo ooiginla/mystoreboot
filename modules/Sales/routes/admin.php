@@ -13,6 +13,7 @@ use Modules\Sales\Http\Controllers\SalesController;
 Route::get('/', [SalesController::class, 'index'])->name('index');
 Route::get('/orders', [SalesController::class, 'index'])->name('orders.index');
 Route::get('/retail-pos', [SalesController::class, 'retailPos'])->name('retail-pos');
+Route::get('/retail-pos/catalog', [SalesController::class, 'retailPosCatalog'])->name('retail-pos.catalog');
 Route::post('/customers', [SalesController::class, 'storeQuickCustomer'])->name('customers.quick');
 Route::post('/tills', [SalesController::class, 'openTill'])->name('tills.open');
 Route::post('/tills/{tillSession}/movements', [SalesController::class, 'storeTillMovement'])->name('tills.movements.store');

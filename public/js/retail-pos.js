@@ -151,6 +151,14 @@
 
         // ================= EVENTS =================
         document.addEventListener('click', function (e) {
+            var category = e.target.closest('[data-cat]');
+            if (category) {
+                $$('[data-cat]').forEach(function (button) { button.classList.remove('active'); });
+                category.classList.add('active');
+                activeCat = category.dataset.cat;
+                filterGrid();
+                return;
+            }
             var tile = e.target.closest('[data-tile]');
             var pin = e.target.closest('[data-pin]');
             if (pin) { e.preventDefault(); e.stopPropagation(); togglePin(pin.closest('[data-tile]')); return; }
@@ -385,7 +393,6 @@
 
         // ================= PRODUCTS: pin, category, search =================
         var activeCat = 'pinned';
-        $$('[data-cat]').forEach(function (b) { b.addEventListener('click', function () { $$('[data-cat]').forEach(function (x) { x.classList.remove('active'); }); b.classList.add('active'); activeCat = b.dataset.cat; filterGrid(); }); });
 
         function applyPinState() { $$('[data-tile]').forEach(function (tile) { var p = $('[data-pin]', tile); if (p) p.classList.toggle('pinned', pins.has(tile.dataset.variantId)); }); }
         function togglePin(tile) {
@@ -402,7 +409,7 @@
             var pinnedEmptyFallback = (activeCat === 'pinned' && pins.size === 0 && !q);
             tiles.forEach(function (tile, idx) {
                 var match;
-                if (q) match = (tile.dataset.name + ' ' + tile.dataset.sku).toLowerCase().indexOf(q) !== -1;
+                if (q) match = (tile.dataset.search || (tile.dataset.name + ' ' + tile.dataset.sku).toLowerCase()).indexOf(q) !== -1;
                 else if (pinnedEmptyFallback) match = idx < 12;
                 else if (activeCat === 'pinned') match = pins.has(tile.dataset.variantId);
                 else if (activeCat === 'all') match = true;
@@ -412,6 +419,7 @@
             });
             var empty = $('[data-grid-empty]'); if (empty) empty.hidden = shown > 0;
         }
+        document.addEventListener('pos:catalog-loaded', function () { applyPinState(); filterGrid(); });
 
         // ================= HELD =================
         function refreshHeld() {

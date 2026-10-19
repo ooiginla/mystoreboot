@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Business\Models\BusinessPaymentAccount;
+use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Enums\TaxBehavior;
 use Modules\Catalog\Models\ProductCategory;
@@ -160,6 +161,21 @@ final class CreateSalesOrderAction
 
                 $quantity = Quantity::round((float) $item['quantity']);
                 $unitPriceMinor = $this->moneyToMinor($item['unit_price']);
+
+                if ($source === 'retail_pos') {
+                    if ($variant->status !== ProductStatus::Active || $variant->product?->status !== ProductStatus::Active) {
+                        throw ValidationException::withMessages([
+                            'items' => "{$variant->product?->name} is no longer available. Refresh the POS catalogue.",
+                        ]);
+                    }
+
+                    if ($unitPriceMinor !== (int) $variant->selling_price_minor) {
+                        throw ValidationException::withMessages([
+                            'items' => "The price of {$variant->product?->name} has changed. Refresh the POS catalogue and try again.",
+                        ]);
+                    }
+                }
+
                 $unitCostMinor = $this->unitCostForSale($tenant, $inventoryLocationId, $variant, $inventoryEnabled);
                 $lineSubtotalMinor = (int) round($quantity * $unitPriceMinor);
                 $selectedTaxRate = $variant->product?->taxes?->sum(fn ($tax): float => (float) $tax->rate) ?? 0.0;
