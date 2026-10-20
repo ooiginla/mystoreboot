@@ -238,7 +238,7 @@ final class CatalogController extends Controller
 
         $data = $request->validate([
             'tenant_id' => ['required', 'uuid', 'exists:tenants,id'],
-            'images' => ['required', 'array', 'min:1', 'max:5'],
+            'images' => ['required', 'array', 'min:1', 'max:10'],
             'images.*' => ['image', 'mimes:jpeg,png,webp,gif', 'max:10240'],
         ]);
 
