@@ -7,10 +7,15 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Modules\Business\Models\Branch;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
+use Modules\Catalog\Enums\TaxBehavior;
 use Modules\Catalog\Models\Product;
-use Modules\Catalog\Models\ProductTag;
+use Modules\Finance\Models\FinanceJournalEntry;
+use Modules\Inventory\Enums\InventoryMovementType;
+use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Models\InventoryStockLevel;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 use Tests\TestCase;
@@ -59,13 +64,49 @@ class ProductPhotoImportTest extends TestCase
         $this->assertSame('Peak Milk 20g', $product->name);
         $this->assertSame(ProductStatus::Draft, $product->status);
         $this->assertSame(ProductType::Product, $product->product_type);
-        $this->assertSame(150000, (int) $product->base_price_minor);
+        $this->assertSame(0, (int) $product->base_price_minor);
+        $this->assertSame(0, (int) $product->base_cost_price_minor);
         $this->assertNotNull($product->image_path);
-        // A default variant carries the drafted price.
-        $this->assertSame(150000, (int) $product->variants()->value('selling_price_minor'));
+        $this->assertSame(0, (int) $product->variants()->value('selling_price_minor'));
         // The AI category becomes a real, assigned category (never left blank).
         $this->assertNotNull($product->category_id);
         $this->assertSame('Beverages', $product->category?->name);
+
+        $stock = InventoryStockLevel::query()->where('product_variant_id', $product->variants()->value('id'))->sole();
+        $this->assertSame(1, (int) $stock->quantity_on_hand);
+        $this->assertSame(0, $stock->average_cost_minor);
+        $this->assertDatabaseHas(InventoryMovement::class, [
+            'product_variant_id' => $product->variants()->value('id'),
+            'movement_type' => InventoryMovementType::OpeningStock->value,
+            'reference_type' => 'catalog_import',
+            'reference_id' => $product->id,
+            'quantity' => 1,
+            'unit_cost_minor' => 0,
+        ]);
+        $this->assertDatabaseCount(FinanceJournalEntry::class, 0);
+
+        // The first confirmed cost automatically values the provisional unit and
+        // posts the missing opening-balance accounting entry.
+        $this->actingAs($user)
+            ->put(route('admin.catalog.products.update', $product), [
+                'tenant_id' => $tenant->id,
+                'product_type' => ProductType::Product->value,
+                'category_id' => $product->category_id,
+                'name' => $product->name,
+                'base_price' => '2000',
+                'base_cost_price' => '750',
+                'tax_behavior' => TaxBehavior::Exempt->value,
+                'status' => ProductStatus::Draft->value,
+            ])
+            ->assertRedirect(route('admin.catalog.index', ['tenant' => $tenant->id]));
+
+        $stock->refresh();
+        $this->assertSame(1, (int) $stock->quantity_on_hand);
+        $this->assertSame(75000, $stock->average_cost_minor);
+        $journal = FinanceJournalEntry::query()->with('lines.account')->sole();
+        $this->assertSame('Inventory cost revaluation · Peak Milk 20g', $journal->memo);
+        $this->assertTrue($journal->lines->contains(fn ($line): bool => $line->account->code === '1200' && $line->debit_minor === 75000));
+        $this->assertTrue($journal->lines->contains(fn ($line): bool => $line->account->code === '3400' && $line->credit_minor === 75000));
     }
 
     public function test_photos_can_be_drafted_with_an_openai_key(): void
@@ -111,7 +152,7 @@ class ProductPhotoImportTest extends TestCase
         $product = Product::query()->where('tenant_id', $tenant->id)->firstOrFail();
         $this->assertSame('Ankara Midi Dress', $product->name);
         $this->assertSame(ProductStatus::Draft, $product->status);
-        $this->assertSame(1200000, (int) $product->base_price_minor);
+        $this->assertSame(0, (int) $product->base_price_minor);
         $this->assertSame('Fashion', $product->category?->name);
     }
 
@@ -205,6 +246,13 @@ class ProductPhotoImportTest extends TestCase
             'currency_code' => 'NGN',
         ]);
         $user = User::factory()->create(['is_platform_admin' => true]);
+        Branch::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Main Branch',
+            'code' => 'MAIN',
+            'status' => 'active',
+            'is_primary' => true,
+        ]);
 
         return [$user, $tenant];
     }

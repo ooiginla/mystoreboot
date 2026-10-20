@@ -143,7 +143,7 @@ final class PostInventoryMovementAction
             ? (int) $data['unit_cost_minor']
             : $this->moneyToMinor($data['unit_cost'] ?? 0);
 
-        if ($type === InventoryMovementType::OpeningStock && $providedUnitCostMinor <= 0) {
+        if ($type === InventoryMovementType::OpeningStock && $providedUnitCostMinor <= 0 && ! ($data['allow_zero_opening_cost'] ?? false)) {
             throw ValidationException::withMessages([
                 'unit_cost' => 'Enter a unit cost greater than zero for opening stock.',
             ]);

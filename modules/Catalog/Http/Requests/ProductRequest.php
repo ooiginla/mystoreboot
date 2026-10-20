@@ -32,6 +32,7 @@ final class ProductRequest extends FormRequest
             'barcode' => $this->filled('barcode') ? strtoupper((string) $this->input('barcode')) : null,
             'has_variants' => $this->boolean('has_variants'),
             'track_inventory' => $this->has('track_inventory') ? $this->boolean('track_inventory') : true,
+            'revalue_inventory' => $this->boolean('revalue_inventory'),
             'base_price' => $this->cleanMoney($this->input('base_price')),
             'base_cost_price' => $this->cleanMoney($this->input('base_cost_price')),
             'compare_at_price' => $this->cleanMoney($this->input('compare_at_price', $this->input('discount_price'))),
@@ -145,6 +146,7 @@ final class ProductRequest extends FormRequest
             'specifications' => ['nullable', 'string', 'max:8000'],
             'has_variants' => ['boolean'],
             'track_inventory' => ['boolean'],
+            'revalue_inventory' => ['boolean'],
             'unit_category_id' => [
                 'nullable', 'integer',
                 Rule::exists('unit_categories', 'id')->where('tenant_id', $this->string('tenant_id')->toString()),

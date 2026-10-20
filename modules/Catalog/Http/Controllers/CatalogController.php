@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -52,6 +53,7 @@ use Modules\Catalog\Models\ProductVariant;
 use Modules\Catalog\Support\ProductSearchQuery;
 use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
 use Modules\Inventory\Actions\PostInventoryMovementAction;
+use Modules\Inventory\Actions\RevalueProductInventoryAction;
 use Modules\Inventory\Enums\InventoryMovementType;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Inventory\Models\InventoryStockLevel;
@@ -142,6 +144,7 @@ final class CatalogController extends Controller
             'inventoryLocations' => $inventory['locations'],
             'inventoryVendors' => $inventory['vendors'],
             'variantStock' => $inventory['variantStock'],
+            'allVariantStock' => $inventory['allVariantStock'],
             'defaultInventoryLocationId' => $inventory['defaultLocationId'],
             'reorderUnits' => $inventory['reorderUnits'],
             'reorderLevels' => $inventory['reorderLevels'],
@@ -330,12 +333,38 @@ final class CatalogController extends Controller
         }
     }
 
-    public function updateProduct(ProductRequest $request, Product $product, SaveProductAction $action): RedirectResponse
-    {
+    public function updateProduct(
+        ProductRequest $request,
+        Product $product,
+        SaveProductAction $action,
+        RevalueProductInventoryAction $revalueInventory,
+    ): RedirectResponse {
         $this->authorizeTenantIdAccess($request->user(), $product->tenant_id);
         abort_unless($request->string('tenant_id')->toString() === $product->tenant_id, 403);
 
-        $updatedProduct = $action->execute($request->validated(), $product);
+        $data = $request->validated();
+        $oldVariantCosts = $product->variants()->pluck('cost_price_minor', 'id');
+
+        $updatedProduct = DB::transaction(function () use ($action, $data, $product, $oldVariantCosts, $revalueInventory, $request): Product {
+            $updated = $action->execute($data, $product);
+            $newVariantCosts = $updated->variants()->pluck('cost_price_minor', 'id');
+            $costChanged = $newVariantCosts->contains(
+                fn ($cost, $variantId): bool => (int) $cost !== (int) ($oldVariantCosts[$variantId] ?? 0),
+            );
+            $firstCostVariantIds = $newVariantCosts
+                ->filter(fn ($cost, $variantId): bool => (int) ($oldVariantCosts[$variantId] ?? 0) === 0 && (int) $cost > 0)
+                ->keys()
+                ->map(fn ($variantId): int => (int) $variantId)
+                ->all();
+
+            if ($costChanged && ($data['revalue_inventory'] ?? false)) {
+                $revalueInventory->execute($updated, $request->user()?->id);
+            } elseif ($costChanged && $firstCostVariantIds !== []) {
+                $revalueInventory->execute($updated, $request->user()?->id, $firstCostVariantIds);
+            }
+
+            return $updated;
+        });
 
         return redirect()
             ->route('admin.catalog.index', ['tenant' => $updatedProduct->tenant_id])
@@ -441,12 +470,12 @@ final class CatalogController extends Controller
     }
 
     /**
-     * @return array{enabled: bool, locations: mixed, vendors: mixed, variantStock: mixed, defaultLocationId: ?int, reorderUnits: array, reorderLevels: array}
+     * @return array{enabled: bool, locations: mixed, vendors: mixed, variantStock: mixed, allVariantStock: mixed, defaultLocationId: ?int, reorderUnits: array, reorderLevels: array}
      */
     private function inventoryViewData(Tenant $tenant): array
     {
         if (! app(TenantModuleAccess::class)->allows($tenant, 'inventory')) {
-            return ['enabled' => false, 'locations' => collect(), 'vendors' => collect(), 'variantStock' => collect(), 'defaultLocationId' => null, 'reorderUnits' => [], 'reorderLevels' => []];
+            return ['enabled' => false, 'locations' => collect(), 'vendors' => collect(), 'variantStock' => collect(), 'allVariantStock' => collect(), 'defaultLocationId' => null, 'reorderUnits' => [], 'reorderLevels' => []];
         }
 
         // Guarantee at least one inventory location so the Inventory tab always works.
@@ -470,6 +499,10 @@ final class CatalogController extends Controller
                 ->where('tenant_id', $tenant->id)
                 ->whereIn('inventory_location_id', $locations->pluck('id'))
                 ->with('location:id,name')
+                ->get()
+                ->groupBy('product_variant_id'),
+            'allVariantStock' => InventoryStockLevel::query()
+                ->where('tenant_id', $tenant->id)
                 ->get()
                 ->groupBy('product_variant_id'),
             'defaultLocationId' => $defaultLocationId,

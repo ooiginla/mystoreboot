@@ -31,6 +31,7 @@ final class ImportProductsFromSheetAction
         private readonly StructureProductSheetAction $structure,
         private readonly SaveProductAction $saveProduct,
         private readonly EnsureDefaultProductCategoryAction $ensureDefaultCategory,
+        private readonly CreateImportedProductOpeningStockAction $createOpeningStock,
     ) {}
 
     /**
@@ -51,7 +52,7 @@ final class ImportProductsFromSheetAction
             }
 
             try {
-                $products[] = $this->saveProduct->execute([
+                $product = $this->saveProduct->execute([
                     'tenant_id' => $tenantId,
                     'name' => $name,
                     'slug' => $this->uniqueSlug($tenantId, $name),
@@ -60,9 +61,9 @@ final class ImportProductsFromSheetAction
                     'description' => ($item['description'] ?? '') !== '' ? $item['description'] : null,
                     'specifications' => ($item['specifications'] ?? '') !== '' ? $item['specifications'] : null,
                     'has_variants' => false,
-                    // Price comes back in minor units; SaveProductAction multiplies
-                    // by 100, so hand it a major-unit decimal string.
-                    'base_price' => number_format(((int) ($item['price_minor'] ?? 0)) / 100, 2, '.', ''),
+                    // Imported drafts start unpriced so the merchant confirms both
+                    // selling price and cost before publishing.
+                    'base_price' => '0',
                     'base_cost_price' => '0',
                     'tax_behavior' => TaxBehavior::Exempt->value,
                     'status' => ProductStatus::Draft->value,
@@ -70,6 +71,8 @@ final class ImportProductsFromSheetAction
                     'category_id' => $this->resolveCategoryId($tenantId, (string) ($item['category'] ?? ''), $categoryCache),
                     'new_tags' => collect($item['tags'] ?? [])->implode(','),
                 ]);
+                $this->createOpeningStock->execute($product);
+                $products[] = $product;
             } catch (Throwable $exception) {
                 Log::warning('Sheet import: a product row could not be saved.', [
                     'tenant_id' => $tenantId,

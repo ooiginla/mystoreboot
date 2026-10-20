@@ -85,6 +85,9 @@ class CatalogProductStatusTest extends TestCase
             ->assertSee('Live')
             ->assertSee('Change product status')
             ->assertSee(route('admin.catalog.products.status.update', $product), false)
+            ->assertSee('Choose the status now; it will be applied when you save your changes.')
+            ->assertSee('data-editor-status-menu', false)
+            ->assertSee('data-editor-status-choice', false)
             ->assertSee('Edit Status Product')
             ->assertSee('Delete Status Product')
             ->assertSee(route('admin.catalog.products.destroy', $product), false);

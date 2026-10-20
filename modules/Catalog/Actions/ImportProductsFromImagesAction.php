@@ -26,6 +26,7 @@ final class ImportProductsFromImagesAction
         private readonly DraftProductFromImageAction $draftFromImage,
         private readonly SaveProductAction $saveProduct,
         private readonly EnsureDefaultProductCategoryAction $ensureDefaultCategory,
+        private readonly CreateImportedProductOpeningStockAction $createOpeningStock,
     ) {}
 
     /**
@@ -50,16 +51,16 @@ final class ImportProductsFromImagesAction
 
             $name = $draft['name'] !== '' ? $draft['name'] : $this->fallbackName($image);
 
-            $products[] = $this->saveProduct->execute([
+            $product = $this->saveProduct->execute([
                 'tenant_id' => $tenantId,
                 'name' => $name,
                 'slug' => $this->uniqueSlug($tenantId, $name),
                 'product_type' => ProductType::Product->value,
                 'description' => $draft['description'] ?: null,
                 'has_variants' => false,
-                // Price comes back in minor units; SaveProductAction re-multiplies
-                // by 100, so hand it a major-unit decimal string.
-                'base_price' => number_format($draft['price_minor'] / 100, 2, '.', ''),
+                // Imported drafts start unpriced so the merchant confirms both
+                // selling price and cost before publishing.
+                'base_price' => '0',
                 'base_cost_price' => '0',
                 'tax_behavior' => TaxBehavior::Exempt->value,
                 'status' => ProductStatus::Draft->value,
@@ -70,6 +71,8 @@ final class ImportProductsFromImagesAction
                 'category_id' => $this->resolveCategoryId($tenantId, $draft['category']),
                 'new_tags' => collect($draft['tags'])->implode(','),
             ]);
+            $this->createOpeningStock->execute($product);
+            $products[] = $product;
         }
 
         return ['count' => count($products), 'products' => $products];

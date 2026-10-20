@@ -47,6 +47,23 @@
         .catalog-status-dot { width: 8px; height: 8px; border-radius: 999px; background: #98a2b3; }
         .catalog-status-dot.live { background: #12b76a; box-shadow: 0 0 0 3px #d1fadf; }
         .catalog-status-check { color: #067647; font-weight: 900; }
+        .catalog-editor-status-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid #a7f3d0; border-radius: 8px; background: #f0fdf4; padding: 12px 14px; }
+        .catalog-editor-status-bar > div:first-child { display: grid; gap: 2px; }
+        .catalog-editor-status-menu { flex: 0 0 auto; }
+        .btn.catalog-editor-status-trigger { min-width: 132px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; border-color: #a7f3d0; background: #fff; color: #067647; padding: 9px 11px; cursor: pointer; }
+        .btn.catalog-editor-status-trigger:hover, .catalog-editor-status-menu[open] > .catalog-editor-status-trigger { border-color: var(--brand); background: var(--brand-100); color: var(--brand-strong); }
+        .catalog-editor-status-trigger svg { width: 20px; height: 20px; }
+        .catalog-editor-status-chevron { font-size: 14px; transition: transform .15s ease; }
+        .catalog-editor-status-menu[open] .catalog-editor-status-chevron { transform: rotate(180deg); }
+        .catalog-editor-status-menu .catalog-status-dropdown { right: 0; }
+        .catalog-status-radio { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+        .catalog-status-option .catalog-status-check { visibility: hidden; }
+        .catalog-status-option.is-selected { background: #f0fdf4; color: #101828; }
+        .catalog-status-option.is-selected .catalog-status-check { visibility: visible; }
+        .catalog-status-option:focus-within { outline: 2px solid var(--brand); outline-offset: -2px; }
+        dialog.catalog-revalue-confirm-dialog { width: min(440px, calc(100vw - 32px)); }
+        .catalog-revalue-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .catalog-revalue-actions .btn { width: 100%; }
         .catalog-product-actions > form { margin: 0; }
         .btn.catalog-icon-action { width: 40px; height: 40px; display: grid; place-items: center; padding: 0; }
         .btn.catalog-icon-action svg { width: 19px; height: 19px; }
@@ -1285,6 +1302,24 @@
         </dialog>
     @endforeach
 
+    <dialog class="dialog catalog-revalue-confirm-dialog" id="catalog-revalue-confirm-dialog" data-revalue-confirm-dialog>
+        <div class="dialog-header">
+            <div>
+                <h2 class="panel-title">Revalue existing inventory?</h2>
+                <p class="subtle">The cost price changed and this product has stock on hand.</p>
+            </div>
+            <button class="icon-btn" type="button" data-revalue-confirm-cancel aria-label="Close">x</button>
+        </div>
+        <div class="dialog-body">
+            <p>Should Storeboot update the current stock's average cost and post the accounting difference?</p>
+            <p class="subtle" style="margin-top:8px;">Choose No when this cost applies only to future purchases.</p>
+            <div class="button-row catalog-revalue-actions">
+                <button class="btn primary" type="button" data-revalue-confirm-no>No, future stock only</button>
+                <button class="btn danger" type="button" data-revalue-confirm-yes>Yes, revalue inventory</button>
+            </div>
+        </div>
+    </dialog>
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const productAiEndpoint = @json(route('admin.catalog.products.ai-content'));
@@ -1720,6 +1755,107 @@
                 return Number.isFinite(parsed) ? parsed : null;
             };
 
+            const revalueDialog = document.querySelector('[data-revalue-confirm-dialog]');
+            let pendingRevalueForm = null;
+            let pendingRevalueSubmitter = null;
+            let submitAfterRevalueDecision = false;
+
+            const revaluationState = (form) => {
+                const hasVariants = form.querySelector('[data-variant-toggle]:checked')?.value === '1';
+                const costInputs = hasVariants
+                    ? Array.from(form.querySelectorAll('input[name^="variants"][name$="[cost_price]"]'))
+                    : [form.querySelector('input[name="base_cost_price"]')].filter(Boolean);
+                const costs = costInputs.map((input) => {
+                    const originalMinor = Math.round((moneyValue(input.dataset.originalCost) || 0) * 100);
+                    const currentMinor = Math.round((moneyValue(input.value) || 0) * 100);
+
+                    return { input, originalMinor, currentMinor };
+                });
+
+                return {
+                    changedFromConfirmedCost: costs.some(({ originalMinor, currentMinor }) => originalMinor > 0 && originalMinor !== currentMinor),
+                    signature: costs.map(({ input, currentMinor }) => `${input.name}:${currentMinor}`).join('|'),
+                };
+            };
+
+            const openRevalueDialog = (form, submitter = null, shouldSubmit = false) => {
+                pendingRevalueForm = form;
+                pendingRevalueSubmitter = submitter;
+                submitAfterRevalueDecision = shouldSubmit;
+                if (!revalueDialog.open) revalueDialog.showModal();
+            };
+
+            const finishRevalueDecision = (shouldRevalue) => {
+                if (!pendingRevalueForm) return;
+
+                const form = pendingRevalueForm;
+                const submitter = pendingRevalueSubmitter;
+                const shouldSubmit = submitAfterRevalueDecision;
+                const hidden = form.querySelector('[data-revalue-inventory-input]');
+                if (hidden) hidden.value = shouldRevalue ? '1' : '0';
+                form.dataset.revalueDecisionSignature = revaluationState(form).signature;
+                pendingRevalueForm = null;
+                pendingRevalueSubmitter = null;
+                submitAfterRevalueDecision = false;
+                revalueDialog?.close();
+                if (shouldSubmit && submitter) form.requestSubmit(submitter);
+                else if (shouldSubmit) form.requestSubmit();
+            };
+
+            document.querySelectorAll('[data-product-edit-form]').forEach((form) => {
+                form.addEventListener('input', (event) => {
+                    if (!event.target.matches('input[name="base_cost_price"], input[name^="variants"][name$="[cost_price]"]')) return;
+
+                    if (form.dataset.revalueDecisionSignature !== revaluationState(form).signature) {
+                        delete form.dataset.revalueDecisionSignature;
+                        const hidden = form.querySelector('[data-revalue-inventory-input]');
+                        if (hidden) hidden.value = '0';
+                    }
+                });
+
+                form.addEventListener('focusout', (event) => {
+                    if (!event.target.matches('input[name="base_cost_price"], input[name^="variants"][name$="[cost_price]"]')) return;
+                    if (form.dataset.hasInventoryStock !== '1' || !revalueDialog) return;
+
+                    const state = revaluationState(form);
+                    if (!state.changedFromConfirmedCost || form.dataset.revalueDecisionSignature === state.signature) return;
+
+                    openRevalueDialog(form);
+                });
+
+                form.addEventListener('submit', (event) => {
+                    const hidden = form.querySelector('[data-revalue-inventory-input]');
+                    if (form.dataset.hasInventoryStock !== '1' || !revalueDialog) return;
+
+                    const state = revaluationState(form);
+
+                    // Zero-cost imported stock is intentionally revalued automatically
+                    // by the server when its first real cost is saved.
+                    if (!state.changedFromConfirmedCost) {
+                        if (hidden) hidden.value = '0';
+                        return;
+                    }
+                    if (form.dataset.revalueDecisionSignature === state.signature) return;
+
+                    event.preventDefault();
+                    openRevalueDialog(form, event.submitter || null, true);
+                });
+            });
+
+            revalueDialog?.querySelector('[data-revalue-confirm-yes]')?.addEventListener('click', () => finishRevalueDecision(true));
+            revalueDialog?.querySelector('[data-revalue-confirm-no]')?.addEventListener('click', () => finishRevalueDecision(false));
+            revalueDialog?.querySelector('[data-revalue-confirm-cancel]')?.addEventListener('click', () => {
+                pendingRevalueForm = null;
+                pendingRevalueSubmitter = null;
+                submitAfterRevalueDecision = false;
+                revalueDialog.close();
+            });
+            revalueDialog?.addEventListener('cancel', () => {
+                pendingRevalueForm = null;
+                pendingRevalueSubmitter = null;
+                submitAfterRevalueDecision = false;
+            });
+
             const formatCatalogMoney = (value) => {
                 return '{{ $tenant->currency_code }} ' + value.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
@@ -1880,6 +2016,7 @@
                             field.value = '';
                         }
                     });
+                    row.querySelectorAll('[data-original-cost]').forEach((field) => { field.dataset.originalCost = '0'; });
 
                     list.appendChild(row);
                 });
@@ -1928,6 +2065,20 @@
 
                 enabled.addEventListener('change', sync);
                 sync();
+            });
+
+            document.querySelectorAll('[data-editor-status-menu]').forEach((menu) => {
+                const label = menu.querySelector('[data-editor-status-label]');
+
+                menu.querySelectorAll('[data-editor-status-choice]').forEach((choice) => {
+                    choice.addEventListener('change', () => {
+                        if (label) label.textContent = choice.dataset.statusLabel;
+                        menu.querySelectorAll('.catalog-status-option').forEach((option) => {
+                            option.classList.toggle('is-selected', option.contains(choice));
+                        });
+                        menu.open = false;
+                    });
+                });
             });
 
             const showLocalPanelForField = (field) => {
@@ -2349,6 +2500,7 @@
                                 field.value = '';
                             }
                         });
+                        row.querySelectorAll('[data-original-cost]').forEach((field) => { field.dataset.originalCost = '0'; });
 
                         const signatureInput = row.querySelector('[data-option-signature]');
                         const nameInput = row.querySelector('input[name$="[variant_name]"]');

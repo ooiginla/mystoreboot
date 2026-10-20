@@ -57,10 +57,14 @@
     ]);
     $personalizationEnabled = filter_var($personalizationSettings['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $personalizationFields = (array) ($personalizationSettings['fields'] ?? []);
+    $productInventoryStock = $allVariantStock ?? $variantStock ?? collect();
     $stockOnHand = $product
-        ? (int) $product->variants->sum(fn ($stockVariant): int => (int) (($variantStock[$stockVariant->id] ?? collect())->sum('quantity_on_hand')))
+        ? (int) $product->variants->sum(fn ($stockVariant): int => (int) (($productInventoryStock[$stockVariant->id] ?? collect())->sum('quantity_on_hand')))
         : 0;
     $defaultInventoryLocation = ($inventoryLocations ?? collect())->firstWhere('id', $defaultInventoryLocationId ?? null);
+    $selectedProductStatus = old('status', $product?->status->value ?? \Modules\Catalog\Enums\ProductStatus::Active->value);
+    $selectedProductStatusLabel = collect($productStatuses)
+        ->first(fn ($status) => $status->value === $selectedProductStatus)?->label() ?? 'Status';
 
     if (! is_array($optionRows)) {
         $optionRows = $product?->options
@@ -146,7 +150,13 @@
         <button class="icon-btn" type="button" data-dialog-close aria-label="Close">x</button>
     </div>
     <div class="dialog-body">
-        <form class="mini-form" method="POST" action="{{ $action }}" enctype="multipart/form-data">
+        <form
+            class="mini-form"
+            method="POST"
+            action="{{ $action }}"
+            enctype="multipart/form-data"
+            @if ($isEdit) data-product-edit-form data-has-inventory-stock="{{ $stockOnHand > 0 ? '1' : '0' }}" @endif
+        >
             @csrf
             @if ($isEdit)
                 @method('PUT')
@@ -154,6 +164,48 @@
 
             <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
             <input type="hidden" name="product_type" value="{{ $productType }}">
+            @if ($isEdit)
+                <input type="hidden" name="revalue_inventory" value="0" data-revalue-inventory-input>
+            @endif
+
+            @if ($isEdit)
+                <div class="catalog-editor-status-bar">
+                    <div>
+                        <strong>Product status</strong>
+                        <span class="subtle">Choose the status now; it will be applied when you save your changes.</span>
+                    </div>
+                    <details class="catalog-status-menu catalog-editor-status-menu" data-editor-status-menu>
+                        <summary class="btn catalog-editor-status-trigger" aria-label="Change status for {{ $product->name }}" title="Change product status">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/>
+                                <circle cx="12" cy="12" r="2.8"/>
+                            </svg>
+                            <span data-editor-status-label>{{ $selectedProductStatusLabel }}</span>
+                            <span class="catalog-editor-status-chevron" aria-hidden="true">⌄</span>
+                        </summary>
+                        <div class="catalog-status-dropdown" role="menu" aria-label="Product status">
+                            <div class="catalog-status-dropdown-title">Change status</div>
+                            @foreach ($productStatuses as $status)
+                                <label @class(['catalog-status-option', 'is-selected' => $selectedProductStatus === $status->value])>
+                                    <input
+                                        class="catalog-status-radio"
+                                        type="radio"
+                                        name="status"
+                                        value="{{ $status->value }}"
+                                        data-editor-status-choice
+                                        data-status-label="{{ $status->label() }}"
+                                        @checked($selectedProductStatus === $status->value)
+                                        required
+                                    >
+                                    <span class="catalog-status-dot {{ $status === \Modules\Catalog\Enums\ProductStatus::Active ? 'live' : '' }}"></span>
+                                    <span>{{ $status->label() }}</span>
+                                    <span class="catalog-status-check" data-editor-status-check aria-label="Selected">✓</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </details>
+                </div>
+            @endif
 
             <div class="dialog-local-tabs" role="tablist">
                 <a href="#{{ $dialogId }}-basic" class="active" data-local-tab-target="{{ $dialogId }}-basic">Basic</a>
@@ -212,7 +264,7 @@
                             </div>
                             <div class="field">
                                 <label>Estimated cost price</label>
-                                <input name="base_cost_price" type="text" inputmode="decimal" data-money-input value="{{ old('base_cost_price', $minorToMoney($product?->base_cost_price_minor)) }}">
+                                <input name="base_cost_price" type="text" inputmode="decimal" data-money-input data-original-cost="{{ $minorToMoney($product?->base_cost_price_minor) }}" value="{{ old('base_cost_price', $minorToMoney($product?->base_cost_price_minor)) }}">
                             </div>
                             <div class="catalog-profit-summary" data-profit-summary hidden>
                                 <span>Profit: <strong data-profit-value></strong></span>
@@ -352,14 +404,16 @@
                         <label>Barcode</label>
                         <input name="barcode" value="{{ old('barcode', $variant?->barcode) }}">
                     </div>
-                    <div class="field">
-                        <label>Status</label>
-                        <select name="status" required>
-                            @foreach ($productStatuses as $status)
-                                <option value="{{ $status->value }}" @selected(old('status', $product?->status->value ?? \Modules\Catalog\Enums\ProductStatus::Active->value) === $status->value)>{{ $status->label() }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+                    @unless ($isEdit)
+                        <div class="field">
+                            <label>Status</label>
+                            <select name="status" required>
+                                @foreach ($productStatuses as $status)
+                                    <option value="{{ $status->value }}" @selected($selectedProductStatus === $status->value)>{{ $status->label() }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    @endunless
                     @unless ($isService)
                         <div class="field full">
                             <div class="catalog-inline-box" data-product-suppliers>
@@ -844,7 +898,8 @@
                                     </div>
                                     <div class="field">
                                         <label>Cost price</label>
-                                        <input name="variants[{{ $index }}][cost_price]" type="text" inputmode="decimal" data-money-input value="{{ $row['cost_price'] ?? '' }}">
+                                        @php $savedVariant = $product?->variants->firstWhere('id', (int) ($row['id'] ?? 0)); @endphp
+                                        <input name="variants[{{ $index }}][cost_price]" type="text" inputmode="decimal" data-money-input data-original-cost="{{ $minorToMoney($savedVariant?->cost_price_minor) }}" value="{{ $row['cost_price'] ?? '' }}">
                                     </div>
                                     <div class="field">
                                         <label>Compare at price</label>

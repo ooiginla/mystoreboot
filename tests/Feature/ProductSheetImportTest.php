@@ -7,10 +7,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Modules\Business\Models\Branch;
 use Modules\Catalog\Actions\StructureProductSheetAction;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Models\Product;
 use Modules\Catalog\Support\SpreadsheetReader;
+use Modules\Inventory\Models\InventoryStockLevel;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 use Tests\TestCase;
@@ -43,6 +45,13 @@ class ProductSheetImportTest extends TestCase
             'currency_code' => 'NGN',
         ]);
         $user = User::factory()->create(['is_platform_admin' => true]);
+        Branch::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Main Branch',
+            'code' => 'MAIN',
+            'status' => 'active',
+            'is_primary' => true,
+        ]);
 
         return [$user, $tenant];
     }
@@ -64,7 +73,7 @@ class ProductSheetImportTest extends TestCase
         $this->noAi();
         [$user, $tenant] = $this->fixture();
 
-        $csv = <<<CSV
+        $csv = <<<'CSV'
         Product ID,Product Name,Category,Price,Stock Quantity,Status
         SKU-101,Wireless Bluetooth Earbuds,Electronics,49.99,120,Active
         SKU-102,Ergonomic Office Chair,Furniture,149.50,35,Active
@@ -85,12 +94,16 @@ class ProductSheetImportTest extends TestCase
 
         $earbuds = Product::query()->where('tenant_id', $tenant->id)->where('name', 'Wireless Bluetooth Earbuds')->firstOrFail();
         $this->assertSame(ProductStatus::Draft, $earbuds->status);
-        $this->assertSame(4999, (int) $earbuds->base_price_minor);
+        $this->assertSame(0, (int) $earbuds->base_price_minor);
+        $this->assertSame(0, (int) $earbuds->base_cost_price_minor);
+        $this->assertSame(1, (int) InventoryStockLevel::query()
+            ->where('product_variant_id', $earbuds->variants()->value('id'))
+            ->value('quantity_on_hand'));
         $this->assertSame('Electronics', $earbuds->category?->name);
         $this->assertSame('SKU-101', $earbuds->variants()->value('sku'));
 
         $chair = Product::query()->where('tenant_id', $tenant->id)->where('name', 'Ergonomic Office Chair')->firstOrFail();
-        $this->assertSame(14950, (int) $chair->base_price_minor);
+        $this->assertSame(0, (int) $chair->base_price_minor);
         $this->assertSame('Furniture', $chair->category?->name);
     }
 
@@ -200,7 +213,7 @@ class ProductSheetImportTest extends TestCase
         $product = Product::query()->where('tenant_id', $tenant->id)->firstOrFail();
         $this->assertSame('XSP-01 Monocular Microscope', $product->name);
         $this->assertSame('Microscopes', $product->category?->name);
-        $this->assertSame(1550, (int) $product->base_price_minor);
+        $this->assertSame(0, (int) $product->base_price_minor);
         $this->assertStringContainsString('Magnification: 40-640X', (string) $product->specifications);
         $this->assertSame('Acme', $product->brand);
     }
