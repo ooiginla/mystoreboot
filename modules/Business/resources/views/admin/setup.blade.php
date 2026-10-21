@@ -1608,6 +1608,16 @@
                                 <small>Only Storeboot can change your subscription plan.</small>
                             </div>
                         @endif
+                        @if ($isPlatformAdmin && $tenant)
+                            <div class="field">
+                                <label for="commerce_mode">Commerce configuration</label>
+                                <select id="commerce_mode" name="commerce_mode">
+                                    <option value="standard" @selected(old('commerce_mode', $tenant->commerce_mode?->value ?? 'standard') === 'standard')>Standard product store</option>
+                                    <option value="reseller" @selected(old('commerce_mode', $tenant->commerce_mode?->value ?? 'standard') === 'reseller')>Reseller store</option>
+                                </select>
+                                <small>Super admin only. Reseller mode enables supplier sourcing and the reseller storefront for this tenant.</small>
+                            </div>
+                        @endif
                         <div class="field full" data-estimated-cost-cogs-setting @if ($selectedPlanHasInventory) hidden @endif>
                             <label><input type="hidden" name="use_estimated_cost_for_cogs" value="0" @disabled($selectedPlanHasInventory)><input type="checkbox" name="use_estimated_cost_for_cogs" value="1" @checked($useEstimatedCostForCogs) @disabled($selectedPlanHasInventory)> Use Estimated cost for COGS</label>
                         </div>

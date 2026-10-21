@@ -17,11 +17,13 @@ use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Inventory\Models\InventoryLocation;
+use Modules\Reseller\Models\ResellerSetting;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Module;
 use Modules\Subscriptions\Models\Plan;
 use Modules\Subscriptions\Models\TenantModuleEntitlement;
 use Modules\Subscriptions\Models\TenantSubscription;
+use Modules\Tenancy\Enums\CommerceMode;
 use Modules\Tenancy\Enums\TenantStatus;
 use Modules\Tenancy\Models\Tenant;
 use Tests\TestCase;
@@ -891,6 +893,77 @@ class BusinessOnlineStoreTest extends TestCase
             ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#business-profile');
 
         $this->assertSame($growth->id, $subscription->refresh()->plan_id);
+    }
+
+    public function test_only_platform_admin_can_change_a_tenant_to_reseller_configuration(): void
+    {
+        $tenant = Tenant::query()->create([
+            'name' => 'Reseller Candidate',
+            'slug' => 'reseller-candidate',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+            'default_tax_rate' => 0,
+        ]);
+        $tenantUser = User::factory()->create(['is_platform_admin' => false]);
+        TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $tenantUser->id,
+            'status' => MembershipStatus::Active,
+        ]);
+
+        $this->actingAs($tenantUser)
+            ->get(route('admin.business.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertDontSee('name="commerce_mode"', false);
+
+        $this->actingAs($tenantUser)
+            ->post(route('admin.business.profile.save'), [
+                'tenant_id' => $tenant->id,
+                'name' => $tenant->name,
+                'business_type' => 'retail',
+                'country_code' => 'NG',
+                'timezone' => 'Africa/Lagos',
+                'currency_code' => 'NGN',
+                'default_tax_rate' => '0',
+                'commerce_mode' => CommerceMode::Reseller->value,
+            ])
+            ->assertSessionHasErrors('commerce_mode');
+
+        $this->assertSame(CommerceMode::Standard, $tenant->refresh()->commerce_mode);
+
+        $platformAdmin = User::factory()->create(['is_platform_admin' => true]);
+
+        $this->actingAs($platformAdmin)
+            ->get(route('admin.business.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('Commerce configuration')
+            ->assertSee('name="commerce_mode"', false)
+            ->assertSee('<option value="standard"', false);
+
+        $this->actingAs($platformAdmin)
+            ->post(route('admin.business.profile.save'), [
+                'tenant_id' => $tenant->id,
+                'name' => $tenant->name,
+                'business_type' => 'retail',
+                'country_code' => 'NG',
+                'timezone' => 'Africa/Lagos',
+                'currency_code' => 'NGN',
+                'default_tax_rate' => '0',
+                'commerce_mode' => CommerceMode::Reseller->value,
+            ])
+            ->assertRedirect(route('admin.business.index', ['tenant' => $tenant->id]).'#business-profile');
+
+        $resellerModule = Module::query()->where('slug', 'reseller')->firstOrFail();
+
+        $this->assertSame(CommerceMode::Reseller, $tenant->refresh()->commerce_mode);
+        $this->assertTrue(TenantModuleEntitlement::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('module_id', $resellerModule->id)
+            ->value('is_enabled'));
+        $this->assertDatabaseHas(ResellerSetting::class, ['tenant_id' => $tenant->id]);
     }
 
     public function test_authorized_administrators_can_toggle_non_core_tenant_modules_and_sidebar_follows_access(): void

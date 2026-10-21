@@ -67,7 +67,7 @@ final class SaveBusinessProfileAction
                 $settings['bank_details'] = $bankDetails;
             }
 
-            $tenant->fill([
+            $attributes = [
                 'name' => $data['name'],
                 'slug' => $tenant->exists ? $tenant->slug : $this->uniqueSlug((string) ($data['slug'] ?: $data['name'])),
                 'business_type' => $data['business_type'],
@@ -84,7 +84,13 @@ final class SaveBusinessProfileAction
                 'default_tax_rate' => $data['default_tax_rate'],
                 'opening_hours' => $this->normalizeOpeningHours($data['opening_hours'] ?? []),
                 'settings' => $settings,
-            ]);
+            ];
+
+            if (array_key_exists('commerce_mode', $data) && $data['commerce_mode'] !== null) {
+                $attributes['commerce_mode'] = $data['commerce_mode'];
+            }
+
+            $tenant->fill($attributes);
 
             $tenant->save();
 

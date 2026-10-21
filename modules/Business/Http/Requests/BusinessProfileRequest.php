@@ -7,6 +7,7 @@ namespace Modules\Business\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\Business\Enums\BusinessType;
+use Modules\Tenancy\Enums\CommerceMode;
 
 final class BusinessProfileRequest extends FormRequest
 {
@@ -54,6 +55,11 @@ final class BusinessProfileRequest extends FormRequest
                 'nullable',
                 'integer',
                 'exists:plans,id',
+            ],
+            'commerce_mode' => [
+                Rule::prohibitedIf(! (bool) $this->user()?->is_platform_admin),
+                'nullable',
+                Rule::enum(CommerceMode::class),
             ],
             'logo' => ['nullable', 'image', 'max:2048'],
             'opening_hours' => ['array'],

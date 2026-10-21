@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -43,13 +44,18 @@ use Modules\Catalog\Actions\EnsureDefaultProductCategoryAction;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
+use Modules\Reseller\Models\ResellerOrder;
+use Modules\Reseller\Models\ResellerSetting;
 use Modules\Sales\Enums\PayoutMode;
+use Modules\Sales\Enums\SalesOrderStatus;
+use Modules\Sales\Models\SalesOrder;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Module;
 use Modules\Subscriptions\Models\Plan;
 use Modules\Subscriptions\Models\TenantModuleEntitlement;
 use Modules\Subscriptions\Models\TenantSubscription;
 use Modules\Subscriptions\Support\TenantModuleAccess;
+use Modules\Tenancy\Enums\CommerceMode;
 use Modules\Tenancy\Models\Tenant;
 
 final class BusinessSetupController extends Controller
@@ -207,14 +213,88 @@ final class BusinessSetupController extends Controller
         $data = $request->validated();
 
         if (! $user->is_platform_admin) {
-            unset($data['plan_id']);
+            unset($data['plan_id'], $data['commerce_mode']);
         }
 
-        $savedTenant = $action->execute($data, $tenant);
+        $previousCommerceMode = $tenant?->commerce_mode ?? CommerceMode::Standard;
+        $requestedCommerceMode = isset($data['commerce_mode'])
+            ? CommerceMode::from($data['commerce_mode'])
+            : null;
+        $resellerModule = null;
+
+        if ($requestedCommerceMode && $requestedCommerceMode !== $previousCommerceMode) {
+            if ($tenant && $this->hasActiveCommerceOrders($tenant)) {
+                throw ValidationException::withMessages([
+                    'commerce_mode' => 'Resolve active orders before changing the commerce configuration.',
+                ]);
+            }
+
+            if ($requestedCommerceMode === CommerceMode::Reseller) {
+                $resellerModule = Module::query()
+                    ->where('slug', 'reseller')
+                    ->where('is_active', true)
+                    ->first();
+
+                if (! $resellerModule) {
+                    throw ValidationException::withMessages([
+                        'commerce_mode' => 'The Reseller Store module is not currently available.',
+                    ]);
+                }
+            }
+        }
+
+        $savedTenant = DB::transaction(function () use ($action, $data, $tenant, $requestedCommerceMode, $resellerModule): Tenant {
+            $savedTenant = $action->execute($data, $tenant);
+
+            if ($requestedCommerceMode === CommerceMode::Reseller) {
+                $resellerModule ??= Module::query()->where('slug', 'reseller')->where('is_active', true)->firstOrFail();
+
+                TenantModuleEntitlement::query()->updateOrCreate(
+                    ['tenant_id' => $savedTenant->id, 'module_id' => $resellerModule->id],
+                    ['is_enabled' => true],
+                );
+                ResellerSetting::query()->firstOrCreate(['tenant_id' => $savedTenant->id]);
+            }
+
+            return $savedTenant->refresh();
+        });
+
+        if ($requestedCommerceMode && $requestedCommerceMode !== $previousCommerceMode) {
+            app(AuditLogger::class)->log(
+                $savedTenant->id,
+                $user,
+                'tenant.commerce_mode.changed',
+                "Commerce configuration changed from {$previousCommerceMode->value} to {$requestedCommerceMode->value}.",
+                'security',
+                'tenant',
+                $savedTenant->id,
+                ['from' => $previousCommerceMode->value, 'to' => $requestedCommerceMode->value],
+            );
+        }
 
         return redirect()
             ->to(route('admin.business.index', ['tenant' => $savedTenant->id]).'#business-profile')
             ->with('status', "Business profile saved for {$savedTenant->name}.");
+    }
+
+    private function hasActiveCommerceOrders(Tenant $tenant): bool
+    {
+        if ($tenant->isReseller()) {
+            return ResellerOrder::query()
+                ->where('tenant_id', $tenant->id)
+                ->whereNotIn('order_status', ['completed', 'cancelled'])
+                ->exists();
+        }
+
+        return SalesOrder::query()
+            ->where('tenant_id', $tenant->id)
+            ->whereNotIn('order_status', [
+                SalesOrderStatus::Completed->value,
+                SalesOrderStatus::Cancelled->value,
+                SalesOrderStatus::Returned->value,
+                SalesOrderStatus::PartiallyReturned->value,
+            ])
+            ->exists();
     }
 
     public function savePaymentMethods(Request $request): RedirectResponse
