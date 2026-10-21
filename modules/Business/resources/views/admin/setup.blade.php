@@ -974,6 +974,18 @@
                                                 <label for="online-store-announcement">Store announcement</label>
                                                 <textarea id="online-store-announcement" name="announcement" rows="2" placeholder="Share an update with your customers.">{{ old('announcement', $onlineStore ? $onlineStore->announcement : 'We are live!!!') }}</textarea>
                                             </div>
+                                            @php
+                                                $announcementColor = old('announcement_color', $onlineStore?->announcement_color ?? '#000000');
+                                                $announcementPickerColor = preg_match('/\A#[0-9a-f]{6}\z/i', (string) $announcementColor) === 1 ? $announcementColor : '#000000';
+                                            @endphp
+                                            <div class="field">
+                                                <label for="announcement-color-hex">Announcement colour</label>
+                                                <div class="theme-color-control" data-theme-color-control>
+                                                    <input class="theme-color-picker" type="color" value="{{ $announcementPickerColor }}" aria-label="Choose announcement colour" data-theme-color-picker>
+                                                    <input id="announcement-color-hex" class="theme-color-hex" name="announcement_color" type="text" value="{{ $announcementColor }}" placeholder="#000000" maxlength="7" pattern="#?[0-9A-Fa-f]{3}(?:[0-9A-Fa-f]{3})?" title="Enter a 3 or 6 digit hexadecimal color, for example #000000" spellcheck="false" data-theme-color-hex required>
+                                                </div>
+                                                <small>Black is used by default.</small>
+                                            </div>
                                         </div>
                                     </details>
 

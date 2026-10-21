@@ -58,6 +58,7 @@ final class OnlineStoreRequest extends FormRequest
             'username' => strtolower(trim((string) $this->input('username'))),
             'theme_primary_color' => $normalizeHexColor($this->input('theme_primary_color')),
             'theme_secondary_color' => $normalizeHexColor($this->input('theme_secondary_color')),
+            'announcement_color' => $normalizeHexColor($this->input('announcement_color', '#000000')),
             'payment_methods' => $paymentMethods,
             'paystack_method' => $paystackMethod,
             'maintenance_mode' => $this->boolean('maintenance_mode'),
@@ -120,6 +121,7 @@ final class OnlineStoreRequest extends FormRequest
             'slides.*.fade_image' => ['nullable', 'boolean'],
             'slides.*.show_description' => ['nullable', 'boolean'],
             'announcement' => ['nullable', 'string', 'max:1000'],
+            'announcement_color' => ['required', 'regex:/\A#[0-9a-f]{6}\z/'],
             'theme_primary_color' => ['required', 'regex:/\A#[0-9a-f]{6}\z/'],
             'theme_secondary_color' => ['required', 'regex:/\A#[0-9a-f]{6}\z/'],
             'fulfilment_branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')->where('tenant_id', $tenantId)],
@@ -166,6 +168,7 @@ final class OnlineStoreRequest extends FormRequest
             'username.unique' => 'Sorry, that store address has already been taken. Please pick a new one.',
             'theme_primary_color.regex' => 'Enter a valid primary color in hexadecimal format, such as #006554.',
             'theme_secondary_color.regex' => 'Enter a valid secondary color in hexadecimal format, such as #F59E0B.',
+            'announcement_color.regex' => 'Enter a valid announcement color in hexadecimal format, such as #000000.',
         ];
     }
 

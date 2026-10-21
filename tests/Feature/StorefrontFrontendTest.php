@@ -115,6 +115,7 @@ class StorefrontFrontendTest extends TestCase
             ->assertOk()
             ->assertSee('Demo Store')
             ->assertSee('Free delivery today')
+            ->assertSee('style="background-color: #123456; color: #ffffff;"', false)
             ->assertSee('All Categories')
             ->assertSee('Footwear')
             ->assertSee('data-mobile-nav-toggle', false)
@@ -1499,6 +1500,7 @@ class StorefrontFrontendTest extends TestCase
             'username' => 'demo-store',
             'store_name' => 'Demo Store',
             'announcement' => 'Free delivery today',
+            'announcement_color' => '#123456',
             'store_phone' => '08010000000',
             'store_whatsapp' => '08020000000',
             'hero_image_text' => 'Launch collection',

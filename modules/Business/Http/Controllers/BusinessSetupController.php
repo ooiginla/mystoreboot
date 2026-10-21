@@ -791,6 +791,7 @@ final class BusinessSetupController extends Controller
             'hero_image_tag' => $data['hero_image_tag'] ?? null,
             'slides' => $slides,
             'announcement' => $data['announcement'] ?? ($isNewStore ? 'We are live!!!' : $store->announcement),
+            'announcement_color' => $data['announcement_color'],
             'theme_primary_color' => $data['theme_primary_color'],
             'theme_secondary_color' => $data['theme_secondary_color'],
             'payment_methods' => $data['payment_methods'] ?? [],

@@ -19,6 +19,13 @@
     ][strtoupper($currency)] ?? strtoupper($currency);
     $logoUrl = $imageUrl($store->logo_path);
     $faviconUrl = $imageUrl($store->logo_path ?: $store->tenant?->logo_path) ?: asset('favicon.svg');
+    $announcementColor = preg_match('/\A#[0-9a-f]{6}\z/i', (string) $store->announcement_color) === 1
+        ? strtolower((string) $store->announcement_color)
+        : '#000000';
+    $announcementRgb = sscanf(ltrim($announcementColor, '#'), '%02x%02x%02x');
+    $announcementTextColor = (($announcementRgb[0] * 299 + $announcementRgb[1] * 587 + $announcementRgb[2] * 114) / 1000) > 160
+        ? '#111827'
+        : '#ffffff';
     $whatsapp = preg_replace('/\D+/', '', (string) ($store->store_whatsapp ?: data_get($store->social_accounts, 'whatsapp')));
     $storeAddress = collect([$store->address, $store->city, $store->state, $store->country])->filter()->join(', ');
     $socialUrl = function (string $network, mixed $handle): string {
@@ -216,7 +223,7 @@
 </head>
 <body data-storefront data-cart-key="storefront-cart-{{ $store->username }}">
     @if ($store->announcement)
-        <div class="sf-label-md bg-black px-4 py-2 text-center uppercase text-white">
+        <div class="sf-label-md px-4 py-2 text-center uppercase" style="background-color: {{ $announcementColor }}; color: {{ $announcementTextColor }};">
             <span class="store-announcement inline-block">{{ $store->announcement }}</span>
         </div>
     @endif
