@@ -164,6 +164,9 @@ class BusinessOnlineStoreTest extends TestCase
             ->assertSee('<option value="Ghana"', false)
             ->assertSee('<option value="United States"', false)
             ->assertSee('Description of Store')
+            ->assertSee('data-theme-color-picker', false)
+            ->assertSee('data-theme-color-hex', false)
+            ->assertSee('placeholder="#006554"', false)
             ->assertSee('Banner Image Text')
             ->assertSee('Privacy Policy')
             ->assertSee('Save pages')
@@ -237,8 +240,8 @@ class BusinessOnlineStoreTest extends TestCase
                     ],
                 ],
                 'announcement' => 'Free delivery this week',
-                'theme_primary_color' => '#006554',
-                'theme_secondary_color' => '#f59e0b',
+                'theme_primary_color' => '006554',
+                'theme_secondary_color' => '#F90',
                 'fulfilment_branch_id' => $branch->id,
                 'maintenance_mode' => '1',
                 'category_ids' => [$category->id],
@@ -282,6 +285,8 @@ class BusinessOnlineStoreTest extends TestCase
 
         $this->assertSame('web-shop', $store->username);
         $this->assertSame('Web Shop Online', $store->store_name);
+        $this->assertSame('#006554', $store->theme_primary_color);
+        $this->assertSame('#ff9900', $store->theme_secondary_color);
         $this->assertSame('Curated shoes and accessories for everyday movement.', $store->description);
         $this->assertStringStartsWith("tenants/{$tenant->id}/online-store/logos/", $store->logo_path);
         $this->assertStringStartsWith("tenants/{$tenant->id}/online-store/heroes/", $store->hero_image_path);

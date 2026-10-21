@@ -21,6 +21,18 @@ final class OnlineStoreRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $normalizeHexColor = static function (mixed $value): string {
+            $color = preg_replace('/\A#/', '', trim((string) $value)) ?? '';
+
+            if (preg_match('/\A[0-9a-f]{3}\z/i', $color) === 1) {
+                $color = implode('', array_map(
+                    static fn (string $character): string => $character.$character,
+                    str_split($color),
+                ));
+            }
+
+            return '#'.strtolower($color);
+        };
         $paymentMethods = collect((array) $this->input('payment_methods', []))
             ->map(fn (mixed $method): string => (string) $method)
             ->values()
@@ -44,6 +56,8 @@ final class OnlineStoreRequest extends FormRequest
 
         $this->merge([
             'username' => strtolower(trim((string) $this->input('username'))),
+            'theme_primary_color' => $normalizeHexColor($this->input('theme_primary_color')),
+            'theme_secondary_color' => $normalizeHexColor($this->input('theme_secondary_color')),
             'payment_methods' => $paymentMethods,
             'paystack_method' => $paystackMethod,
             'maintenance_mode' => $this->boolean('maintenance_mode'),
@@ -104,8 +118,8 @@ final class OnlineStoreRequest extends FormRequest
             'slides.*.hero_image_description' => ['nullable', 'string', 'max:255'],
             'slides.*.hero_image_tag' => ['nullable', 'string', 'max:80'],
             'announcement' => ['nullable', 'string', 'max:1000'],
-            'theme_primary_color' => ['required', 'string', 'max:20'],
-            'theme_secondary_color' => ['required', 'string', 'max:20'],
+            'theme_primary_color' => ['required', 'regex:/\A#[0-9a-f]{6}\z/'],
+            'theme_secondary_color' => ['required', 'regex:/\A#[0-9a-f]{6}\z/'],
             'fulfilment_branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')->where('tenant_id', $tenantId)],
             'category_ids' => ['array'],
             'category_ids.*' => ['integer', Rule::exists('product_categories', 'id')->where('tenant_id', $tenantId)],
@@ -148,6 +162,8 @@ final class OnlineStoreRequest extends FormRequest
             'username.regex' => 'The store address may contain only lowercase letters, numbers, and single hyphens, and cannot start or end with a hyphen.',
             'username.not_in' => 'That store address is reserved by Storeboot. Choose another one.',
             'username.unique' => 'Sorry, that store address has already been taken. Please pick a new one.',
+            'theme_primary_color.regex' => 'Enter a valid primary color in hexadecimal format, such as #006554.',
+            'theme_secondary_color.regex' => 'Enter a valid secondary color in hexadecimal format, such as #F59E0B.',
         ];
     }
 

@@ -127,7 +127,9 @@
         .setup-line-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
         .setup-section { border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 14px; background: #fff; }
         .setup-section-title { margin: 0; color: #111827; font-size: 16px; font-weight: 900; }
-        .theme-color-input { min-height: 44px; }
+        .theme-color-control { display: flex; align-items: stretch; gap: 10px; }
+        .main .theme-color-picker { width: 54px; min-width: 54px; min-height: 44px; padding: 4px; cursor: pointer; }
+        .theme-color-hex { min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; text-transform: uppercase; }
         .check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
         .check-list { display: grid; grid-template-columns: 1fr; gap: 10px; }
         .inline-check { display: inline-flex; gap: 8px; align-items: center; color: #344054; font-weight: 750; }
@@ -831,8 +833,26 @@
                                     </div>
                                     <div class="form-grid">
                                         <div class="field full"><label>Description of Store <button type="button" class="ai-generate-btn" data-ai-generate data-ai-field="description" data-ai-target="#online-store-description">✨ Generate with AI</button></label><textarea id="online-store-description" name="description" rows="3" placeholder="A short description customers will see on your online store.">{{ old('description', $onlineStore?->description) }}</textarea></div>
-                                        <div class="field"><label>Theme primary color</label><input class="theme-color-input" name="theme_primary_color" type="color" value="{{ old('theme_primary_color', $onlineStore?->theme_primary_color ?? '#006554') }}" style="background-color: {{ old('theme_primary_color', $onlineStore?->theme_primary_color ?? '#006554') }};" data-theme-color-field></div>
-                                        <div class="field"><label>Theme secondary color</label><input class="theme-color-input" name="theme_secondary_color" type="color" value="{{ old('theme_secondary_color', $onlineStore?->theme_secondary_color ?? '#f59e0b') }}" style="background-color: {{ old('theme_secondary_color', $onlineStore?->theme_secondary_color ?? '#f59e0b') }};" data-theme-color-field></div>
+                                        @php
+                                            $primaryThemeColor = old('theme_primary_color', $onlineStore?->theme_primary_color ?? '#006554');
+                                            $secondaryThemeColor = old('theme_secondary_color', $onlineStore?->theme_secondary_color ?? '#f59e0b');
+                                            $primaryPickerColor = preg_match('/\A#[0-9a-f]{6}\z/i', (string) $primaryThemeColor) === 1 ? $primaryThemeColor : '#006554';
+                                            $secondaryPickerColor = preg_match('/\A#[0-9a-f]{6}\z/i', (string) $secondaryThemeColor) === 1 ? $secondaryThemeColor : '#f59e0b';
+                                        @endphp
+                                        <div class="field">
+                                            <label for="theme-primary-color-hex">Theme primary color</label>
+                                            <div class="theme-color-control" data-theme-color-control>
+                                                <input class="theme-color-picker" type="color" value="{{ $primaryPickerColor }}" aria-label="Choose theme primary color" data-theme-color-picker>
+                                                <input id="theme-primary-color-hex" class="theme-color-hex" name="theme_primary_color" type="text" value="{{ $primaryThemeColor }}" placeholder="#006554" maxlength="7" pattern="#?[0-9A-Fa-f]{3}(?:[0-9A-Fa-f]{3})?" title="Enter a 3 or 6 digit hexadecimal color, for example #006554" spellcheck="false" data-theme-color-hex required>
+                                            </div>
+                                        </div>
+                                        <div class="field">
+                                            <label for="theme-secondary-color-hex">Theme secondary color</label>
+                                            <div class="theme-color-control" data-theme-color-control>
+                                                <input class="theme-color-picker" type="color" value="{{ $secondaryPickerColor }}" aria-label="Choose theme secondary color" data-theme-color-picker>
+                                                <input id="theme-secondary-color-hex" class="theme-color-hex" name="theme_secondary_color" type="text" value="{{ $secondaryThemeColor }}" placeholder="#F59E0B" maxlength="7" pattern="#?[0-9A-Fa-f]{3}(?:[0-9A-Fa-f]{3})?" title="Enter a 3 or 6 digit hexadecimal color, for example #F59E0B" spellcheck="false" data-theme-color-hex required>
+                                            </div>
+                                        </div>
                                         <div class="field"><label>Fulfilment branch</label><select name="fulfilment_branch_id"><option value="">Select branch</option>@foreach ($branches as $branch)<option value="{{ $branch->id }}" @selected((string) old('fulfilment_branch_id', $defaultOnlineStoreBranchId) === (string) $branch->id)>{{ $branch->name }}</option>@endforeach</select></div>
                                         <div class="field"><label>Store status</label><label class="inline-check"><input type="checkbox" name="maintenance_mode" value="1" @checked($onlineMaintenanceMode)> Enable maintenance mode</label></div>
                                     </div>
@@ -2103,11 +2123,24 @@
                 }
             });
 
-            const paintThemeColorField = (field) => {
-                field.style.backgroundColor = field.value;
+            const normalizeThemeHex = (value) => {
+                let hex = String(value ?? '').trim().replace(/^#/, '');
+                if (/^[0-9a-f]{3}$/i.test(hex)) {
+                    hex = [...hex].map((character) => character + character).join('');
+                }
+
+                return /^[0-9a-f]{6}$/i.test(hex) ? `#${hex.toLowerCase()}` : null;
             };
 
-            document.querySelectorAll('[data-theme-color-field]').forEach(paintThemeColorField);
+            const syncThemeColorControl = (control) => {
+                const picker = control.querySelector('[data-theme-color-picker]');
+                const hexField = control.querySelector('[data-theme-color-hex]');
+                const normalized = normalizeThemeHex(hexField?.value);
+
+                if (picker && normalized) picker.value = normalized;
+            };
+
+            document.querySelectorAll('[data-theme-color-control]').forEach(syncThemeColorControl);
 
             const planSelect = document.querySelector('#plan_id');
             const estimatedCostCogsSetting = document.querySelector('[data-estimated-cost-cogs-setting]');
@@ -2497,9 +2530,15 @@
             renumberOnlineSlides();
 
             document.addEventListener('input', (event) => {
-                const colorField = event.target.closest('[data-theme-color-field]');
-                if (colorField) {
-                    paintThemeColorField(colorField);
+                const colorPicker = event.target.closest('[data-theme-color-picker]');
+                if (colorPicker) {
+                    const hexField = colorPicker.closest('[data-theme-color-control]')?.querySelector('[data-theme-color-hex]');
+                    if (hexField) hexField.value = colorPicker.value.toUpperCase();
+                }
+
+                const colorHexField = event.target.closest('[data-theme-color-hex]');
+                if (colorHexField) {
+                    syncThemeColorControl(colorHexField.closest('[data-theme-color-control]'));
                 }
 
                 const slideImageInput = event.target.closest('[data-slide-image-input]');
@@ -2517,6 +2556,14 @@
                     const existingPath = row?.querySelector('[data-slide-field="existing_image_path"]');
                     if (existingPath) existingPath.value = '';
                 }
+            });
+
+            document.addEventListener('change', (event) => {
+                const colorHexField = event.target.closest('[data-theme-color-hex]');
+                if (!colorHexField) return;
+
+                const normalized = normalizeThemeHex(colorHexField.value);
+                if (normalized) colorHexField.value = normalized.toUpperCase();
             });
 
             document.addEventListener('click', (event) => {
