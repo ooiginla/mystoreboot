@@ -119,6 +119,7 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('Footwear')
             ->assertSee('data-mobile-nav-toggle', false)
             ->assertSee('.store-shell { width: 100%; max-width: 1400px; margin-left: auto; margin-right: auto;', false)
+            ->assertSee('.store-hero { width: calc(100% - 32px); max-width: 1400px; margin-left: auto; margin-right: auto;', false)
             ->assertSee('data-mobile-menu-label>Menu</span>', false)
             ->assertSee('id="store-mobile-nav"', false)
             ->assertSee('data-cart-toast', false)
