@@ -164,7 +164,7 @@
             .sf-display-xl { font-size: 24px; line-height: 32px; letter-spacing: 0; font-weight: 600; }
             .sf-headline-lg { font-size: 24px; line-height: 32px; letter-spacing: 0; }
         }
-        .store-shell { width: 100%; max-width: none; margin: 0; padding-left: 16px; padding-right: 16px; }
+        .store-shell { width: 100%; max-width: 1400px; margin-left: auto; margin-right: auto; padding-left: 16px; padding-right: 16px; }
         @media (min-width: 768px) { .store-shell { padding-left: 48px; padding-right: 48px; } }
         .store-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 8px; padding: 10px 18px; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; line-height: 20px; letter-spacing: 0.05em; font-weight: 600; text-transform: uppercase; transition: transform .16s ease, box-shadow .16s ease, opacity .16s ease; }
         .store-btn:active { transform: scale(.98); }
