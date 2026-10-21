@@ -43,17 +43,70 @@ final class ResellerStorefrontTest extends TestCase
         $this->get(route('storefront.storefront.store.home', $store))
             ->assertOk()
             ->assertSee('Recovered Shirt')
-            ->assertSee('Supplier Website')
+            ->assertDontSee('Supplier Website')
             ->assertDontSee('Native Hidden Product');
 
         $this->get(route('storefront.storefront.store.products.show', [$store, $product->id]))
             ->assertOk()
             ->assertSee('Recovered Shirt')
+            ->assertDontSee('Supplier Website')
             ->assertSee('Add to Cart')
             ->assertSee('Buy It Now');
 
         $this->get(route('storefront.storefront.store.products.show', [$store, 'native-hidden-product']))
             ->assertNotFound();
+    }
+
+    public function test_reseller_can_choose_whether_out_of_stock_products_are_shown(): void
+    {
+        [$tenant, $store, $product] = $this->fixture();
+        $outOfStock = ResellerProduct::query()->create([
+            'tenant_id' => $tenant->id,
+            'supplier_id' => $product->supplier_id,
+            'product_url' => 'https://supplier.example/products/unavailable-shoes',
+            'name' => 'Unavailable Shoes',
+            'source_price_minor' => 200000,
+            'selling_price_minor' => 240000,
+            'currency_code' => 'NGN',
+            'availability' => ProductAvailability::OutOfStock,
+            'source_store_name' => 'Supplier Website',
+            'is_visible' => true,
+            'last_checked_at' => now(),
+        ]);
+
+        $this->get(route('storefront.storefront.store.home', $store))
+            ->assertOk()
+            ->assertDontSee('Unavailable Shoes');
+        $this->get(route('storefront.storefront.store.products.show', [$store, $outOfStock->id]))
+            ->assertNotFound();
+
+        ResellerSetting::query()->where('tenant_id', $tenant->id)->update([
+            'hide_out_of_stock_products' => false,
+        ]);
+
+        $this->get(route('storefront.storefront.store.home', $store))
+            ->assertOk()
+            ->assertSee('Unavailable Shoes')
+            ->assertSee('Out of stock')
+            ->assertDontSee('Supplier Website');
+        $this->get(route('storefront.storefront.store.products.show', [$store, $outOfStock->id]))
+            ->assertOk()
+            ->assertSee('Unavailable Shoes')
+            ->assertSee('Out of stock')
+            ->assertDontSee('Supplier Website');
+
+        $this->postJson(route('storefront.storefront.store.checkout', $store), [
+            'customer' => [
+                'name' => 'Ada Buyer',
+                'email' => 'ada@example.com',
+                'phone' => '+2348000000000',
+                'address' => '1 Market Road',
+                'city' => 'Lagos',
+            ],
+            'shipping_option' => 'Lagos',
+            'payment_method' => 'place_order',
+            'items' => [['product_variant_id' => $outOfStock->id, 'quantity' => 1]],
+        ])->assertUnprocessable()->assertJsonValidationErrors('items');
     }
 
     public function test_reseller_checkout_snapshots_prices_and_creates_pending_payment(): void
@@ -179,7 +232,6 @@ final class ResellerStorefrontTest extends TestCase
             'pricing_mode' => PricingMode::Combined,
             'percentage_markup_basis_points' => 1000,
             'fixed_markup_minor' => 20000,
-            'show_source_store' => true,
         ]);
         $supplier = ResellerSupplier::query()->create([
             'tenant_id' => $tenant->id,

@@ -139,8 +139,7 @@ final class RecoverSupplierProducts
             ->where('supplier_id', $supplier->id)
             ->where('product_url', $data->url)
             ->first();
-        $isPublishable = $data->currencyCode === strtoupper((string) $supplier->tenant->currency_code)
-            && $data->availability !== ProductAvailability::OutOfStock->value;
+        $hasSupportedCurrency = $data->currencyCode === strtoupper((string) $supplier->tenant->currency_code);
         $autoPublish = $supplier->auto_publish_products ?? $settings->auto_publish_products;
         $sellingPrice = $this->priceCalculator->execute($data->priceMinor, $settings);
         $sellingPreviousPrice = $data->previousPriceMinor === null
@@ -172,7 +171,7 @@ final class RecoverSupplierProducts
                 'tenant_id' => $supplier->tenant_id,
                 'supplier_id' => $supplier->id,
                 'product_url' => $data->url,
-                'is_visible' => $autoPublish && $isPublishable,
+                'is_visible' => $autoPublish && $hasSupportedCurrency,
                 ...$attributes,
             ]);
 
@@ -180,7 +179,7 @@ final class RecoverSupplierProducts
         }
 
         if (! $existing->is_excluded) {
-            $attributes['is_visible'] = $existing->is_visible && $isPublishable;
+            $attributes['is_visible'] = $existing->is_visible && $hasSupportedCurrency;
         }
 
         $existing->update($attributes);

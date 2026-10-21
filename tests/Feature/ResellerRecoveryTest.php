@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Modules\Reseller\Enums\PricingMode;
+use Modules\Reseller\Enums\ProductAvailability;
 use Modules\Reseller\Enums\ScanStatus;
 use Modules\Reseller\Models\ResellerProduct;
 use Modules\Reseller\Models\ResellerSetting;
@@ -31,11 +32,10 @@ final class ResellerRecoveryTest extends TestCase
             'pricing_mode' => PricingMode::Combined,
             'percentage_markup_basis_points' => 1000,
             'fixed_markup_minor' => 10000,
-            'auto_publish_products' => true,
         ]);
 
         Http::fake([
-            'https://supplier.example' => Http::response('<a href="/products/shirt">Shirt</a><a href="/products/bag">Bag</a>', 200),
+            'https://supplier.example' => Http::response('<a href="/products/shirt">Shirt</a><a href="/products/bag">Bag</a><a href="/products/shoes">Shoes</a>', 200),
             'https://supplier.example/products/shirt' => Http::response($this->productHtml([
                 'name' => 'Everyday Shirt',
                 'sku' => 'SHIRT-1',
@@ -61,11 +61,21 @@ final class ResellerRecoveryTest extends TestCase
                     'availability' => 'https://schema.org/InStock',
                 ],
             ]), 200),
+            'https://supplier.example/products/shoes' => Http::response($this->productHtml([
+                'name' => 'Unavailable Shoes',
+                'sku' => 'SHOES-1',
+                'offers' => [
+                    '@type' => 'Offer',
+                    'price' => '25000.00',
+                    'priceCurrency' => 'NGN',
+                    'availability' => 'https://schema.org/OutOfStock',
+                ],
+            ]), 200),
         ]);
 
         $result = app(RecoverSupplierProducts::class)->execute($supplier);
 
-        $this->assertSame(['created' => 2, 'updated' => 0, 'pages' => 3, 'errors' => 0], $result);
+        $this->assertSame(['created' => 3, 'updated' => 0, 'pages' => 4, 'errors' => 0], $result);
         $this->assertSame(ScanStatus::Successful, $supplier->refresh()->last_scan_status);
 
         $shirt = ResellerProduct::query()->where('sku', 'SHIRT-1')->firstOrFail();
@@ -78,6 +88,10 @@ final class ResellerRecoveryTest extends TestCase
         $bag = ResellerProduct::query()->where('sku', 'BAG-1')->firstOrFail();
         $this->assertSame('USD', $bag->currency_code);
         $this->assertFalse($bag->is_visible);
+
+        $shoes = ResellerProduct::query()->where('sku', 'SHOES-1')->firstOrFail();
+        $this->assertSame(ProductAvailability::OutOfStock, $shoes->availability);
+        $this->assertTrue($shoes->is_visible);
     }
 
     public function test_failed_scan_does_not_mark_existing_products_missing(): void

@@ -18,9 +18,10 @@ final class ResellerSetting extends Model
         'pricing_mode' => 'percentage',
         'percentage_markup_basis_points' => 1000,
         'fixed_markup_minor' => 0,
-        'auto_publish_products' => false,
+        'auto_publish_products' => true,
         'scan_frequency' => 'daily',
-        'show_source_store' => true,
+        'show_source_store' => false,
+        'hide_out_of_stock_products' => true,
         'stale_after_hours' => 36,
         'hide_after_missing_scans' => 3,
     ];
@@ -33,6 +34,7 @@ final class ResellerSetting extends Model
             'fixed_markup_minor' => 'integer',
             'auto_publish_products' => 'boolean',
             'show_source_store' => 'boolean',
+            'hide_out_of_stock_products' => 'boolean',
             'stale_after_hours' => 'integer',
             'hide_after_missing_scans' => 'integer',
         ];

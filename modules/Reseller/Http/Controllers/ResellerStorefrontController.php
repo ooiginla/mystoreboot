@@ -111,7 +111,7 @@ final class ResellerStorefrontController extends Controller
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
         ]);
         $requestedIds = collect($data['items'])->pluck('product_variant_id')->map(fn ($id): int => (int) $id)->unique();
-        $products = $this->availableProducts($store)->whereIn('id', $requestedIds)->get()->keyBy('id');
+        $products = $this->availableProducts($store, true)->whereIn('id', $requestedIds)->get()->keyBy('id');
 
         if ($products->count() !== $requestedIds->count()) {
             throw ValidationException::withMessages(['items' => 'One or more reseller products are unavailable.']);
@@ -236,13 +236,22 @@ final class ResellerStorefrontController extends Controller
         return ResellerSetting::query()->firstOrCreate(['tenant_id' => $store->tenant_id]);
     }
 
-    private function availableProducts(OnlineStore $store)
+    private function availableProducts(OnlineStore $store, bool $purchasableOnly = false)
     {
+        $settings = $this->settings($store);
+
         return ResellerProduct::query()
             ->where('tenant_id', $store->tenant_id)
             ->where('is_visible', true)
             ->where('is_excluded', false)
-            ->where('availability', ProductAvailability::InStock->value);
+            ->when(
+                $purchasableOnly,
+                fn ($query) => $query->where('availability', ProductAvailability::InStock->value),
+                fn ($query) => $query->when(
+                    $settings->hide_out_of_stock_products,
+                    fn ($query) => $query->where('availability', '!=', ProductAvailability::OutOfStock->value),
+                ),
+            );
     }
 
     /** @return list<string> */

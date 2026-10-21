@@ -284,6 +284,7 @@
                             <label>Stale after (hours)<input type="number" name="stale_after_hours" value="{{ old('stale_after_hours', $settings->stale_after_hours) }}" min="1" max="720" required></label>
                             <label>Hide after missed scans<input type="number" name="hide_after_missing_scans" value="{{ old('hide_after_missing_scans', $settings->hide_after_missing_scans) }}" min="1" max="20" required></label>
                             <label class="check"><input type="checkbox" name="auto_publish_products" value="1" @checked(old('auto_publish_products', $settings->auto_publish_products))> Automatically publish valid products</label>
+                            <label class="check"><input type="checkbox" name="hide_out_of_stock_products" value="1" @checked(old('hide_out_of_stock_products', $settings->hide_out_of_stock_products))> Hide out-of-stock products on the storefront</label>
                             <label class="check"><input type="checkbox" name="show_source_store" value="1" @checked(old('show_source_store', $settings->show_source_store))> Show source store to customers</label>
                             <div class="full"><button class="btn primary" type="submit">Save and reprice products</button></div>
                         </form>

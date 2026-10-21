@@ -25,6 +25,7 @@ final class ResellerSettingsRequest extends FormRequest
             'fixed_markup_minor' => (int) round((float) $this->input('fixed_markup', 0) * 100),
             'auto_publish_products' => $this->boolean('auto_publish_products'),
             'show_source_store' => $this->boolean('show_source_store'),
+            'hide_out_of_stock_products' => $this->boolean('hide_out_of_stock_products'),
         ]);
     }
 
@@ -38,6 +39,7 @@ final class ResellerSettingsRequest extends FormRequest
             'auto_publish_products' => ['required', 'boolean'],
             'scan_frequency' => ['required', Rule::in(['daily', 'twice_daily'])],
             'show_source_store' => ['required', 'boolean'],
+            'hide_out_of_stock_products' => ['required', 'boolean'],
             'stale_after_hours' => ['required', 'integer', 'between:1,720'],
             'hide_after_missing_scans' => ['required', 'integer', 'between:1,20'],
         ];

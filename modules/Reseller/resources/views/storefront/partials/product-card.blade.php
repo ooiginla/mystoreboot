@@ -8,6 +8,7 @@
         'priceMinor' => $product->selling_price_minor,
         'image' => $product->main_image_url,
     ];
+    $isOutOfStock = ($product->availability?->value ?? (string) $product->availability) === 'out_of_stock';
 @endphp
 
 <article class="store-card store-product-card group overflow-hidden p-2 transition-all duration-300 hover:shadow-2xl">
@@ -17,6 +18,7 @@
         @else
             <div class="sf-headline-lg text-[var(--store-primary)]">{{ Str::of($product->name)->substr(0, 2)->upper() }}</div>
         @endif
+        @if ($isOutOfStock)<span class="sf-label-md absolute left-3 top-3 rounded-full bg-slate-900 px-3 py-1 text-white">Out of stock</span>@endif
     </a>
     <div class="store-product-card-body px-2 pb-2">
         <a href="{{ $storefrontRoute($store, 'products.show', ['productSlug' => $product->id]) }}" class="sf-body-md store-product-card-title mt-2 block line-clamp-2 font-bold text-[var(--store-ink)]">{{ $product->name }}</a>
@@ -27,8 +29,8 @@
                 <span class="sf-body-md text-[var(--store-muted)] line-through">{{ $currencySymbol }}{{ number_format($product->selling_previous_price_minor / 100, 2) }}</span>
             @endif
         </div>
-        <button type="button" class="sf-label-md store-product-card-action flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--store-secondary)] py-3 uppercase text-white" data-add-to-cart data-product='@json($payload)'>
-            @include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5']) Add to Cart
+        <button type="button" class="sf-label-md store-product-card-action flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--store-secondary)] py-3 uppercase text-white disabled:cursor-not-allowed disabled:opacity-50" @disabled($isOutOfStock) @unless($isOutOfStock) data-add-to-cart data-product='@json($payload)' @endunless>
+            @include('storefront::partials.icon', ['name' => $isOutOfStock ? 'block' : 'shopping_cart', 'class' => 'h-5 w-5']) {{ $isOutOfStock ? 'Out of stock' : 'Add to Cart' }}
         </button>
     </div>
 </article>

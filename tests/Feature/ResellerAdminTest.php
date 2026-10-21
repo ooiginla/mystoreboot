@@ -97,6 +97,7 @@ final class ResellerAdminTest extends TestCase
                 'fixed_markup' => '2000.00',
                 'auto_publish_products' => '1',
                 'scan_frequency' => 'twice_daily',
+                'hide_out_of_stock_products' => '1',
                 'show_source_store' => '1',
                 'stale_after_hours' => 24,
                 'hide_after_missing_scans' => 3,
@@ -108,6 +109,7 @@ final class ResellerAdminTest extends TestCase
         $this->assertSame(PricingMode::Combined, $settings->pricing_mode);
         $this->assertSame(1500, $settings->percentage_markup_basis_points);
         $this->assertSame(200000, $settings->fixed_markup_minor);
+        $this->assertTrue($settings->hide_out_of_stock_products);
         $this->assertSame(1350000, ResellerProduct::query()->firstOrFail()->selling_price_minor);
 
         $this->actingAs($user)

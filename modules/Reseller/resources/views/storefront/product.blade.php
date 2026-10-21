@@ -3,6 +3,7 @@
 @php
     $currencySymbol = ['NGN' => '₦', 'USD' => '$', 'EUR' => '€', 'GBP' => '£', 'GHS' => '₵', 'KES' => 'KSh', 'ZAR' => 'R'][$product->currency_code] ?? $product->currency_code;
     $payload = ['id' => 'reseller-product-'.$product->id, 'productVariantId' => $product->id, 'productType' => 'product', 'name' => $product->name, 'priceMinor' => $product->selling_price_minor, 'image' => $product->main_image_url];
+    $isOutOfStock = ($product->availability?->value ?? (string) $product->availability) === 'out_of_stock';
 @endphp
 
 @section('content')
@@ -20,12 +21,16 @@
                 <dl class="mt-6 grid grid-cols-2 gap-3 text-sm">
                     @if ($product->sku)<div><dt class="font-bold">SKU</dt><dd>{{ $product->sku }}</dd></div>@endif
                     @if ($product->category)<div><dt class="font-bold">Category</dt><dd>{{ $product->category }}</dd></div>@endif
-                    <div><dt class="font-bold">Availability</dt><dd>In stock</dd></div>
+                    <div><dt class="font-bold">Availability</dt><dd>{{ $isOutOfStock ? 'Out of stock' : 'In stock' }}</dd></div>
                 </dl>
-                <div class="mt-8 flex flex-col gap-3 sm:flex-row">
-                    <button type="button" class="store-btn store-btn-secondary flex-1" data-add-to-cart data-product='@json($payload)'>@include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5']) Add to Cart</button>
-                    <button type="button" class="store-btn store-btn-primary flex-1" data-add-to-cart data-product='@json($payload)'>@include('storefront::partials.icon', ['name' => 'bolt', 'class' => 'h-5 w-5']) Buy It Now</button>
-                </div>
+                @if ($isOutOfStock)
+                    <button type="button" class="store-btn mt-8 w-full cursor-not-allowed opacity-50" disabled>@include('storefront::partials.icon', ['name' => 'block', 'class' => 'h-5 w-5']) Out of stock</button>
+                @else
+                    <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+                        <button type="button" class="store-btn store-btn-secondary flex-1" data-add-to-cart data-product='@json($payload)'>@include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5']) Add to Cart</button>
+                        <button type="button" class="store-btn store-btn-primary flex-1" data-add-to-cart data-product='@json($payload)'>@include('storefront::partials.icon', ['name' => 'bolt', 'class' => 'h-5 w-5']) Buy It Now</button>
+                    </div>
+                @endif
             </div>
         </div>
     </section>
