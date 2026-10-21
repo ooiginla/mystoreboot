@@ -137,7 +137,8 @@ final class ResellerAdminTest extends TestCase
             ->assertOk()
             ->assertSee('₦13,500.00')
             ->assertSee('Search product, supplier, category or tag')
-            ->assertSee('Group pending products')
+            ->assertSee('Group Uncategorized products')
+            ->assertSee('reseller-grouping-overlay')
             ->assertSee('Publish Shirt')
             ->assertSee('Exclude Shirt');
 

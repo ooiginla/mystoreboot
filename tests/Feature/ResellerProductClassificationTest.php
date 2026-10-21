@@ -76,6 +76,63 @@ final class ResellerProductClassificationTest extends TestCase
             && str_contains((string) $request->body(), 'Portable Bluetooth Speaker'));
     }
 
+    public function test_a_previously_processed_uncategorized_product_is_retried(): void
+    {
+        config()->set('services.ai.provider', 'openai');
+        config()->set('services.openai.api_key', 'test-key');
+        config()->set('services.openai.base_url', 'https://api.openai.test');
+        $tenant = Tenant::query()->create([
+            'name' => 'Retry Store',
+            'slug' => 'retry-store',
+            'status' => TenantStatus::Active,
+            'business_type' => 'retail',
+            'commerce_mode' => CommerceMode::Reseller,
+            'country_code' => 'NG',
+            'timezone' => 'Africa/Lagos',
+            'currency_code' => 'NGN',
+        ]);
+        $uncategorized = ProductCategory::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('slug', 'uncategorized')
+            ->firstOrFail();
+        $clothing = $this->category($tenant, 'Clothing');
+        $supplier = ResellerSupplier::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Supplier',
+            'website_url' => 'https://supplier.example',
+        ]);
+        $shirt = $this->product($tenant, $supplier, 'Classic Cotton Shirt', 'shirt');
+        $shirt->update([
+            'category_id' => $uncategorized->id,
+            'classification_status' => 'classified',
+            'categorized_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://api.openai.test/*' => Http::response([
+                'choices' => [[
+                    'message' => [
+                        'content' => json_encode([
+                            'products' => [[
+                                'id' => $shirt->id,
+                                'category_id' => $clothing->id,
+                                'tags' => ['Cotton', 'Shirt'],
+                            ]],
+                        ], JSON_THROW_ON_ERROR),
+                    ],
+                ]],
+            ]),
+        ]);
+
+        $result = app(ClassifyResellerProducts::class)->execute((string) $tenant->id);
+
+        $this->assertSame(1, $result['processed']);
+        $this->assertSame(1, $result['categorized']);
+        $this->assertSame($clothing->id, $shirt->refresh()->category_id);
+        $this->assertSame('classified', $shirt->classification_status);
+        Http::assertSentCount(1);
+    }
+
     private function category(Tenant $tenant, string $name): ProductCategory
     {
         return ProductCategory::query()->create([

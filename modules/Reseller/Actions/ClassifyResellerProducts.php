@@ -44,8 +44,10 @@ final class ClassifyResellerProducts
         $products = ResellerProduct::query()
             ->with('tags')
             ->where('tenant_id', $tenantId)
-            ->where(function ($query): void {
-                $query->whereNull('category_id')->orWhere('classification_status', 'pending');
+            ->where(function ($query) use ($defaultCategory): void {
+                $query->whereNull('category_id')
+                    ->orWhere('category_id', $defaultCategory->id)
+                    ->orWhere('classification_status', 'pending');
             })
             ->when($productIds !== null, fn ($query) => $query->whereIn('id', $productIds))
             ->orderBy('id')

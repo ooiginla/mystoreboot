@@ -122,8 +122,10 @@ final class ResellerController extends Controller
                 ->get(),
             'pendingClassificationCount' => ResellerProduct::query()
                 ->where('tenant_id', $tenant->id)
-                ->where(function ($query): void {
-                    $query->whereNull('category_id')->orWhere('classification_status', 'pending');
+                ->where(function ($query) use ($defaultCategory): void {
+                    $query->whereNull('category_id')
+                        ->orWhere('category_id', $defaultCategory?->id)
+                        ->orWhere('classification_status', 'pending');
                 })
                 ->count(),
             'suppliers' => $suppliers,
@@ -334,6 +336,10 @@ final class ResellerController extends Controller
 
         if ($result['pending'] > 0) {
             $message .= " {$result['pending']} remain in Uncategorized and can be retried.";
+
+            if ($result['ai_requests'] === 0) {
+                $message .= ' No AI classification request completed, so only category-name matching was available.';
+            }
         }
 
         return back()->with('status', $message);

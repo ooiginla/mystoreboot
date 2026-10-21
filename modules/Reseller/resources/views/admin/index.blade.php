@@ -233,9 +233,9 @@
                     <div class="panel-header">
                         <div><h2 class="panel-title">Sourced products</h2><p class="subtle">Products recovered from your supplier websites. Search also checks generated tags.</p></div>
                         <div class="reseller-product-search">
-                            <form method="POST" action="{{ route('admin.reseller.products.classify', $tenantRoute) }}" onsubmit="return confirm('Group all pending sourced products now? The products will be sent in optimized batches, not one AI request per product.');">
+                            <form method="POST" action="{{ route('admin.reseller.products.classify', $tenantRoute) }}" data-group-products-form>
                                 @csrf
-                                <button class="btn accent" type="submit">Group pending products @if ($pendingClassificationCount > 0)<span class="badge">{{ $pendingClassificationCount }}</span>@endif</button>
+                                <button class="btn accent" type="submit" data-group-products-button>Group Uncategorized products @if ($pendingClassificationCount > 0)<span class="badge">{{ $pendingClassificationCount }}</span>@endif</button>
                             </form>
                             <form class="reseller-product-search" method="GET" action="{{ route('admin.reseller.products.index') }}" role="search">
                                 <input type="hidden" name="tenant" value="{{ $tenant->id }}">
@@ -261,6 +261,49 @@
                         @endforelse
                     </tbody></table></div>{{ $products->links() }}</div>
                 </section>
+
+                <dialog class="reseller-scan-overlay" id="reseller-grouping-overlay" aria-labelledby="reseller-grouping-overlay-title" aria-describedby="reseller-grouping-overlay-message">
+                    <div class="reseller-scan-overlay-card" role="status" aria-live="assertive">
+                        <span class="reseller-scan-spinner" aria-hidden="true"></span>
+                        <h2 id="reseller-grouping-overlay-title">Grouping products</h2>
+                        <p id="reseller-grouping-overlay-message">Checking Uncategorized products and creating search tags. Please keep this page open until it completes.</p>
+                    </div>
+                </dialog>
+
+                <script>
+                    document.addEventListener('DOMContentLoaded', () => {
+                        const form = document.querySelector('[data-group-products-form]');
+                        const button = form?.querySelector('[data-group-products-button]');
+                        const overlay = document.getElementById('reseller-grouping-overlay');
+                        let submitted = false;
+
+                        overlay?.addEventListener('cancel', (event) => event.preventDefault());
+
+                        form?.addEventListener('submit', (event) => {
+                            if (submitted) {
+                                event.preventDefault();
+                                return;
+                            }
+
+                            if (!window.confirm('Group Uncategorized sourced products now? Products will be processed in optimized batches.')) {
+                                event.preventDefault();
+                                return;
+                            }
+
+                            submitted = true;
+                            if (button) {
+                                button.disabled = true;
+                                button.textContent = 'Grouping products…';
+                            }
+
+                            if (overlay?.showModal) {
+                                overlay.showModal();
+                            } else if (overlay) {
+                                overlay.setAttribute('open', '');
+                            }
+                        });
+                    });
+                </script>
             @elseif ($section === 'categories')
                 <div class="reseller-category-layout">
                     <section class="panel">
