@@ -46,7 +46,7 @@
 
 @push('styles')
     <style>
-        .store-hero { width: calc(100% - 32px); max-width: 1400px; margin-left: auto; margin-right: auto; background: var(--store-soft); }
+        .store-hero { width: calc(100% - 32px); max-width: 1480px; margin-left: auto; margin-right: auto; background: var(--store-soft); }
         .store-hero-slide { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .7s ease; }
         .store-hero-slide.is-active { opacity: 1; pointer-events: auto; z-index: 1; }
         .store-hero-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
