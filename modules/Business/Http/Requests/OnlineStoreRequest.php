@@ -117,6 +117,8 @@ final class OnlineStoreRequest extends FormRequest
             'slides.*.hero_image_text' => ['nullable', 'string', 'max:120'],
             'slides.*.hero_image_description' => ['nullable', 'string', 'max:255'],
             'slides.*.hero_image_tag' => ['nullable', 'string', 'max:80'],
+            'slides.*.fade_image' => ['nullable', 'boolean'],
+            'slides.*.show_description' => ['nullable', 'boolean'],
             'announcement' => ['nullable', 'string', 'max:1000'],
             'theme_primary_color' => ['required', 'regex:/\A#[0-9a-f]{6}\z/'],
             'theme_secondary_color' => ['required', 'regex:/\A#[0-9a-f]{6}\z/'],

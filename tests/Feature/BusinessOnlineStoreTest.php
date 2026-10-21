@@ -233,12 +233,16 @@ class BusinessOnlineStoreTest extends TestCase
                         'hero_image_tag' => 'Slide tag',
                         'hero_image_text' => 'Slide headline',
                         'hero_image_description' => 'Slide description',
+                        'fade_image' => '0',
+                        'show_description' => '0',
                     ],
                     [
                         'image' => UploadedFile::fake()->image('slide-two.jpg', 1600, 600),
                         'hero_image_tag' => 'Second slide',
                         'hero_image_text' => 'Second headline',
                         'hero_image_description' => 'Second description',
+                        'fade_image' => '1',
+                        'show_description' => '1',
                     ],
                 ],
                 'announcement' => 'Free delivery this week',
@@ -304,6 +308,10 @@ class BusinessOnlineStoreTest extends TestCase
         $this->assertCount(2, $store->slides);
         $this->assertStringStartsWith("tenants/{$tenant->id}/online-store/heroes/", $store->slides[0]['image_path']);
         $this->assertSame('Second headline', $store->slides[1]['hero_image_text']);
+        $this->assertFalse($store->slides[0]['fade_image']);
+        $this->assertFalse($store->slides[0]['show_description']);
+        $this->assertTrue($store->slides[1]['fade_image']);
+        $this->assertTrue($store->slides[1]['show_description']);
         Storage::disk('public')->assertExists($store->slides[0]['image_path']);
         Storage::disk('public')->assertExists($store->slides[1]['image_path']);
         $this->assertSame($branch->id, $store->fulfilment_branch_id);

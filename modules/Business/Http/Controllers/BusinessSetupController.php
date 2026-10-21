@@ -857,7 +857,7 @@ final class BusinessSetupController extends Controller
 
     /**
      * @param  array<int, array<string, mixed>>  $slides
-     * @return list<array{image_path: string|null, hero_image_tag: string|null, hero_image_text: string|null, hero_image_description: string|null}>
+     * @return list<array{image_path: string|null, hero_image_tag: string|null, hero_image_text: string|null, hero_image_description: string|null, fade_image: bool, show_description: bool}>
      */
     private function onlineStoreSlides(OnlineStoreRequest $request, string $tenantId, array $slides): array
     {
@@ -875,6 +875,8 @@ final class BusinessSetupController extends Controller
                     'hero_image_tag' => trim((string) ($slide['hero_image_tag'] ?? '')) ?: null,
                     'hero_image_text' => trim((string) ($slide['hero_image_text'] ?? '')) ?: null,
                     'hero_image_description' => trim((string) ($slide['hero_image_description'] ?? '')) ?: null,
+                    'fade_image' => (bool) ($slide['fade_image'] ?? true),
+                    'show_description' => (bool) ($slide['show_description'] ?? true),
                 ];
             })
             ->filter(fn (array $slide): bool => $slide['image_path'] || $slide['hero_image_tag'] || $slide['hero_image_text'] || $slide['hero_image_description'])

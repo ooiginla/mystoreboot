@@ -47,6 +47,9 @@ final class ResellerStorefrontTest extends TestCase
             ->assertSee('Reseller slide headline')
             ->assertSee('data-store-hero-slider', false)
             ->assertSee('data-store-hero-next', false)
+            ->assertSee('data-slide-fade="0"', false)
+            ->assertSee('data-slide-description="0"', false)
+            ->assertDontSee('Second reseller slide')
             ->assertDontSee('Supplier Website')
             ->assertDontSee('Native Hidden Product');
 
@@ -241,6 +244,8 @@ final class ResellerStorefrontTest extends TestCase
                     'hero_image_tag' => 'More arrivals',
                     'hero_image_text' => 'Second reseller slide',
                     'hero_image_description' => 'More products to explore.',
+                    'fade_image' => false,
+                    'show_description' => false,
                 ],
             ],
             'is_active' => true,

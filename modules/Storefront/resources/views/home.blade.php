@@ -15,6 +15,8 @@
             'tag' => $slide['hero_image_tag'] ?? null,
             'text' => $slide['hero_image_text'] ?? null,
             'description' => $slide['hero_image_description'] ?? null,
+            'fade_image' => array_key_exists('fade_image', $slide) ? (bool) $slide['fade_image'] : true,
+            'show_description' => array_key_exists('show_description', $slide) ? (bool) $slide['show_description'] : true,
         ])
         ->filter(fn (array $slide) => $slide['image'] || $slide['tag'] || $slide['text'] || $slide['description'])
         ->values();
@@ -25,6 +27,8 @@
             'tag' => $store->hero_image_tag,
             'text' => $store->hero_image_text,
             'description' => $store->hero_image_description,
+            'fade_image' => true,
+            'show_description' => true,
         ]]);
     }
 
@@ -104,14 +108,15 @@
         @if (! $selectedCollection && $selectedCategory === '' && $search === '')
             <section class="store-hero relative min-h-[520px] overflow-hidden" data-store-hero-slider>
                 @foreach ($heroSlides as $index => $slide)
-                    <div class="store-hero-slide {{ $index === 0 ? 'is-active' : '' }}" data-store-hero-slide>
+                    <div class="store-hero-slide {{ $index === 0 ? 'is-active' : '' }}" data-store-hero-slide data-slide-fade="{{ $slide['fade_image'] ? '1' : '0' }}" data-slide-description="{{ $slide['show_description'] ? '1' : '0' }}">
                         @if ($slide['image'])
                             <img src="{{ $slide['image'] }}" alt="{{ $store->store_name }} hero slide {{ $index + 1 }}" @if ($index === 0) fetchpriority="high" @else loading="lazy" @endif class="store-hero-image">
                         @else
                             <div class="store-hero-fallback"></div>
                         @endif
-                        <div class="store-hero-overlay"></div>
+                        @if ($slide['fade_image'])<div class="store-hero-overlay"></div>@endif
                         <div class="store-shell relative flex min-h-[520px] items-center py-16">
+                            @if ($slide['show_description'])
                             <div class="max-w-2xl">
                                 @if ($slide['tag'])
                                     <span class="sf-label-md inline-flex rounded-full px-4 py-2 uppercase text-white" style="background: var(--store-secondary);">{{ $slide['tag'] }}</span>
@@ -123,6 +128,7 @@
                                     <a href="{{ $storefrontRoute($store, 'contact') }}" class="store-btn border border-[var(--store-line)] bg-white text-[var(--store-primary)]">Contact us</a>
                                 </div>
                             </div>
+                            @endif
                         </div>
                     </div>
                 @endforeach

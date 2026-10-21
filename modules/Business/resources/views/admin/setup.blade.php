@@ -371,6 +371,9 @@
         .online-slide-photo img { width: 100%; height: 100%; min-height: 160px; object-fit: cover; border-radius: 6px; }
         .online-slide-photo input { display: none; }
         .online-slide-form { display: grid; gap: 12px; }
+        .online-slide-options { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+        .online-slide-description-fields { display: grid; gap: 12px; }
+        .online-slide-description-fields[hidden] { display: none; }
         @media (max-width: 700px) { .check-grid, .store-menu-category-grid, .online-slide-card, .radio-cards { grid-template-columns: 1fr; } }
 
         /* Role cards */
@@ -923,6 +926,8 @@
                                                         $slideTag = (string) ($slide['hero_image_tag'] ?? '');
                                                         $slideText = (string) ($slide['hero_image_text'] ?? '');
                                                         $slideDescription = (string) ($slide['hero_image_description'] ?? '');
+                                                        $slideFadeImage = array_key_exists('fade_image', $slide) ? filter_var($slide['fade_image'], FILTER_VALIDATE_BOOLEAN) : true;
+                                                        $slideShowDescription = array_key_exists('show_description', $slide) ? filter_var($slide['show_description'], FILTER_VALIDATE_BOOLEAN) : true;
                                                     @endphp
                                                     <div class="online-slide-card" data-online-slide>
                                                         <label class="online-slide-photo">
@@ -939,9 +944,15 @@
                                                                 <strong data-slide-title>Slide {{ $index + 1 }}</strong>
                                                                 <button class="btn danger" type="button" data-remove-online-slide>Remove</button>
                                                             </div>
-                                                            <div class="field"><label>Banner Image Tag</label><input name="slides[{{ $index }}][hero_image_tag]" value="{{ $slideTag }}" data-slide-field="hero_image_tag"></div>
-                                                            <div class="field"><label>Banner Image Text</label><input name="slides[{{ $index }}][hero_image_text]" value="{{ $slideText }}" data-slide-field="hero_image_text"></div>
-                                                            <div class="field"><label>Banner Image Description</label><textarea name="slides[{{ $index }}][hero_image_description]" rows="3" data-slide-field="hero_image_description">{{ $slideDescription }}</textarea></div>
+                                                            <div class="online-slide-options">
+                                                                <label class="inline-check"><input type="hidden" name="slides[{{ $index }}][fade_image]" value="0" data-slide-fade-hidden><input type="checkbox" name="slides[{{ $index }}][fade_image]" value="1" @checked($slideFadeImage) data-slide-fade-toggle> Fade image</label>
+                                                                <label class="inline-check"><input type="hidden" name="slides[{{ $index }}][show_description]" value="0" data-slide-description-hidden><input type="checkbox" name="slides[{{ $index }}][show_description]" value="1" @checked($slideShowDescription) data-slide-description-toggle> Description</label>
+                                                            </div>
+                                                            <div class="online-slide-description-fields" data-slide-description-fields @if (! $slideShowDescription) hidden @endif>
+                                                                <div class="field"><label>Banner Image Tag</label><input name="slides[{{ $index }}][hero_image_tag]" value="{{ $slideTag }}" data-slide-field="hero_image_tag"></div>
+                                                                <div class="field"><label>Banner Image Text</label><input name="slides[{{ $index }}][hero_image_text]" value="{{ $slideText }}" data-slide-field="hero_image_text"></div>
+                                                                <div class="field"><label>Banner Image Description</label><textarea name="slides[{{ $index }}][hero_image_description]" rows="3" data-slide-field="hero_image_description">{{ $slideDescription }}</textarea></div>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 @endforeach
@@ -2381,6 +2392,10 @@
                     const tag = row.querySelector('[data-slide-field="hero_image_tag"]');
                     const text = row.querySelector('[data-slide-field="hero_image_text"]');
                     const description = row.querySelector('[data-slide-field="hero_image_description"]');
+                    const fadeHidden = row.querySelector('[data-slide-fade-hidden]');
+                    const fadeToggle = row.querySelector('[data-slide-fade-toggle]');
+                    const descriptionHidden = row.querySelector('[data-slide-description-hidden]');
+                    const descriptionToggle = row.querySelector('[data-slide-description-toggle]');
 
                     if (title) title.textContent = `Slide ${index + 1}`;
                     if (image) image.name = `slides[${index}][image]`;
@@ -2388,8 +2403,18 @@
                     if (tag) tag.name = `slides[${index}][hero_image_tag]`;
                     if (text) text.name = `slides[${index}][hero_image_text]`;
                     if (description) description.name = `slides[${index}][hero_image_description]`;
+                    if (fadeHidden) fadeHidden.name = `slides[${index}][fade_image]`;
+                    if (fadeToggle) fadeToggle.name = `slides[${index}][fade_image]`;
+                    if (descriptionHidden) descriptionHidden.name = `slides[${index}][show_description]`;
+                    if (descriptionToggle) descriptionToggle.name = `slides[${index}][show_description]`;
                 });
                 updateOnlineSlidesEmptyState();
+            };
+
+            const syncOnlineSlideDescription = (row) => {
+                const toggle = row?.querySelector('[data-slide-description-toggle]');
+                const fields = row?.querySelector('[data-slide-description-fields]');
+                if (fields) fields.hidden = !toggle?.checked;
             };
 
             const updateOnlineShippingRow = (row, values) => {
@@ -2518,9 +2543,15 @@
                             <strong data-slide-title>Slide</strong>
                             <button class="btn danger" type="button" data-remove-online-slide>Remove</button>
                         </div>
-                        <div class="field"><label>Banner Image Tag</label><input data-slide-field="hero_image_tag"></div>
-                        <div class="field"><label>Banner Image Text</label><input data-slide-field="hero_image_text"></div>
-                        <div class="field"><label>Banner Image Description</label><textarea rows="3" data-slide-field="hero_image_description"></textarea></div>
+                        <div class="online-slide-options">
+                            <label class="inline-check"><input type="hidden" value="0" data-slide-fade-hidden><input type="checkbox" value="1" checked data-slide-fade-toggle> Fade image</label>
+                            <label class="inline-check"><input type="hidden" value="0" data-slide-description-hidden><input type="checkbox" value="1" checked data-slide-description-toggle> Description</label>
+                        </div>
+                        <div class="online-slide-description-fields" data-slide-description-fields>
+                            <div class="field"><label>Banner Image Tag</label><input data-slide-field="hero_image_tag"></div>
+                            <div class="field"><label>Banner Image Text</label><input data-slide-field="hero_image_text"></div>
+                            <div class="field"><label>Banner Image Description</label><textarea rows="3" data-slide-field="hero_image_description"></textarea></div>
+                        </div>
                     </div>
                 `;
 
@@ -2538,6 +2569,12 @@
             renumberOnlineShippingOptions();
             renumberOnlineFaqs();
             renumberOnlineSlides();
+            onlineSlidesList?.querySelectorAll('[data-online-slide]').forEach(syncOnlineSlideDescription);
+
+            document.addEventListener('change', (event) => {
+                const descriptionToggle = event.target.closest('[data-slide-description-toggle]');
+                if (descriptionToggle) syncOnlineSlideDescription(descriptionToggle.closest('[data-online-slide]'));
+            });
 
             document.addEventListener('input', (event) => {
                 const colorPicker = event.target.closest('[data-theme-color-picker]');
