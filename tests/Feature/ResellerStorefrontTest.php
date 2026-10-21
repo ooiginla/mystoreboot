@@ -43,6 +43,10 @@ final class ResellerStorefrontTest extends TestCase
         $this->get(route('storefront.storefront.store.home', $store))
             ->assertOk()
             ->assertSee('Recovered Shirt')
+            ->assertSee('/storage/tenants/reseller/slide-one.jpg', false)
+            ->assertSee('Reseller slide headline')
+            ->assertSee('data-store-hero-slider', false)
+            ->assertSee('data-store-hero-next', false)
             ->assertDontSee('Supplier Website')
             ->assertDontSee('Native Hidden Product');
 
@@ -225,6 +229,20 @@ final class ResellerStorefrontTest extends TestCase
             'store_name' => 'Reseller Front',
             'payment_methods' => ['place_order'],
             'shipping_options' => [['location' => 'Lagos', 'price' => '1000']],
+            'slides' => [
+                [
+                    'image_path' => 'tenants/reseller/slide-one.jpg',
+                    'hero_image_tag' => 'New collection',
+                    'hero_image_text' => 'Reseller slide headline',
+                    'hero_image_description' => 'Products selected from trusted suppliers.',
+                ],
+                [
+                    'image_path' => 'tenants/reseller/slide-two.jpg',
+                    'hero_image_tag' => 'More arrivals',
+                    'hero_image_text' => 'Second reseller slide',
+                    'hero_image_description' => 'More products to explore.',
+                ],
+            ],
             'is_active' => true,
         ]);
         ResellerSetting::query()->create([
