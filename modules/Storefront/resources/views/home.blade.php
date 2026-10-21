@@ -119,13 +119,13 @@
                             @if ($slide['show_description'])
                             <div class="max-w-2xl">
                                 @if ($slide['tag'])
-                                    <span class="sf-label-md inline-flex rounded-full px-4 py-2 uppercase text-white" style="background: var(--store-secondary);">{{ $slide['tag'] }}</span>
+                                    <span class="sf-label-md store-theme-surface inline-flex rounded-full px-4 py-2 uppercase">{{ $slide['tag'] }}</span>
                                 @endif
                                 <h1 class="sf-display-xl mt-5 text-[var(--store-primary)]">{{ $slide['text'] ?: 'Shop '.$store->store_name }}</h1>
                                 <p class="sf-body-lg mt-5 max-w-xl text-[var(--store-muted)]">{{ $slide['description'] ?: 'Explore our latest products, curated offers, and customer-first shopping experience.' }}</p>
                                 <div class="mt-8 flex flex-wrap gap-3">
                                     <a href="#products" class="store-btn store-btn-secondary">Shop products @include('storefront::partials.icon', ['name' => 'arrow_downward', 'class' => 'h-5 w-5'])</a>
-                                    <a href="{{ $storefrontRoute($store, 'contact') }}" class="store-btn border border-[var(--store-line)] bg-white text-[var(--store-primary)]">Contact us</a>
+                                    <a href="{{ $storefrontRoute($store, 'contact') }}" class="store-btn store-theme-surface border">Contact us</a>
                                 </div>
                             </div>
                             @endif
@@ -182,9 +182,9 @@
             </div>
             @if ($productCategories->isNotEmpty())
                 <div class="mt-6 flex w-full gap-2 overflow-x-auto pb-1" data-product-category-tags>
-                    <a href="{{ $productFilterUrl($storefrontRoute($store)) }}#products" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === '' && ! $selectedCollection ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">All</a>
+                    <a href="{{ $productFilterUrl($storefrontRoute($store)) }}#products" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === '' && ! $selectedCollection ? 'store-theme-surface' : 'bg-white text-[var(--store-muted)]' }}">All</a>
                     @foreach ($productCategories as $category)
-                        <a href="{{ $productFilterUrl($storefrontRoute($store, 'categories.show', ['categorySlug' => $category->slug])) }}#products" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === $category->slug ? 'bg-black text-white' : 'bg-white text-[var(--store-muted)]' }}">{{ $category->name }}</a>
+                        <a href="{{ $productFilterUrl($storefrontRoute($store, 'categories.show', ['categorySlug' => $category->slug])) }}#products" class="sf-label-md whitespace-nowrap rounded-full border border-[var(--store-line)] px-4 py-2 {{ $selectedCategory === $category->slug ? 'store-theme-surface' : 'bg-white text-[var(--store-muted)]' }}">{{ $category->name }}</a>
                     @endforeach
                 </div>
             @endif

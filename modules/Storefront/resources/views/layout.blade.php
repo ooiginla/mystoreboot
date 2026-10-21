@@ -19,6 +19,13 @@
     ][strtoupper($currency)] ?? strtoupper($currency);
     $logoUrl = $imageUrl($store->logo_path);
     $faviconUrl = $imageUrl($store->logo_path ?: $store->tenant?->logo_path) ?: asset('favicon.svg');
+    $themePrimaryColor = preg_match('/\A#[0-9a-f]{6}\z/i', (string) $store->theme_primary_color) === 1
+        ? strtolower((string) $store->theme_primary_color)
+        : '#00236f';
+    $themePrimaryRgb = sscanf(ltrim($themePrimaryColor, '#'), '%02x%02x%02x');
+    $themePrimaryContrast = (($themePrimaryRgb[0] * 299 + $themePrimaryRgb[1] * 587 + $themePrimaryRgb[2] * 114) / 1000) > 160
+        ? '#111827'
+        : '#ffffff';
     $announcementColor = preg_match('/\A#[0-9a-f]{6}\z/i', (string) $store->announcement_color) === 1
         ? strtolower((string) $store->announcement_color)
         : '#000000';
@@ -151,7 +158,8 @@
     <script type="application/ld+json">{!! json_encode($organizationLd, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
     <style>
         :root {
-            --store-primary: {{ $store->theme_primary_color ?: '#00236f' }};
+            --store-primary: {{ $themePrimaryColor }};
+            --store-primary-contrast: {{ $themePrimaryContrast }};
             --store-secondary: {{ $store->theme_secondary_color ?: '#006a61' }};
             --store-ink: #17181d;
             --store-muted: #565965;
@@ -177,8 +185,10 @@
         @media (min-width: 768px) { .store-shell { padding-left: 24px; padding-right: 24px; } }
         .store-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 8px; padding: 10px 18px; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; line-height: 20px; letter-spacing: 0.05em; font-weight: 600; text-transform: uppercase; transition: transform .16s ease, box-shadow .16s ease, opacity .16s ease; }
         .store-btn:active { transform: scale(.98); }
-        .store-btn-primary { background: var(--store-primary); color: white; }
+        .store-btn-primary { background: var(--store-primary); color: var(--store-primary-contrast); }
         .store-btn-secondary { background: var(--store-secondary); color: white; }
+        .store-theme-surface { border-color: var(--store-primary); background: var(--store-primary); color: var(--store-primary-contrast); }
+        .store-theme-surface[href]:hover { color: var(--store-primary-contrast); filter: brightness(.92); }
         .store-card { background: var(--store-surface); border: 1px solid var(--store-line); border-radius: 8px; box-shadow: 0 16px 40px rgba(15, 23, 42, .05); }
         .store-product-card { display: flex; height: 100%; flex-direction: column; }
         .store-product-card-body { display: flex; flex: 1; flex-direction: column; }
@@ -280,7 +290,7 @@
                 </nav>
             </div>
             <div class="flex items-center gap-2">
-                <a href="{{ $storefrontRoute($store, 'contact') }}" class="sf-body-md hidden rounded-md border border-[var(--store-line)] px-3 py-2 font-bold text-[var(--store-muted)] hover:text-[var(--store-primary)] md:inline-flex">Contact</a>
+                <a href="{{ $storefrontRoute($store, 'contact') }}" class="sf-body-md store-theme-surface hidden rounded-md border px-3 py-2 font-bold md:inline-flex">Contact</a>
                 <button type="button" class="relative rounded-full p-3 hover:bg-[var(--store-soft)]" data-cart-open aria-label="Open cart">
                     @include('storefront::partials.icon', ['name' => 'shopping_cart', 'class' => 'h-5 w-5 text-[var(--store-primary)]'])
                     <span class="sf-caption absolute right-1 top-1 hidden min-w-5 rounded-full bg-black px-1 text-center font-bold text-white" data-cart-count>0</span>
