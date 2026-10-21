@@ -20,7 +20,7 @@
                 @if ($product->short_description)<div class="sf-body-lg mt-6 text-[var(--store-muted)]">{{ $product->short_description }}</div>@endif
                 <dl class="mt-6 grid grid-cols-2 gap-3 text-sm">
                     @if ($product->sku)<div><dt class="font-bold">SKU</dt><dd>{{ $product->sku }}</dd></div>@endif
-                    @if ($product->category)<div><dt class="font-bold">Category</dt><dd>{{ $product->category }}</dd></div>@endif
+                    @if ($product->catalogCategory || $product->category)<div><dt class="font-bold">Category</dt><dd>{{ $product->catalogCategory?->name ?? $product->category }}</dd></div>@endif
                     <div><dt class="font-bold">Availability</dt><dd>{{ $isOutOfStock ? 'Out of stock' : 'In stock' }}</dd></div>
                 </dl>
                 @if ($isOutOfStock)

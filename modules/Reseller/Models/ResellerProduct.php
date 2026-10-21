@@ -7,6 +7,9 @@ namespace Modules\Reseller\Models;
 use App\Shared\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Modules\Catalog\Models\ProductCategory;
+use Modules\Catalog\Models\ProductTag;
 use Modules\Reseller\Enums\ProductAvailability;
 
 final class ResellerProduct extends Model
@@ -20,6 +23,7 @@ final class ResellerProduct extends Model
         'is_visible' => false,
         'is_excluded' => false,
         'missing_scan_count' => 0,
+        'classification_status' => 'pending',
     ];
 
     protected static function booted(): void
@@ -41,6 +45,7 @@ final class ResellerProduct extends Model
             'is_visible' => 'boolean',
             'is_excluded' => 'boolean',
             'last_checked_at' => 'datetime',
+            'categorized_at' => 'datetime',
             'missing_scan_count' => 'integer',
         ];
     }
@@ -48,5 +53,15 @@ final class ResellerProduct extends Model
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(ResellerSupplier::class, 'supplier_id');
+    }
+
+    public function catalogCategory(): BelongsTo
+    {
+        return $this->belongsTo(ProductCategory::class, 'category_id');
+    }
+
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(ProductTag::class, 'reseller_product_product_tag')->withTimestamps();
     }
 }

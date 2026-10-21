@@ -460,6 +460,7 @@
                                     @permission('catalog.view')
                                     <a class="{{ request()->routeIs('admin.reseller.suppliers.*') ? 'active' : '' }}" href="{{ route('admin.reseller.suppliers.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-store"/></svg><span>Supplier Websites</span></a>
                                     <a class="{{ request()->routeIs('admin.reseller.products.*') ? 'active' : '' }}" href="{{ route('admin.reseller.products.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-package"/></svg><span>Sourced Products</span></a>
+                                    <a class="{{ request()->routeIs('admin.reseller.categories.*') ? 'active' : '' }}" href="{{ route('admin.reseller.categories.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-badge"/></svg><span>Categories</span></a>
                                     @endpermission
                                     @permission('sales.view')
                                     <a class="{{ request()->routeIs('admin.reseller.orders.*') ? 'active' : '' }}" href="{{ route('admin.reseller.orders.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-receipt"/></svg><span>Orders</span></a>

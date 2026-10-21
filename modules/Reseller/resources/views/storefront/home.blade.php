@@ -71,7 +71,7 @@
                         <div class="store-shell relative flex min-h-[520px] items-center py-16">
                             @if ($slide['show_description'])
                             <div class="max-w-2xl">
-                                @if ($slide['tag'])<span class="sf-label-md inline-flex rounded-full px-4 py-2 uppercase text-white" style="background: var(--store-secondary);">{{ $slide['tag'] }}</span>@endif
+                                @if ($slide['tag'])<span class="sf-label-md store-theme-surface inline-flex rounded-full px-4 py-2 uppercase">{{ $slide['tag'] }}</span>@endif
                                 <h1 class="sf-display-xl mt-5 text-[var(--store-primary)]">{{ $slide['text'] ?: 'Shop '.$store->store_name }}</h1>
                                 <p class="sf-body-lg mt-5 max-w-xl text-[var(--store-muted)]">{{ $slide['description'] ?: 'Products selected from trusted suppliers, available in one convenient store.' }}</p>
                                 <a href="#products" class="store-btn store-btn-secondary mt-8">Shop products @include('storefront::partials.icon', ['name' => 'arrow_downward', 'class' => 'h-5 w-5'])</a>
@@ -98,9 +98,9 @@
                 <div><h2 class="sf-headline-lg text-[var(--store-primary)]">{{ $search ? 'Search results for “'.$search.'”' : ($selectedCategory ?: 'Our Products') }}</h2><p class="sf-body-md mt-2 text-[var(--store-muted)]">{{ $products->total() }} {{ Str::plural('product', $products->total()) }} available.</p></div>
                 @if ($categories->isNotEmpty())
                     <div class="flex max-w-full gap-2 overflow-x-auto pb-1">
-                        <a href="{{ $storefrontRoute($store) }}#products" class="sf-label-md whitespace-nowrap rounded-full border px-4 py-2">All</a>
+                        <a href="{{ $storefrontRoute($store) }}#products" class="sf-label-md whitespace-nowrap rounded-full border px-4 py-2 {{ $selectedCategorySlug === '' ? 'store-theme-surface' : '' }}">All</a>
                         @foreach ($categories as $category)
-                            <a href="{{ $storefrontRoute($store, 'categories.show', ['categorySlug' => Str::slug($category)]) }}" class="sf-label-md whitespace-nowrap rounded-full border px-4 py-2">{{ $category }}</a>
+                            <a href="{{ $storefrontRoute($store, 'categories.show', ['categorySlug' => $category->slug]) }}" class="sf-label-md whitespace-nowrap rounded-full border px-4 py-2 {{ $selectedCategorySlug === $category->slug ? 'store-theme-surface' : '' }}">{{ $category->name }}</a>
                         @endforeach
                     </div>
                 @endif

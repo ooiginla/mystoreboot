@@ -6,7 +6,7 @@
         ? '₦'.$money($minor)
         : strtoupper($currency).' '.$money($minor);
     $percentage = number_format($settings->percentage_markup_basis_points / 100, 2, '.', '');
-    $titles = ['overview' => 'Reseller Store', 'suppliers' => 'Supplier Websites', 'products' => 'Sourced Products', 'orders' => 'Reseller Orders', 'payments' => 'Reseller Payments', 'settings' => 'Reseller Settings'];
+    $titles = ['overview' => 'Reseller Store', 'suppliers' => 'Supplier Websites', 'products' => 'Sourced Products', 'categories' => 'Product Categories', 'orders' => 'Reseller Orders', 'payments' => 'Reseller Payments', 'settings' => 'Reseller Settings'];
     $pageTitle = $titles[$section] ?? 'Reseller Store';
     $tenantRoute = ['tenant' => $tenant->id];
 @endphp
@@ -52,8 +52,12 @@
         .reseller-product-action svg { width: 18px; height: 18px; }
         .reseller-product-action.exclude { color: var(--danger); border-color: var(--danger-border); }
         .reseller-product-action.exclude:hover { color: #fff; border-color: var(--danger); background: var(--danger); }
+        .reseller-product-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+        .reseller-product-meta .badge { font-size: 10px; }
+        .reseller-category-layout { display: grid; grid-template-columns: minmax(260px, 380px) minmax(0, 1fr); gap: 20px; align-items: start; }
+        .reseller-category-form { display: grid; gap: 14px; }
         @media (max-width: 1000px) { .reseller-shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-        @media (max-width: 900px) { .reseller-stats { grid-template-columns: 1fr; } .reseller-row { align-items: flex-start; flex-direction: column; } }
+        @media (max-width: 900px) { .reseller-stats { grid-template-columns: 1fr; } .reseller-row { align-items: flex-start; flex-direction: column; } .reseller-category-layout { grid-template-columns: 1fr; } }
         @media (max-width: 600px) { .reseller-shortcuts { grid-template-columns: 1fr; } }
     </style>
 
@@ -81,6 +85,7 @@
                     <p>@switch($section)
                         @case('suppliers') Configure the websites Storeboot scans for products. @break
                         @case('products') Review and control products recovered from supplier websites. @break
+                        @case('categories') Create the categories used to group sourced products on your online store. @break
                         @case('orders') Manage customer orders from the reseller storefront. @break
                         @case('payments') Review payments recorded against reseller orders. @break
                         @case('settings') Configure recovery, pricing, and storefront behaviour. @break
@@ -106,6 +111,7 @@
                 <div class="reseller-shortcuts">
                     <a class="reseller-shortcut" href="{{ route('admin.reseller.suppliers.index', $tenantRoute) }}"><strong>Supplier Websites</strong><span class="subtle">Add and scan sources</span></a>
                     <a class="reseller-shortcut" href="{{ route('admin.reseller.products.index', $tenantRoute) }}"><strong>Sourced Products</strong><span class="subtle">Review recovered items</span></a>
+                    <a class="reseller-shortcut" href="{{ route('admin.reseller.categories.index', $tenantRoute) }}"><strong>Categories</strong><span class="subtle">Group sourced products</span></a>
                     <a class="reseller-shortcut" href="{{ route('admin.reseller.orders.index', $tenantRoute) }}"><strong>Orders</strong><span class="subtle">Manage fulfilment</span></a>
                     <a class="reseller-shortcut" href="{{ route('admin.reseller.payments.index', $tenantRoute) }}"><strong>Payments</strong><span class="subtle">Review transactions</span></a>
                     <a class="reseller-shortcut" href="{{ route('admin.reseller.settings.index', $tenantRoute) }}"><strong>Settings</strong><span class="subtle">Pricing and recovery</span></a>
@@ -225,25 +231,64 @@
             @elseif ($section === 'products')
                 <section class="panel">
                     <div class="panel-header">
-                        <div><h2 class="panel-title">Sourced products</h2><p class="subtle">Products recovered from your supplier websites.</p></div>
-                        <form class="reseller-product-search" method="GET" action="{{ route('admin.reseller.products.index') }}" role="search">
-                            <input type="hidden" name="tenant" value="{{ $tenant->id }}">
-                            <input type="search" name="product_search" value="{{ $productSearch }}" placeholder="Search product or supplier" aria-label="Search by product name or supplier">
-                            <button class="btn secondary" type="submit">Search</button>
-                            @if ($productSearch !== '')<a class="btn secondary" href="{{ route('admin.reseller.products.index', $tenantRoute) }}">Clear</a>@endif
-                        </form>
+                        <div><h2 class="panel-title">Sourced products</h2><p class="subtle">Products recovered from your supplier websites. Search also checks generated tags.</p></div>
+                        <div class="reseller-product-search">
+                            <form method="POST" action="{{ route('admin.reseller.products.classify', $tenantRoute) }}" onsubmit="return confirm('Group all pending sourced products now? The products will be sent in optimized batches, not one AI request per product.');">
+                                @csrf
+                                <button class="btn accent" type="submit">Group pending products @if ($pendingClassificationCount > 0)<span class="badge">{{ $pendingClassificationCount }}</span>@endif</button>
+                            </form>
+                            <form class="reseller-product-search" method="GET" action="{{ route('admin.reseller.products.index') }}" role="search">
+                                <input type="hidden" name="tenant" value="{{ $tenant->id }}">
+                                <input type="search" name="product_search" value="{{ $productSearch }}" placeholder="Search product, supplier, category or tag" aria-label="Search product, supplier, category or tag">
+                                <button class="btn secondary" type="submit">Search</button>
+                                @if ($productSearch !== '')<a class="btn secondary" href="{{ route('admin.reseller.products.index', $tenantRoute) }}">Clear</a>@endif
+                            </form>
+                        </div>
                     </div>
-                    <div class="panel-body"><div class="reseller-table-wrap"><table class="table"><thead><tr><th>Product</th><th>Supplier</th><th>Source price</th><th>Selling price</th><th>Availability</th><th>Checked</th><th>Actions</th></tr></thead><tbody>
+                    <div class="panel-body"><div class="reseller-table-wrap"><table class="table"><thead><tr><th>Product</th><th>Category &amp; tags</th><th>Supplier</th><th>Source price</th><th>Selling price</th><th>Availability</th><th>Checked</th><th>Actions</th></tr></thead><tbody>
                         @forelse ($products as $product)
-                            <tr><td><strong>{{ $product->name }}</strong><div class="subtle">{{ $product->sku ?: 'No SKU' }}</div></td><td>{{ $product->supplier->name }}</td><td>{{ $formattedMoney($product->currency_code, $product->source_price_minor) }}</td><td><strong>{{ $formattedMoney($product->currency_code, $product->selling_price_minor) }}</strong></td><td>{{ str($product->availability->value)->headline() }}</td><td>{{ $product->last_checked_at->diffForHumans() }}</td><td><div class="reseller-row-actions">
+                            <tr><td><strong>{{ $product->name }}</strong><div class="subtle">{{ $product->sku ?: 'No SKU' }}</div></td><td>
+                                <form method="POST" action="{{ route('admin.reseller.products.category.update', $product) }}" class="reseller-product-search">@csrf @method('PATCH')
+                                    <select name="category_id" aria-label="Category for {{ $product->name }}" onchange="this.form.requestSubmit()">@foreach ($categories as $category)<option value="{{ $category->id }}" @selected((int) $product->category_id === (int) $category->id)>{{ $category->name }}</option>@endforeach</select>
+                                </form>
+                                <div class="reseller-product-meta">@foreach ($product->tags as $tag)<span class="badge neutral">{{ $tag->name }}</span>@endforeach @if ($product->classification_status === 'pending')<span class="badge warning">Pending</span>@endif</div>
+                            </td><td>{{ $product->supplier->name }}</td><td>{{ $formattedMoney($product->currency_code, $product->source_price_minor) }}</td><td><strong>{{ $formattedMoney($product->currency_code, $product->selling_price_minor) }}</strong></td><td>{{ str($product->availability->value)->headline() }}</td><td>{{ $product->last_checked_at->diffForHumans() }}</td><td><div class="reseller-row-actions">
                                 <form method="POST" action="{{ route('admin.reseller.products.update', $product) }}">@csrf @method('PATCH')<input type="hidden" name="is_visible" value="{{ $product->is_visible ? 0 : 1 }}"><input type="hidden" name="is_excluded" value="0"><button class="icon-btn reseller-product-action" type="submit" aria-label="{{ $product->is_visible ? 'Hide' : 'Publish' }} {{ $product->name }}" title="{{ $product->is_visible ? 'Hide product' : 'Publish product' }}">@if ($product->is_visible)<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 3 18 18M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.2A10.7 10.7 0 0 1 12 4c5.5 0 9 6 9 6a16.8 16.8 0 0 1-2.1 2.8M6.6 6.6C4.3 8.1 3 10 3 10s3.5 6 9 6c1 0 2-.2 2.9-.5"/></svg>@else<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>@endif</button></form>
                                 <form method="POST" action="{{ route('admin.reseller.products.update', $product) }}" onsubmit="return confirm('Exclude this product from future automatic publishing?');">@csrf @method('PATCH')<input type="hidden" name="is_visible" value="0"><input type="hidden" name="is_excluded" value="1"><button class="icon-btn reseller-product-action exclude" type="submit" aria-label="Exclude {{ $product->name }}" title="Exclude product"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/></svg></button></form>
                             </div></td></tr>
                         @empty
-                            <tr><td colspan="7"><div class="empty">{{ $productSearch !== '' ? 'No sourced products match your search.' : 'No products recovered yet.' }}</div></td></tr>
+                            <tr><td colspan="8"><div class="empty">{{ $productSearch !== '' ? 'No sourced products match your search.' : 'No products recovered yet.' }}</div></td></tr>
                         @endforelse
                     </tbody></table></div>{{ $products->links() }}</div>
                 </section>
+            @elseif ($section === 'categories')
+                <div class="reseller-category-layout">
+                    <section class="panel">
+                        <div class="panel-header"><div><h2 class="panel-title">Create category</h2><p class="subtle">New categories are automatically available on the online store and to product grouping.</p></div></div>
+                        <div class="panel-body">
+                            <form method="POST" action="{{ route('admin.reseller.categories.store', $tenantRoute) }}" class="reseller-category-form">
+                                @csrf
+                                <label>Name<input name="name" value="{{ old('name') }}" maxlength="140" placeholder="For example, Clothing" required></label>
+                                <label>Description<textarea name="description" rows="3" maxlength="1000" placeholder="Optional description">{{ old('description') }}</textarea></label>
+                                <button class="btn accent" type="submit">Create category</button>
+                            </form>
+                        </div>
+                    </section>
+                    <div class="reseller-stack">
+                        <section class="panel">
+                            <div class="panel-header"><div><h2 class="panel-title">Store categories</h2><p class="subtle">Uncategorized is always available as the safe default.</p></div></div>
+                            <div class="panel-body"><div class="reseller-list">
+                                @foreach ($categories as $category)
+                                    <div class="reseller-row"><div><strong>{{ $category->name }}</strong><div class="subtle">{{ $category->description ?: 'No description' }}</div></div><span class="badge {{ $defaultCategory?->is($category) ? '' : 'neutral' }}">{{ $category->reseller_products_count }} {{ Str::plural('product', $category->reseller_products_count) }}</span></div>
+                                @endforeach
+                            </div></div>
+                        </section>
+                        <section class="panel">
+                            <div class="panel-header"><div><h2 class="panel-title">Generated search tags</h2><p class="subtle">Tags are generated in the same batch as category grouping and help storefront searches.</p></div></div>
+                            <div class="panel-body"><div class="reseller-product-meta">@forelse ($generatedTags as $tag)<span class="badge neutral">{{ $tag->name }} · {{ $tag->reseller_products_count }}</span>@empty<span class="subtle">No generated tags yet.</span>@endforelse</div></div>
+                        </section>
+                    </div>
+                </div>
             @elseif ($section === 'orders')
                 <section class="panel">
                     <div class="panel-header"><div><h2 class="panel-title">Reseller orders</h2><p class="subtle">Customer orders from the reseller storefront.</p></div></div>

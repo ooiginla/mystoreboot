@@ -9,9 +9,16 @@ use App\Support\ActiveBranchManager;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Modules\Business\Models\OnlineStore;
+use Modules\Catalog\Actions\CreateCategoryAction;
+use Modules\Catalog\Actions\EnsureDefaultProductCategoryAction;
+use Modules\Catalog\Enums\CategoryType;
+use Modules\Catalog\Models\ProductCategory;
+use Modules\Catalog\Models\ProductTag;
+use Modules\Reseller\Actions\ClassifyResellerProducts;
 use Modules\Reseller\Actions\RepriceResellerProducts;
 use Modules\Reseller\Enums\PaymentStatus;
 use Modules\Reseller\Enums\PricingMode;
@@ -38,6 +45,7 @@ final class ResellerController extends Controller
     public function __construct(
         private readonly ActiveBranchManager $branches,
         private readonly SupplierScanSchedule $scanSchedule,
+        private readonly EnsureDefaultProductCategoryAction $ensureDefaultCategory,
     ) {}
 
     public function index(Request $request): View
@@ -53,6 +61,11 @@ final class ResellerController extends Controller
     public function products(Request $request): View
     {
         return $this->page($request, 'products');
+    }
+
+    public function categories(Request $request): View
+    {
+        return $this->page($request, 'categories');
     }
 
     public function orders(Request $request): View
@@ -74,6 +87,7 @@ final class ResellerController extends Controller
     {
         $tenant = $this->tenant($request);
         $settings = ResellerSetting::query()->firstOrCreate(['tenant_id' => $tenant->id]);
+        $defaultCategory = $tenant->isReseller() ? $this->ensureDefaultCategory->execute((string) $tenant->id) : null;
         $productSearch = trim($request->string('product_search')->toString());
         $suppliers = ResellerSupplier::query()
             ->withCount('products')
@@ -90,6 +104,28 @@ final class ResellerController extends Controller
             'settings' => $settings,
             'pricingModes' => PricingMode::cases(),
             'productSearch' => $productSearch,
+            'defaultCategory' => $defaultCategory,
+            'categories' => ProductCategory::query()
+                ->where('tenant_id', $tenant->id)
+                ->where('category_type', CategoryType::Product->value)
+                ->where('status', 'active')
+                ->withCount('resellerProducts')
+                ->orderBy('name')
+                ->get(),
+            'generatedTags' => ProductTag::query()
+                ->where('tenant_id', $tenant->id)
+                ->whereHas('resellerProducts')
+                ->withCount('resellerProducts')
+                ->orderByDesc('reseller_products_count')
+                ->orderBy('name')
+                ->limit(50)
+                ->get(),
+            'pendingClassificationCount' => ResellerProduct::query()
+                ->where('tenant_id', $tenant->id)
+                ->where(function ($query): void {
+                    $query->whereNull('category_id')->orWhere('classification_status', 'pending');
+                })
+                ->count(),
             'suppliers' => $suppliers,
             'supplierScanSchedules' => $suppliers->mapWithKeys(fn (ResellerSupplier $supplier): array => [
                 $supplier->id => [
@@ -98,12 +134,14 @@ final class ResellerController extends Controller
                 ],
             ]),
             'products' => ResellerProduct::query()
-                ->with('supplier')
+                ->with(['supplier', 'catalogCategory', 'tags'])
                 ->where('tenant_id', $tenant->id)
                 ->when($productSearch !== '', fn ($query) => $query->where(function ($query) use ($productSearch): void {
                     $query
                         ->whereLike('name', '%'.$productSearch.'%')
-                        ->orWhereHas('supplier', fn ($supplierQuery) => $supplierQuery->whereLike('name', '%'.$productSearch.'%'));
+                        ->orWhereHas('supplier', fn ($supplierQuery) => $supplierQuery->whereLike('name', '%'.$productSearch.'%'))
+                        ->orWhereHas('catalogCategory', fn ($categoryQuery) => $categoryQuery->whereLike('name', '%'.$productSearch.'%'))
+                        ->orWhereHas('tags', fn ($tagQuery) => $tagQuery->whereLike('name', '%'.$productSearch.'%'));
                 }))
                 ->latest('last_checked_at')
                 ->paginate(25, ['*'], 'products_page')
@@ -144,6 +182,7 @@ final class ResellerController extends Controller
 
         if ($mode === CommerceMode::Reseller) {
             ResellerSetting::query()->firstOrCreate(['tenant_id' => $tenant->id]);
+            $this->ensureDefaultCategory->execute((string) $tenant->id);
         }
 
         return redirect()
@@ -257,6 +296,70 @@ final class ResellerController extends Controller
         ]);
 
         return back()->with('status', "Product {$product->name} updated.");
+    }
+
+    public function updateProductCategory(Request $request, ResellerProduct $product): RedirectResponse
+    {
+        $tenant = $this->resellerTenant($request);
+        abort_unless($product->tenant_id === $tenant->id, 404);
+        $data = $request->validate([
+            'category_id' => [
+                'required',
+                'integer',
+                Rule::exists('product_categories', 'id')
+                    ->where('tenant_id', $tenant->id)
+                    ->where('category_type', CategoryType::Product->value)
+                    ->where('status', 'active'),
+            ],
+        ]);
+        $product->update([
+            'category_id' => $data['category_id'],
+            'classification_status' => 'manual',
+            'categorized_at' => now(),
+        ]);
+
+        return back()->with('status', "Category updated for {$product->name}.");
+    }
+
+    public function classifyProducts(Request $request, ClassifyResellerProducts $classifier): RedirectResponse
+    {
+        $tenant = $this->resellerTenant($request);
+        $result = $classifier->execute((string) $tenant->id);
+
+        if ($result['processed'] === 0) {
+            return back()->with('status', 'All sourced products are already grouped.');
+        }
+
+        $message = "Grouped {$result['categorized']} of {$result['processed']} sourced products and created {$result['tags_created']} search tags.";
+
+        if ($result['pending'] > 0) {
+            $message .= " {$result['pending']} remain in Uncategorized and can be retried.";
+        }
+
+        return back()->with('status', $message);
+    }
+
+    public function storeCategory(Request $request, CreateCategoryAction $action): RedirectResponse
+    {
+        $tenant = $this->resellerTenant($request);
+        $request->merge(['slug' => Str::slug((string) ($request->input('slug') ?: $request->input('name')))]);
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:140'],
+            'slug' => [
+                'required',
+                'string',
+                'max:160',
+                Rule::unique('product_categories', 'slug')->where('tenant_id', $tenant->id),
+            ],
+            'description' => ['nullable', 'string', 'max:1000'],
+        ]);
+        $category = $action->execute([
+            ...$data,
+            'tenant_id' => $tenant->id,
+            'category_type' => CategoryType::Product->value,
+        ]);
+
+        return back()->with('status', "Category {$category->name} created and added to the online store.");
     }
 
     public function showOrder(Request $request, ResellerOrder $order): View

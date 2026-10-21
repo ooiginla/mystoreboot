@@ -10,6 +10,7 @@ Route::middleware(RequireResellerModule::class)->group(function (): void {
     Route::get('/', [ResellerController::class, 'index'])->name('index');
     Route::get('/suppliers', [ResellerController::class, 'suppliers'])->name('suppliers.index');
     Route::get('/products', [ResellerController::class, 'products'])->name('products.index');
+    Route::get('/categories', [ResellerController::class, 'categories'])->name('categories.index');
     Route::get('/orders', [ResellerController::class, 'orders'])->name('orders.index');
     Route::get('/payments', [ResellerController::class, 'payments'])->name('payments.index');
     Route::get('/settings', [ResellerController::class, 'settings'])->name('settings.index');
@@ -21,6 +22,9 @@ Route::middleware(RequireResellerModule::class)->group(function (): void {
     Route::post('/suppliers/{supplier}/scan/schedule', [ResellerController::class, 'scheduleSupplierScan'])->name('suppliers.scan.schedule');
     Route::post('/suppliers/{supplier}/scan', [ResellerController::class, 'scanSupplier'])->name('suppliers.scan');
     Route::patch('/products/{product}', [ResellerController::class, 'updateProduct'])->name('products.update');
+    Route::patch('/products/{product}/category', [ResellerController::class, 'updateProductCategory'])->name('products.category.update');
+    Route::post('/products/classify', [ResellerController::class, 'classifyProducts'])->name('products.classify');
+    Route::post('/categories', [ResellerController::class, 'storeCategory'])->name('categories.store');
     Route::get('/orders/{order}', [ResellerController::class, 'showOrder'])->name('orders.show');
     Route::patch('/orders/{order}/payment-status', [ResellerController::class, 'updateOrderPaymentStatus'])->name('orders.payment-status.update');
     Route::patch('/orders/{order}/items/{item}', [ResellerController::class, 'updateOrderItem'])->name('orders.items.update');

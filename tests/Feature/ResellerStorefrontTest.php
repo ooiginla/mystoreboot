@@ -7,9 +7,12 @@ namespace Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Business\Models\OnlineStore;
+use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\Product;
+use Modules\Catalog\Models\ProductCategory;
+use Modules\Catalog\Models\ProductTag;
 use Modules\Reseller\Enums\PricingMode;
 use Modules\Reseller\Enums\ProductAvailability;
 use Modules\Reseller\Models\ResellerOrder;
@@ -114,6 +117,39 @@ final class ResellerStorefrontTest extends TestCase
             'payment_method' => 'place_order',
             'items' => [['product_variant_id' => $outOfStock->id, 'quantity' => 1]],
         ])->assertUnprocessable()->assertJsonValidationErrors('items');
+    }
+
+    public function test_reseller_categories_filter_products_and_generated_tags_are_searchable(): void
+    {
+        [$tenant, $store, $product] = $this->fixture();
+        $category = ProductCategory::query()->create([
+            'tenant_id' => $tenant->id,
+            'category_type' => CategoryType::Product,
+            'name' => 'Clothing',
+            'slug' => 'clothing',
+            'status' => 'active',
+        ]);
+        $store->categories()->syncWithoutDetaching([$category->id]);
+        $product->update([
+            'category_id' => $category->id,
+            'classification_status' => 'classified',
+            'categorized_at' => now(),
+        ]);
+        $tag = ProductTag::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Summer Essentials',
+            'slug' => 'summer-essentials',
+        ]);
+        $product->tags()->attach($tag);
+
+        $this->get(route('storefront.storefront.store.categories.show', [$store, $category->slug]))
+            ->assertOk()
+            ->assertSee('Clothing')
+            ->assertSee('Recovered Shirt');
+
+        $this->get(route('storefront.storefront.store.home', ['store' => $store, 'search' => 'Summer Essentials']))
+            ->assertOk()
+            ->assertSee('Recovered Shirt');
     }
 
     public function test_reseller_checkout_snapshots_prices_and_creates_pending_payment(): void

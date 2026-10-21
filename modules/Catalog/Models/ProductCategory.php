@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Catalog\Enums\CategoryType;
+use Modules\Reseller\Models\ResellerProduct;
 
 final class ProductCategory extends Model
 {
@@ -38,5 +39,10 @@ final class ProductCategory extends Model
     public function products(): HasMany
     {
         return $this->hasMany(Product::class, 'category_id');
+    }
+
+    public function resellerProducts(): HasMany
+    {
+        return $this->hasMany(ResellerProduct::class, 'category_id');
     }
 }

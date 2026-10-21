@@ -14,6 +14,8 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Modules\Business\Models\OnlineStore;
+use Modules\Catalog\Enums\CategoryType;
+use Modules\Catalog\Models\ProductCategory;
 use Modules\Reseller\Enums\PricingMode;
 use Modules\Reseller\Enums\ProductAvailability;
 use Modules\Reseller\Models\ResellerOrder;
@@ -28,28 +30,40 @@ final class ResellerStorefrontController extends Controller
     {
         $store = $this->store($store);
         $search = Str::limit(trim($request->string('search')->toString()), 100, '');
-        $category = trim($request->string('category')->toString());
+        $categorySlug = trim($request->string('category')->toString());
+        $selectedCategory = $categorySlug === '' ? null : ProductCategory::query()
+            ->where('tenant_id', $store->tenant_id)
+            ->where('category_type', CategoryType::Product->value)
+            ->where('status', 'active')
+            ->where('slug', $categorySlug)
+            ->first();
         $query = $this->availableProducts($store)
             ->when($search !== '', fn ($builder) => $builder->where(function ($searchQuery) use ($search): void {
                 $searchQuery->whereLike('name', '%'.$search.'%')
                     ->orWhereLike('short_description', '%'.$search.'%')
                     ->orWhereLike('brand', '%'.$search.'%')
-                    ->orWhereLike('sku', '%'.$search.'%');
+                    ->orWhereLike('sku', '%'.$search.'%')
+                    ->orWhereHas('tags', fn ($tagQuery) => $tagQuery->whereLike('name', '%'.$search.'%'));
             }))
-            ->when($category !== '', fn ($builder) => $builder->where('category', $category));
+            ->when($selectedCategory, fn ($builder) => $builder->where('category_id', $selectedCategory->id));
+        $categoryIds = $this->availableProducts($store)
+            ->whereNotNull('category_id')
+            ->distinct()
+            ->pluck('category_id');
 
         return view('reseller::storefront.home', [
             'store' => $store,
             'settings' => $this->settings($store),
             'products' => $query->latest('last_checked_at')->paginate(16)->withQueryString(),
-            'categories' => ResellerProduct::query()
+            'categories' => ProductCategory::query()
                 ->where('tenant_id', $store->tenant_id)
-                ->where('is_visible', true)
-                ->whereNotNull('category')
-                ->distinct()
-                ->orderBy('category')
-                ->pluck('category'),
-            'selectedCategory' => $category,
+                ->where('category_type', CategoryType::Product->value)
+                ->where('status', 'active')
+                ->whereIn('id', $categoryIds)
+                ->orderBy('name')
+                ->get(),
+            'selectedCategory' => $selectedCategory?->name ?? '',
+            'selectedCategorySlug' => $selectedCategory?->slug ?? '',
             'search' => $search,
             'canonical' => StorefrontUrl::route($store),
             'metaDescription' => "Shop products curated by {$store->store_name}.",
@@ -59,15 +73,16 @@ final class ResellerStorefrontController extends Controller
     public function category(OnlineStore $store, string $categorySlug): View
     {
         $store = $this->store($store);
-        $category = ResellerProduct::query()
+        $category = ProductCategory::query()
             ->where('tenant_id', $store->tenant_id)
-            ->where('is_visible', true)
-            ->whereNotNull('category')
-            ->pluck('category')
-            ->first(fn (string $name): bool => Str::slug($name) === $categorySlug);
+            ->where('category_type', CategoryType::Product->value)
+            ->where('status', 'active')
+            ->where('slug', $categorySlug)
+            ->first();
         abort_unless($category, 404);
+        abort_unless($this->availableProducts($store)->where('category_id', $category->id)->exists(), 404);
 
-        request()->merge(['category' => $category]);
+        request()->merge(['category' => $category->slug]);
 
         return $this->home($store, request());
     }
@@ -76,7 +91,7 @@ final class ResellerStorefrontController extends Controller
     {
         $store = $this->store($store);
         abort_unless(ctype_digit($productSlug), 404);
-        $product = $this->availableProducts($store)->with('supplier')->findOrFail((int) $productSlug);
+        $product = $this->availableProducts($store)->with(['supplier', 'catalogCategory', 'tags'])->findOrFail((int) $productSlug);
 
         return view('reseller::storefront.product', [
             'store' => $store,
@@ -84,7 +99,7 @@ final class ResellerStorefrontController extends Controller
             'product' => $product,
             'relatedProducts' => $this->availableProducts($store)
                 ->whereKeyNot($product->id)
-                ->when($product->category, fn ($query) => $query->where('category', $product->category))
+                ->when($product->category_id, fn ($query) => $query->where('category_id', $product->category_id))
                 ->limit(4)
                 ->get(),
             'canonical' => StorefrontUrl::route($store, 'products.show', ['productSlug' => $product->id]),
@@ -224,7 +239,16 @@ final class ResellerStorefrontController extends Controller
     {
         $store->loadMissing('tenant');
         abort_unless($store->is_active && $store->tenant?->isReseller(), 404);
-        $store->setRelation('categories', collect());
+        $categoryIds = $this->availableProducts($store)
+            ->whereNotNull('category_id')
+            ->distinct()
+            ->pluck('category_id');
+        $store->setRelation('categories', ProductCategory::query()
+            ->where('tenant_id', $store->tenant_id)
+            ->where('status', 'active')
+            ->whereIn('id', $categoryIds)
+            ->orderBy('name')
+            ->get());
         $store->setRelation('productCollections', collect());
         $store->payment_methods = $this->paymentMethods($store);
 

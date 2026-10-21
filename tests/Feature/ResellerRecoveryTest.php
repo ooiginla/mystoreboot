@@ -84,6 +84,9 @@ final class ResellerRecoveryTest extends TestCase
         $this->assertSame(1330000, $shirt->selling_previous_price_minor);
         $this->assertTrue($shirt->is_visible);
         $this->assertSame('Supplier Store', $shirt->source_store_name);
+        $this->assertSame('Uncategorized', $shirt->catalogCategory?->name);
+        $this->assertSame('classified', $shirt->classification_status);
+        $this->assertTrue($shirt->tags()->where('name', 'Clothing')->exists());
 
         $bag = ResellerProduct::query()->where('sku', 'BAG-1')->firstOrFail();
         $this->assertSame('USD', $bag->currency_code);

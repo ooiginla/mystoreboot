@@ -136,9 +136,30 @@ final class ResellerAdminTest extends TestCase
             ->get(route('admin.reseller.products.index', ['tenant' => $tenant->id]))
             ->assertOk()
             ->assertSee('₦13,500.00')
-            ->assertSee('Search product or supplier')
+            ->assertSee('Search product, supplier, category or tag')
+            ->assertSee('Group pending products')
             ->assertSee('Publish Shirt')
             ->assertSee('Exclude Shirt');
+
+        $this->actingAs($user)
+            ->get(route('admin.reseller.categories.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('Create category')
+            ->assertSee('Uncategorized')
+            ->assertSee('Generated search tags');
+
+        $this->actingAs($user)
+            ->post(route('admin.reseller.categories.store', ['tenant' => $tenant->id]), [
+                'name' => 'Clothing',
+                'description' => 'Wearable products.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('status', 'Category Clothing created and added to the online store.');
+
+        $this->assertDatabaseHas('product_categories', [
+            'tenant_id' => $tenant->id,
+            'name' => 'Clothing',
+        ]);
 
         $this->actingAs($user)
             ->get(route('admin.reseller.products.index', ['tenant' => $tenant->id, 'product_search' => 'Shirt']))

@@ -7,6 +7,7 @@ namespace Modules\Reseller\Services;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Modules\Reseller\Actions\CalculateResellerPrice;
+use Modules\Reseller\Actions\ClassifyResellerProducts;
 use Modules\Reseller\Data\RecoveredProductData;
 use Modules\Reseller\Enums\ProductAvailability;
 use Modules\Reseller\Enums\ScanStatus;
@@ -25,6 +26,7 @@ final class RecoverSupplierProducts
         private readonly ProductPageExtractor $extractor,
         private readonly CalculateResellerPrice $priceCalculator,
         private readonly TenantModuleAccess $modules,
+        private readonly ClassifyResellerProducts $classifier,
     ) {}
 
     /** @return array{created: int, updated: int, pages: int, errors: int} */
@@ -49,6 +51,7 @@ final class RecoverSupplierProducts
         $queue = $starts === [] ? [$supplier->website_url] : $starts;
         $visited = [];
         $seenProductIds = [];
+        $createdProductIds = [];
         $created = 0;
         $updated = 0;
         $errors = 0;
@@ -86,7 +89,12 @@ final class RecoverSupplierProducts
                     if ($recovered) {
                         [$product, $wasCreated] = $this->upsert($supplier, $settings, $recovered);
                         $seenProductIds[] = $product->id;
-                        $wasCreated ? $created++ : $updated++;
+                        if ($wasCreated) {
+                            $created++;
+                            $createdProductIds[] = $product->id;
+                        } else {
+                            $updated++;
+                        }
                     }
 
                     foreach ($this->extractor->links($html, $url) as $link) {
@@ -101,6 +109,14 @@ final class RecoverSupplierProducts
 
             if ($errors === 0) {
                 $this->markMissingProducts($supplier, $settings, $seenProductIds);
+            }
+
+            if ($createdProductIds !== []) {
+                try {
+                    $this->classifier->execute((string) $supplier->tenant_id, $createdProductIds);
+                } catch (Throwable $exception) {
+                    report($exception);
+                }
             }
 
             $status = $errors === 0 ? ScanStatus::Successful : (count($seenProductIds) > 0 ? ScanStatus::Partial : ScanStatus::Failed);
