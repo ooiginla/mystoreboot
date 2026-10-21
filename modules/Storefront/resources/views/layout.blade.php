@@ -18,6 +18,7 @@
         'AUD' => '$',
     ][strtoupper($currency)] ?? strtoupper($currency);
     $logoUrl = $imageUrl($store->logo_path);
+    $faviconUrl = $imageUrl($store->logo_path ?: $store->tenant?->logo_path) ?: asset('favicon.svg');
     $whatsapp = preg_replace('/\D+/', '', (string) ($store->store_whatsapp ?: data_get($store->social_accounts, 'whatsapp')));
     $storeAddress = collect([$store->address, $store->city, $store->state, $store->country])->filter()->join(', ');
     $socialUrl = function (string $network, mixed $handle): string {
@@ -92,6 +93,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="icon" href="{{ $faviconUrl }}">
     <title>{{ $title ?? $store->store_name }}</title>
     @php
         $seoDescription = trim(strip_tags($metaDescription ?? $store->description ?? '')) ?: $store->store_name;

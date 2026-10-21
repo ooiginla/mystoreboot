@@ -121,6 +121,7 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('.store-shell { width: 100%; max-width: 1480px; margin-left: auto; margin-right: auto;', false)
             ->assertSee('@media (min-width: 768px) { .store-shell { padding-left: 24px; padding-right: 24px; } }', false)
             ->assertSee('.store-hero { width: calc(100% - 32px); max-width: 1480px; margin-left: auto; margin-right: auto;', false)
+            ->assertSee('rel="icon" href="'.asset('favicon.svg').'"', false)
             ->assertSee('data-mobile-menu-label>Menu</span>', false)
             ->assertSee('id="store-mobile-nav"', false)
             ->assertSee('data-cart-toast', false)
@@ -162,6 +163,24 @@ class StorefrontFrontendTest extends TestCase
             strpos($response->getContent(), 'name="checkout_name"'),
             strpos($response->getContent(), 'name="checkout_email"'),
         );
+    }
+
+    public function test_storefront_favicon_uses_the_business_logo_before_the_storeboot_fallback(): void
+    {
+        [$tenant, $store] = $this->storeFixture([
+            'logo_path' => 'tenants/demo/online-store/logos/store-logo.png',
+        ]);
+
+        $this->get(route('storefront.storefront.store.home', $store))
+            ->assertOk()
+            ->assertSee('rel="icon" href="/storage/tenants/demo/online-store/logos/store-logo.png"', false);
+
+        $store->update(['logo_path' => null]);
+        $tenant->update(['logo_path' => 'tenants/demo/business-logo.png']);
+
+        $this->get(route('storefront.storefront.store.home', $store))
+            ->assertOk()
+            ->assertSee('rel="icon" href="/storage/tenants/demo/business-logo.png"', false);
     }
 
     public function test_storefront_category_menu_nests_children_and_only_marks_parents_as_expandable(): void
