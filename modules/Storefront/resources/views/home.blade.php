@@ -31,7 +31,7 @@
     $productCategories = $store->categories->filter(fn ($category) => ($category->category_type?->value ?? (string) $category->category_type) === 'product');
     $filters = $filters ?? ['min_price' => null, 'max_price' => null, 'in_stock' => false, 'on_sale' => false];
     $priceBounds = $priceBounds ?? ['min' => 0, 'max' => 0];
-    $filterCategoryIds = $productCategories->modelKeys();
+    $filterCategoryIds = $productCategories->pluck('id')->all();
     $filterRootCategories = $productCategories
         ->filter(fn ($category) => ! $category->parent_id || ! in_array($category->parent_id, $filterCategoryIds, true))
         ->values();

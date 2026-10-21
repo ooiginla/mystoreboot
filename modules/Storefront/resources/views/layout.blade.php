@@ -48,7 +48,7 @@
     $menuCategories = $store->categories
         ->filter(fn ($category) => ($category->category_type?->value ?? (string) $category->category_type) === 'product' && $category->status === 'active')
         ->values();
-    $menuCategoryIds = $menuCategories->modelKeys();
+    $menuCategoryIds = $menuCategories->pluck('id')->all();
     $menuRootCategories = $menuCategories
         ->filter(fn ($category) => ! $category->parent_id || ! in_array($category->parent_id, $menuCategoryIds, true))
         ->values();
