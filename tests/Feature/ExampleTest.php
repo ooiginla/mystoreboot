@@ -23,8 +23,8 @@ class ExampleTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee('Run your', false)
-            ->assertSee('whole business', false);
+            ->assertSee('Sell, manage stock and know your numbers', false)
+            ->assertSee('one connected place', false);
 
         $this->get(route('admin.business.index'))
             ->assertRedirect(route('login'));
