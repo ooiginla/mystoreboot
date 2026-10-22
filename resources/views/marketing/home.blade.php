@@ -16,7 +16,8 @@
         'areaServed' => ['@type' => 'Country', 'name' => 'Nigeria'],
         'offers' => [
             ['@type' => 'Offer', 'name' => 'Basic', 'price' => '0', 'priceCurrency' => 'NGN'],
-            ['@type' => 'Offer', 'name' => 'Enterprise', 'price' => '5000', 'priceCurrency' => 'NGN'],
+            ['@type' => 'Offer', 'name' => 'Business Growth', 'price' => '20000', 'priceCurrency' => 'NGN'],
+            ['@type' => 'Offer', 'name' => 'Enterprise', 'description' => 'Custom pricing'],
         ],
     ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}</script>
 @endpush
@@ -423,17 +424,10 @@
             <div class="sb-reveal mx-auto max-w-2xl text-center">
                 <span class="sb-eyebrow">Simple pricing</span>
                 <h2 class="sb-h2 mt-5">Plans that grow with you.</h2>
-                <p class="sb-lead mt-5">Start completely free — no card required. Upgrade to Enterprise when you need branches, POS, payroll and full accounting.</p>
-
-                <div class="mt-8 inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white p-1 dark:border-white/10 dark:bg-white/5">
-                    <button type="button" data-billing="monthly" class="sb-bill-btn rounded-full px-5 py-2 text-sm font-semibold transition">Monthly</button>
-                    <button type="button" data-billing="yearly" class="sb-bill-btn rounded-full px-5 py-2 text-sm font-semibold transition">
-                        Yearly <span class="ml-1 rounded-full bg-brand-500/15 px-2 py-0.5 text-xs text-brand-700 dark:text-brand-300">–20%</span>
-                    </button>
-                </div>
+                <p class="sb-lead mt-5">Start free, move to Business Growth as your team expands, and choose Enterprise for unlimited multi-branch operations.</p>
             </div>
 
-            <div class="mt-14 grid items-stretch gap-6 sm:mx-auto sm:max-w-3xl lg:grid-cols-2">
+            <div class="mt-14 grid items-stretch gap-6 lg:grid-cols-3">
                 @foreach ($plans as $plan)
                     <div class="sb-reveal relative flex flex-col rounded-3xl border p-7 {{ $plan['featured'] ? 'border-brand-500 bg-white shadow-2xl shadow-brand-600/10 dark:bg-ink-800 lg:-mt-4 lg:mb-4' : 'border-zinc-200/80 bg-white dark:border-white/10 dark:bg-white/[0.03]' }}">
                         @if ($plan['featured'])
@@ -442,10 +436,10 @@
                         <h3 class="font-display text-lg font-bold text-zinc-900 dark:text-white">{{ $plan['name'] }}</h3>
                         <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{{ $plan['tagline'] }}</p>
                         <div class="mt-6 flex items-end gap-1">
-                            <span class="font-display text-4xl font-bold text-zinc-900 dark:text-white" data-price-monthly="{{ $plan['monthly'] }}" data-price-yearly="{{ $plan['yearly'] }}">{{ $plan['monthly'] }}</span>
+                            <span class="font-display text-4xl font-bold text-zinc-900 dark:text-white">{{ $plan['monthly'] }}</span>
                             <span class="pb-1 text-sm text-zinc-500 dark:text-zinc-400">{{ $plan['unit'] }}</span>
                         </div>
-                        <a href="{{ route('register') }}" class="sb-btn {{ $plan['featured'] ? 'sb-btn-primary' : 'sb-btn-ghost' }} mt-6 w-full">{{ $plan['cta'] }}</a>
+                        <a href="{{ route($plan['cta_route']) }}" class="sb-btn {{ $plan['featured'] ? 'sb-btn-primary' : 'sb-btn-ghost' }} mt-6 w-full">{{ $plan['cta'] }}</a>
                         <ul class="mt-7 space-y-3 border-t border-zinc-100 pt-6 text-sm dark:border-white/5">
                             @foreach ($plan['features'] as $f)
                                 <li class="flex items-start gap-3 text-zinc-600 dark:text-zinc-300">
@@ -533,27 +527,6 @@
 
 @push('scripts')
 <script>
-    // Pricing billing toggle
-    (function () {
-        var buttons = document.querySelectorAll('.sb-bill-btn');
-        var prices = document.querySelectorAll('[data-price-monthly]');
-        function setBilling(mode) {
-            buttons.forEach(function (b) {
-                var active = b.dataset.billing === mode;
-                b.classList.toggle('bg-brand-600', active);
-                b.classList.toggle('text-white', active);
-                b.classList.toggle('shadow', active);
-                b.classList.toggle('text-zinc-600', !active);
-                b.classList.toggle('dark:text-zinc-300', !active);
-            });
-            prices.forEach(function (p) {
-                p.textContent = mode === 'yearly' ? p.dataset.priceYearly : p.dataset.priceMonthly;
-            });
-        }
-        buttons.forEach(function (b) { b.addEventListener('click', function () { setBilling(b.dataset.billing); }); });
-        setBilling('monthly');
-    })();
-
     // Video lightbox
     function sbOpenVideo() {
         var m = document.getElementById('sb-video-modal');

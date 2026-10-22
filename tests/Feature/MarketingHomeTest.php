@@ -38,4 +38,22 @@ class MarketingHomeTest extends TestCase
                 ->assertSee(asset($page['image']), false);
         }
     }
+
+    public function test_home_page_shows_the_current_three_tier_pricing(): void
+    {
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('Basic')
+            ->assertSee('Business Growth')
+            ->assertSee('₦20,000')
+            ->assertSee('Up to 5 users')
+            ->assertSee('Free subdomain')
+            ->assertSee('AI-powered &amp; managed', false)
+            ->assertSee('POS / daily till support')
+            ->assertSee('HR &amp; payroll support', false)
+            ->assertSee('Enterprise')
+            ->assertSee('Custom pricing')
+            ->assertSee('Unlimited branches')
+            ->assertDontSee('₦5,000');
+    }
 }

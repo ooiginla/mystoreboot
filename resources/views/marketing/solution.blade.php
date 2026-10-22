@@ -20,7 +20,8 @@
         'areaServed' => ['@type' => 'Country', 'name' => 'Nigeria'],
         'offers' => [
             ['@type' => 'Offer', 'name' => 'Basic', 'price' => '0', 'priceCurrency' => 'NGN'],
-            ['@type' => 'Offer', 'name' => 'Enterprise', 'price' => '5000', 'priceCurrency' => 'NGN'],
+            ['@type' => 'Offer', 'name' => 'Business Growth', 'price' => '20000', 'priceCurrency' => 'NGN'],
+            ['@type' => 'Offer', 'name' => 'Enterprise', 'description' => 'Custom pricing'],
         ],
     ];
     $faqSchema = [
@@ -226,9 +227,9 @@
                 <div class="mx-auto max-w-3xl text-center">
                     <span class="sb-eyebrow">Straightforward pricing</span>
                     <h2 class="sb-h2 mt-5">Start free. Upgrade when operations demand more.</h2>
-                    <p class="sb-lead mx-auto mt-5">Basic is built for getting online and organised. Enterprise adds the branch, till, people, procurement and finance controls required by more complex teams.</p>
+                    <p class="sb-lead mx-auto mt-5">Basic gets a small business online and organised. Business Growth supports a growing team, while Enterprise removes limits for multi-branch and complex operations.</p>
                 </div>
-                <div class="mx-auto mt-12 grid max-w-5xl gap-6 lg:grid-cols-2">
+                <div class="mx-auto mt-12 grid max-w-7xl gap-6 lg:grid-cols-3">
                     @foreach ($plans as $plan)
                         <section class="rounded-[2rem] border {{ $plan['featured'] ? 'border-brand-300 bg-white shadow-xl shadow-brand-900/10' : 'border-zinc-200 bg-white' }} p-8 dark:border-white/10 dark:bg-ink-900">
                             <div class="flex items-start justify-between gap-4">
@@ -236,16 +237,16 @@
                                 @if ($plan['featured'])<span class="sb-chip border-brand-200 text-brand-700">Start here</span>@endif
                             </div>
                             <p class="mt-7"><span class="font-display text-4xl font-bold text-zinc-900 dark:text-white">{{ $plan['monthly'] }}</span> <span class="text-sm text-zinc-500">{{ $plan['unit'] }}</span></p>
-                            <a href="{{ route('register') }}" class="sb-btn {{ $plan['featured'] ? 'sb-btn-primary' : 'sb-btn-dark' }} mt-7 w-full">{{ $plan['cta'] }}</a>
+                            <a href="{{ route($plan['cta_route']) }}" class="sb-btn {{ $plan['featured'] ? 'sb-btn-primary' : 'sb-btn-dark' }} mt-7 w-full">{{ $plan['cta'] }}</a>
                             <ul class="mt-7 grid gap-3 text-sm sm:grid-cols-2">
-                                @foreach (array_slice($plan['features'], 0, 10) as $feature)
+                                @foreach ($plan['features'] as $feature)
                                     <li class="flex items-start gap-2"><svg class="mt-0.5 h-4 w-4 shrink-0 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="m5 12 4 4L19 6"/></svg>{{ $feature }}</li>
                                 @endforeach
                             </ul>
                         </section>
                     @endforeach
                 </div>
-                <p class="mx-auto mt-6 max-w-3xl text-center text-sm leading-6 text-zinc-500">Yearly Enterprise billing is listed at ₦4,000 per month. Prices shown are in Nigerian Naira and may change; taxes, payment processing and any third-party services are separate where applicable.</p>
+                <p class="mx-auto mt-6 max-w-3xl text-center text-sm leading-6 text-zinc-500">Business Growth is ₦20,000 per month. Enterprise pricing is tailored to your operation. Prices shown are in Nigerian Naira; taxes, payment processing and third-party services are separate where applicable.</p>
             </div>
         </section>
 

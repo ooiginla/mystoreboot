@@ -126,14 +126,17 @@ final class MarketingController extends Controller
         ];
     }
 
-    /** @return list<array{name: string, tagline: string, monthly: string, yearly: string, unit: string, cta: string, featured: bool, features: list<string>}> */
+    /** @return list<array{name: string, tagline: string, monthly: string, unit: string, cta: string, cta_route: string, featured: bool, features: list<string>}> */
     private function plans(): array
     {
         return [
             [
-                'name' => 'Basic', 'tagline' => 'For WhatsApp, Instagram & TikTok sellers, pre-order and dropshipping businesses.',
-                'monthly' => 'Free', 'yearly' => 'Free', 'unit' => 'forever', 'cta' => 'Start for free', 'featured' => true,
+                'name' => 'Basic', 'tagline' => 'Best for solo and small businesses.',
+                'monthly' => 'Free', 'unit' => 'forever', 'cta' => 'Start for free', 'cta_route' => 'register', 'featured' => false,
                 'features' => [
+                    '1 user',
+                    '1 location',
+                    '1 inventory location',
                     'Free online store',
                     'Free subdomain',
                     'Unlimited products',
@@ -142,7 +145,7 @@ final class MarketingController extends Controller
                     'AI-powered & managed',
                     'Storeboot Payments',
                     'Customers & invoicing',
-                    'Staff accounts',
+                    'Staff accounts within the plan user limit',
                     'Inventory management',
                     'Analytics dashboard',
                     'Excellent support',
@@ -150,11 +153,13 @@ final class MarketingController extends Controller
                 ],
             ],
             [
-                'name' => 'Enterprise', 'tagline' => 'For in-house stores that need branches, POS and full back office.',
-                'monthly' => '₦5,000', 'yearly' => '₦4,000', 'unit' => '/month', 'cta' => 'Start free trial', 'featured' => false,
+                'name' => 'Business Growth', 'tagline' => 'Best for growing businesses.',
+                'monthly' => '₦20,000', 'unit' => '/month', 'cta' => 'Start free trial', 'cta_route' => 'register', 'featured' => true,
                 'features' => [
                     'Everything in Basic, plus:',
-                    'Unlimited branches',
+                    'Up to 5 users',
+                    '1 branch',
+                    'Up to 3 inventory locations',
                     'POS / daily till support',
                     'Expense management',
                     'HR & payroll support',
@@ -165,6 +170,18 @@ final class MarketingController extends Controller
                     'Procurement & finance',
                     'Accounting & reports',
                     'Priority support',
+                ],
+            ],
+            [
+                'name' => 'Enterprise', 'tagline' => 'Best for multi-branch and complex operations.',
+                'monthly' => 'Custom pricing', 'unit' => '', 'cta' => 'Contact sales', 'cta_route' => 'contact', 'featured' => false,
+                'features' => [
+                    'Everything in Business Growth, plus:',
+                    'Unlimited users',
+                    'Unlimited branches',
+                    'Unlimited inventory locations',
+                    'Configuration for complex operations',
+                    'Tailored onboarding and support',
                 ],
             ],
         ];
@@ -178,7 +195,7 @@ final class MarketingController extends Controller
             ['q' => 'Can AI help me set up my products and store?', 'a' => 'Yes. Upload your product photos and our AI drafts the names, descriptions, prices and categories for you. It can also generate product images, write your store pages, and auto-create SEO tags so customers find you on Google — everything stays editable before you publish.'],
             ['q' => 'Can I use the point of sale without internet?', 'a' => 'Yes. Our till is built offline-first — you can keep selling even when the network drops, and your data syncs safely to the cloud once you are back online.'],
             ['q' => 'Does it work for more than one branch?', 'a' => 'Absolutely. Manage every branch from one account, move stock between them, set roles for your staff, and see each branch or the whole business at a glance.'],
-            ['q' => 'What does it cost to get started?', 'a' => 'Getting started is completely free — the Basic plan is free forever with no card required. When you need branches, POS, payroll and full accounting, upgrade to Enterprise at ₦5,000/month.'],
+            ['q' => 'What does it cost to get started?', 'a' => 'Basic is free forever with no card required. Business Growth is ₦20,000 per month for growing teams, while Enterprise pricing is tailored to multi-branch and complex operations.'],
             ['q' => 'Is my business data safe?', 'a' => 'Your data is encrypted and backed up in the cloud, with role-based access so your team only sees what they should. You stay in full control of your business information.'],
             ['q' => 'Which currency and country does it support?', 'a' => 'Storeboot supports Naira and several other currencies, with the right timezone set automatically when you sign up. It is built for African businesses first.'],
         ];
