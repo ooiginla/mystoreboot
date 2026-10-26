@@ -173,6 +173,18 @@
         .sales-search-empty { padding: 12px; color: var(--muted); font-size: 13.5px; text-align: center; }
         .sales-pos-error { margin-top: 14px; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger-strong); font-weight: 700; font-size: 13.5px; display: flex; gap: 8px; align-items: flex-start; }
         .sales-pos-error[hidden] { display: none; }
+        .customer-pricing-status { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-soft); padding: 12px 14px; display: grid; gap: 8px; }
+        .customer-pricing-status[hidden] { display: none; }
+        .customer-pricing-status-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .customer-pricing-label { display: inline-flex; border-radius: 999px; background: #eef2ff; color: #3730a3; padding: 4px 9px; font-size: 12px; font-weight: 800; }
+        .customer-credit-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+        .customer-credit-metric { border-radius: 8px; background: #fff; padding: 8px 10px; }
+        .customer-credit-metric small, .customer-credit-metric strong { display: block; }
+        .customer-credit-metric small { color: var(--muted); font-size: 11px; font-weight: 700; }
+        .customer-credit-metric strong { margin-top: 2px; color: var(--ink); font-size: 13px; }
+        .pricing-line-label { display: inline-flex; margin-top: 4px; border-radius: 999px; background: #eef2ff; color: #3730a3; padding: 2px 7px; font-size: 10.5px; font-weight: 800; }
+        .credit-override-box { margin-top: 10px; border: 1px solid #fdb022; border-radius: var(--radius-sm); background: #fffaeb; padding: 12px; }
+        .credit-override-box[hidden] { display: none; }
         .sales-confirm-section { display: grid; gap: 10px; }
         .sales-confirm-section + .sales-confirm-section { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
         .sales-confirm-heading { margin: 0; color: var(--ink); font-size: 14px; font-weight: 800; }
@@ -322,7 +334,7 @@
                     </div>
                 </div>
                 <div class="panel-body">
-                    <form class="mini-form" method="POST" action="{{ route('admin.sales.orders.store') }}" data-pos-form>
+                    <form class="mini-form" method="POST" action="{{ route('admin.sales.orders.store') }}" data-pos-form data-pricing-quote-url="{{ route('admin.sales.pricing.quote') }}">
                         @csrf
                         <input type="hidden" name="source" value="offline">
                         <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
@@ -351,6 +363,15 @@
                                                 <div class="sales-search-options" data-sales-search-options role="listbox" hidden></div>
                                             </div>
                                             <input type="hidden" name="customer_id" data-sales-customer-value value="{{ $walkInCustomer->id }}">
+                                        </div>
+                                        <div class="customer-pricing-status" data-customer-pricing-status>
+                                            <div class="customer-pricing-status-head"><strong data-customer-pricing-name>Loading customer terms…</strong><span class="customer-pricing-label" data-customer-price-list>Retail</span></div>
+                                            <div class="customer-credit-metrics">
+                                                <div class="customer-credit-metric"><small>Outstanding</small><strong data-customer-credit-outstanding>—</strong></div>
+                                                <div class="customer-credit-metric"><small>Credit limit</small><strong data-customer-credit-limit>—</strong></div>
+                                                <div class="customer-credit-metric"><small>Available credit</small><strong data-customer-credit-available>—</strong></div>
+                                            </div>
+                                            <span class="subtle" data-customer-credit-message>Checking pricing and credit terms…</span>
                                         </div>
                                     </div>
                                 </div>
@@ -457,6 +478,9 @@
                                     </div>
                                     <label class="sales-inline-check" data-sales-credit-control><input type="checkbox" name="is_credit_sale" value="1" data-sales-credit> <span>Mark as Credit Sale</span></label>
                                     <p class="subtle" data-sales-credit-hint hidden style="margin: 6px 0 0;">Collect a deposit (part payment) or nothing now — the balance is recorded as the customer's outstanding credit.</p>
+                                    <div class="credit-override-box" data-credit-override-box hidden>
+                                        <div class="field"><label>Manager override reason</label><textarea name="credit_override_reason" rows="2" maxlength="1000" placeholder="Why should this sale exceed the available credit?"></textarea></div>
+                                    </div>
                                     <div class="sales-pos-error" data-pos-error hidden></div>
                                     <button class="sales-primary-button sales-submit-action" type="submit" data-sales-submit-label>Create completed sale</button>
                                 </div>
@@ -834,6 +858,7 @@
                 if (customerValue) customerValue.value = String(result.id);
 
                 savePosState(customerSearch?.closest('form'));
+                await repriceCart(customerSearch?.closest('form'));
                 recordSaleCustomerForm.reset();
                 recordSaleCustomerForm.closest('dialog')?.close();
                 customerSearch?.focus();
@@ -851,6 +876,126 @@
         });
 
         const cart = [];
+        let customerTerms = null;
+        let pricingPending = false;
+        let pricingFailed = false;
+        let pricingRequestSequence = 0;
+        let quantityPricingTimer = null;
+
+        function renderCustomerTerms(form) {
+            if (!form) return;
+            const status = form.querySelector('[data-customer-pricing-status]');
+            const set = (selector, value) => { const node = form.querySelector(selector); if (node) node.textContent = value; };
+            if (!status) return;
+            status.hidden = false;
+            if (pricingPending) {
+                set('[data-customer-pricing-name]', 'Updating customer prices…');
+                set('[data-customer-credit-message]', 'Please wait before completing the sale.');
+                return;
+            }
+            if (pricingFailed || !customerTerms) {
+                set('[data-customer-pricing-name]', 'Pricing unavailable');
+                set('[data-customer-credit-message]', 'Could not verify this customer’s prices and credit. Try selecting the customer again.');
+                return;
+            }
+
+            const credit = customerTerms.credit;
+            set('[data-customer-pricing-name]', customerTerms.customer.name);
+            set('[data-customer-price-list]', customerTerms.customer.price_list || 'Retail');
+            set('[data-customer-credit-outstanding]', fmt(credit.outstanding_minor / 100));
+            set('[data-customer-credit-limit]', credit.limit_minor === null ? 'Unlimited' : fmt(credit.limit_minor / 100));
+            set('[data-customer-credit-available]', credit.available_minor === null ? 'Unlimited' : fmt(credit.available_minor / 100));
+
+            let message = credit.enabled ? (credit.terms_days === null ? 'Credit enabled' : `Credit enabled · ${credit.terms_days} day terms`) : 'Credit is not enabled for this customer.';
+            if (credit.on_hold) message = 'Credit is on hold for this customer.';
+            const totals = computeTotals(form);
+            const isCredit = !isCustomerOrder(form) && !!form.querySelector('[data-sales-credit]')?.checked;
+            const newCreditMinor = isCredit ? Math.max(0, Math.round((totals.total - totals.paid) * 100)) : 0;
+            const exceeds = newCreditMinor > 0 && credit.available_minor !== null && newCreditMinor > credit.available_minor;
+            if (isCredit && newCreditMinor > 0) {
+                const remaining = credit.available_minor === null ? null : credit.available_minor - newCreditMinor;
+                message += remaining === null
+                    ? ` · This sale adds ${fmt(newCreditMinor / 100)} to outstanding credit.`
+                    : ` · After this sale: ${fmt(Math.max(0, remaining) / 100)} available${remaining < 0 ? ` (${fmt(Math.abs(remaining) / 100)} over limit)` : ''}.`;
+            }
+            set('[data-customer-credit-message]', message);
+
+            const overrideBox = form.querySelector('[data-credit-override-box]');
+            if (overrideBox) overrideBox.hidden = !(exceeds && customerTerms.can_override_credit);
+        }
+
+        async function repriceCart(form) {
+            if (!form) return false;
+            const customerId = form.querySelector('[data-sales-customer-value]')?.value;
+            if (!customerId) {
+                customerTerms = null;
+                pricingFailed = true;
+                renderCustomerTerms(form);
+                return false;
+            }
+
+            const requestSequence = ++pricingRequestSequence;
+            pricingPending = true;
+            pricingFailed = false;
+            form.querySelector('[data-sales-submit-label]')?.setAttribute('disabled', 'disabled');
+            renderCustomerTerms(form);
+            try {
+                const response = await fetch(form.dataset.pricingQuoteUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': form.querySelector('[name="_token"]')?.value || '',
+                    },
+                    body: JSON.stringify({
+                        tenant_id: form.querySelector('[name="tenant_id"]')?.value,
+                        customer_id: customerId,
+                        items: cart.filter((item) => item.type === 'catalog').map((item) => ({ product_variant_id: item.id, quantity: item.quantity })),
+                    }),
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Could not load customer pricing.');
+                if (requestSequence !== pricingRequestSequence) return false;
+
+                const prices = new Map((result.prices || []).map((quote) => [String(quote.variant_id), quote]));
+                cart.forEach((item) => {
+                    if (item.type === 'manual') {
+                        item.pricingLabel = 'Manual price';
+                        return;
+                    }
+                    const quote = prices.get(String(item.id));
+                    if (!quote) return;
+                    item.price = Number(quote.unit_price_minor) / 100;
+                    item.pricingLabel = quote.label || 'Retail';
+                    item.pricingSource = quote.source || 'retail';
+                    item.minimumQuantity = Number(quote.minimum_quantity || 1);
+                    item.allowAdditionalDiscounts = !!quote.allow_additional_discounts;
+                });
+                customerTerms = result;
+                pricingFailed = false;
+                return true;
+            } catch (failure) {
+                if (requestSequence !== pricingRequestSequence) return false;
+                pricingFailed = true;
+                const errorBox = form.querySelector('[data-pos-error]');
+                if (errorBox) { errorBox.hidden = false; errorBox.textContent = failure.message || 'Could not verify customer pricing.'; }
+                return false;
+            } finally {
+                if (requestSequence === pricingRequestSequence) {
+                    pricingPending = false;
+                    if (!pricingFailed) form.querySelector('[data-pos-error]')?.setAttribute('hidden', 'hidden');
+                    form.querySelector('[data-sales-submit-label]')?.removeAttribute('disabled');
+                    renderCart(form);
+                    renderCustomerTerms(form);
+                }
+            }
+        }
+
+        function queueReprice(form) {
+            window.clearTimeout(quantityPricingTimer);
+            quantityPricingTimer = window.setTimeout(() => repriceCart(form), 280);
+        }
         function setDiscountPanel(form, open) {
             const panel = form?.querySelector('[data-sales-discount-panel]');
             const toggle = form?.querySelector('[data-sales-discount-toggle]');
@@ -1068,7 +1213,7 @@
                 summaryItems.innerHTML = '';
                 cart.forEach((item) => {
                     const detail = item.type === 'manual' ? ` · ${escapeHtml(item.categoryName || 'Uncategorized')}` : '';
-                    summaryItems.insertAdjacentHTML('beforeend', `<div class="summary-cart-item"><strong>${escapeHtml(item.label)} x ${item.quantity}${detail}</strong><span>${fmt(item.quantity * item.price)}</span></div>`);
+                    summaryItems.insertAdjacentHTML('beforeend', `<div class="summary-cart-item"><strong>${escapeHtml(item.label)} x ${item.quantity}${detail}<small class="pricing-line-label">${escapeHtml(item.pricingLabel || (item.type === 'manual' ? 'Manual price' : 'Retail'))}</small></strong><span>${fmt(item.quantity * item.price)}</span></div>`);
                 });
             }
             const t = computeTotals(form);
@@ -1090,6 +1235,7 @@
                 if (changeLabel) changeLabel.textContent = 'Change';
                 if (changeBox) { changeBox.textContent = fmt(Math.max(0, -shortfall)); changeBox.classList.remove('due'); }
             }
+            renderCustomerTerms(form);
             savePosState(form);
         }
 
@@ -1102,9 +1248,10 @@
             hidden.innerHTML = '';
             cart.forEach((item, index) => {
                 const meta = item.type === 'manual'
-                    ? `Manual · ${escapeHtml(item.categoryName || 'Uncategorized')} · ${item.cost === null ? 'Cost unknown' : `Est. cost ${fmt(item.cost)}`}`
+                    ? `${escapeHtml(item.categoryName || 'Uncategorized')} · ${item.cost === null ? 'Cost unknown' : `Est. cost ${fmt(item.cost)}`}`
                     : 'Catalog product';
                 rows.insertAdjacentHTML('beforeend', `<div class="cart-row"><div><strong>${escapeHtml(item.label)}</strong><small class="cart-item-meta">${meta}</small></div><input type="number" min="0.0001" step="0.0001" value="${item.quantity}" data-cart-qty="${index}"><span data-cart-line="${index}">${fmt(item.quantity * item.price)}</span><button class="icon-btn cart-remove-button" type="button" data-cart-remove="${index}" aria-label="Remove item">X</button></div>`);
+                rows.lastElementChild?.querySelector('.cart-item-meta')?.insertAdjacentHTML('beforeend', ` <span class="pricing-line-label">${escapeHtml(item.pricingLabel || (item.type === 'manual' ? 'Manual price' : 'Retail'))}</span>`);
                 if (item.type === 'manual') {
                     hidden.insertAdjacentHTML('beforeend', `<input type="hidden" name="items[${index}][line_type]" value="manual"><input type="hidden" name="items[${index}][item_name]" value="${escapeHtml(item.label)}"><input type="hidden" name="items[${index}][product_category_id]" value="${item.categoryId || ''}"><input type="hidden" name="items[${index}][quantity]" data-cart-hidden-qty="${index}" value="${item.quantity}"><input type="hidden" name="items[${index}][unit_price]" value="${item.price.toFixed(2)}">${item.cost === null ? '' : `<input type="hidden" name="items[${index}][unit_cost]" value="${item.cost.toFixed(2)}">`}`);
                 } else {
@@ -1128,10 +1275,11 @@
             }
             const existing = cart.find((item) => item.type !== 'manual' && item.id === option.dataset.variantId);
             if (existing) existing.quantity += qty;
-            else cart.push({ type: 'catalog', id: option.dataset.variantId, label: option.value, quantity: qty, price: clean(option.dataset.price), taxRate: clean(option.dataset.taxRate) });
+            else cart.push({ type: 'catalog', id: option.dataset.variantId, label: option.value, quantity: qty, price: clean(option.dataset.price), taxRate: clean(option.dataset.taxRate), pricingLabel: 'Retail' });
             search.value = '';
             search.focus();
             renderCart(form);
+            repriceCart(form);
 
             return true;
         }
@@ -1170,6 +1318,7 @@
                 price: clean(rawPrice),
                 cost: rawCost === '' ? null : clean(rawCost),
                 taxRate: 0,
+                pricingLabel: 'Manual price',
             });
 
             if (name) name.value = '';
@@ -1198,6 +1347,7 @@
                     const hiddenQty = cartForm?.querySelector(`[data-cart-hidden-qty="${i}"]`);
                     if (hiddenQty) hiddenQty.value = quantity;
                     if (cartForm) renderSummary(cartForm);
+                    if (cartForm && cart[i].type === 'catalog') queueReprice(cartForm);
                 }
                 return;
             }
@@ -1211,6 +1361,10 @@
                 // Free text that resolves to no customer would fail server validation
                 // with a confusing message — block submit with a clear one instead.
                 customer.setCustomValidity(option || customer.value.trim() === '' ? '' : 'Choose a customer from the list.');
+                if (option && value?.value !== customer.dataset.lastPricedCustomer) {
+                    customer.dataset.lastPricedCustomer = value.value;
+                    repriceCart(customer.closest('[data-pos-form]'));
+                }
             }
 
             const form = event.target.closest('[data-pos-form]');
@@ -1248,6 +1402,7 @@
                 const hint = form?.querySelector('[data-sales-credit-hint]');
                 if (hint) hint.hidden = !credit.checked;
                 if (form) renderSummary(form);
+                if (form) renderCustomerTerms(form);
             }
 
             const recordAs = event.target.closest('[data-sales-record-as]');
@@ -1393,8 +1548,9 @@
             const remove = event.target.closest('[data-cart-remove]');
             if (remove) {
                 const form = remove.closest('form');
-                cart.splice(Number(remove.dataset.cartRemove), 1);
+                const removed = cart.splice(Number(remove.dataset.cartRemove), 1)[0];
                 renderCart(form);
+                if (removed?.type === 'catalog') repriceCart(form);
             }
         });
 
@@ -1403,6 +1559,7 @@
             if (!qty) return;
             cart[Number(qty.dataset.cartQty)].quantity = Math.max(0.0001, Number(qty.value) || 1);
             renderCart(qty.closest('form'));
+            if (cart[Number(qty.dataset.cartQty)]?.type === 'catalog') repriceCart(qty.closest('form'));
         });
 
         function showSalesConfirmation(form, totals) {
@@ -1419,7 +1576,7 @@
                     <div class="sales-confirm-item">
                         <span>
                             <strong>${escapeHtml(item.label)}</strong>
-                            <small>${item.quantity.toLocaleString('en-US')} × ${fmt(item.price)}${item.type === 'manual' ? ` · ${escapeHtml(item.categoryName || 'Uncategorized')} · ${item.cost === null ? 'Cost unknown' : `Est. cost ${fmt(item.cost)}`}` : ''}</small>
+                            <small>${item.quantity.toLocaleString('en-US')} × ${fmt(item.price)} · ${escapeHtml(item.pricingLabel || (item.type === 'manual' ? 'Manual price' : 'Retail'))}${item.type === 'manual' ? ` · ${escapeHtml(item.categoryName || 'Uncategorized')} · ${item.cost === null ? 'Cost unknown' : `Est. cost ${fmt(item.cost)}`}` : ''}</small>
                         </span>
                         <span>${fmt(item.quantity * item.price)}</span>
                     </div>
@@ -1513,6 +1670,8 @@
             };
 
             if (!cart.length) { fail('Add at least one item to the cart before creating the sale.'); return; }
+            if (pricingPending) { fail('Customer pricing is still updating. Please wait a moment.'); return; }
+            if (pricingFailed || !customerTerms) { fail('Customer pricing and credit could not be verified. Select the customer again before continuing.', '[data-sales-customer-search]'); return; }
 
             const totals = computeTotals(posForm);
             const customerOrder = isCustomerOrder(posForm);
@@ -1525,6 +1684,21 @@
             }
             if (isCredit && customerValue && walkInCustomerId !== null && customerValue.value === walkInCustomerId) {
                 fail('Select or create a real customer before booking a credit sale — the walk-in customer cannot carry a balance.', '[data-sales-customer-search]');
+                return;
+            }
+            if (isCredit && (!customerTerms.credit.enabled || customerTerms.credit.on_hold)) {
+                fail(customerTerms.credit.on_hold ? 'This customer is on credit hold.' : 'Credit sales are not enabled for this customer.', '[data-sales-customer-search]');
+                return;
+            }
+            const newCreditMinor = isCredit ? Math.max(0, Math.round((totals.total - totals.paid) * 100)) : 0;
+            const availableMinor = customerTerms.credit.available_minor;
+            const exceedsCredit = availableMinor !== null && newCreditMinor > availableMinor;
+            if (exceedsCredit && !customerTerms.can_override_credit) {
+                fail(`This sale exceeds the customer’s available credit by ${fmt((newCreditMinor - availableMinor) / 100)}. Collect more payment or ask an authorised manager.`, '[data-sales-paid]');
+                return;
+            }
+            if (exceedsCredit && customerTerms.can_override_credit && !(posForm.querySelector('[name="credit_override_reason"]')?.value || '').trim()) {
+                fail('Enter a manager override reason before exceeding the customer’s credit limit.', '[name="credit_override_reason"]');
                 return;
             }
             if (!customerOrder && !isCredit && totals.paid + 0.001 < totals.total) {
@@ -1558,6 +1732,7 @@
             syncRecordAs(posForm);
             setDeliveryPanel(posForm, hasEnteredDelivery(posForm));
             setDiscountPanel(posForm, hasEnteredDiscount(posForm));
+            repriceCart(posForm);
         }
     });
     </script>

@@ -44,6 +44,7 @@ final class PermissionCatalogue
         $add('sales', 'sales.refunds.issue', 'Issue refunds', 'Directly process refunds and returns.', true);
         $add('sales', 'sales.orders.void', 'Void completed sales', 'Cancel or void a completed sale.', true);
         $add('sales', 'sales.prices.override', 'Override prices', 'Change an item price at the point of sale.', true);
+        $add('sales', 'sales.credit.override', 'Override credit limits', 'Complete a credit sale above a customer’s approved credit limit with a recorded reason.', true);
 
         // Restaurant POS (Phase 6) — table service, kitchen tickets and kitchen screens.
         $add('sales', 'pos.restaurant.operate', 'Operate restaurant POS', 'Open checks at tables, add items and send them to the kitchen.');
@@ -85,6 +86,8 @@ final class PermissionCatalogue
         $add('customers', 'customers.view', 'View customers', 'View customer records and history.');
         $add('customers', 'customers.create', 'Add customers', 'Create and edit customer records.');
         $add('customers', 'customers.manage', 'Manage CRM', 'Manage groups, follow-ups and support tickets.');
+        $add('customers', 'customers.pricing.manage', 'Manage customer pricing', 'Create price lists, quantity breaks and customer-specific prices.');
+        $add('customers', 'customers.credit.manage', 'Manage customer credit', 'Configure credit policies and post controlled customer balance adjustments.', true);
         $add('customers', 'customers.export', 'Export customers', 'Export customer data.', true);
 
         // Finance & Accounting
@@ -176,9 +179,9 @@ final class PermissionCatalogue
                 'levels' => [
                     'view' => ['customers.view'],
                     'operate' => ['customers.view', 'customers.create'],
-                    'manage' => ['customers.view', 'customers.create', 'customers.manage'],
+                    'manage' => ['customers.view', 'customers.create', 'customers.manage', 'customers.pricing.manage'],
                 ],
-                'sensitive' => ['customers.export'],
+                'sensitive' => ['customers.credit.manage', 'customers.export'],
             ],
             'finance' => [
                 'label' => 'Finance & Accounting',
@@ -272,11 +275,11 @@ final class PermissionCatalogue
                 'permissions' => [
                     'dashboard.view',
                     'sales.view', 'sales.create', 'sales.payments.receive', 'sales.till.manage', 'sales.update',
-                    'sales.refunds.approve', 'sales.refunds.issue', 'sales.discounts.override', 'sales.costs.view', 'sales.till.variance.writeoff',
+                    'sales.refunds.approve', 'sales.refunds.issue', 'sales.discounts.override', 'sales.credit.override', 'sales.costs.view', 'sales.till.variance.writeoff',
                     'catalog.view', 'catalog.create', 'catalog.update',
                     'inventory.view', 'inventory.receive', 'inventory.transfer', 'inventory.count', 'inventory.adjust', 'inventory.adjustments.approve', 'inventory.manage',
                     'procurement.view', 'procurement.create', 'procurement.receive',
-                    'customers.view', 'customers.create', 'customers.manage',
+                    'customers.view', 'customers.create', 'customers.manage', 'customers.pricing.manage', 'customers.credit.manage',
                     'finance.reports.view',
                 ],
                 'limits' => ['sales.discount.max_percent' => 20],

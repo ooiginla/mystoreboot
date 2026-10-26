@@ -21,7 +21,7 @@
                             @endif
                         </div>
                     </div>
-                    <button class="btn secondary" type="button" data-dialog-open="customer-view-{{ $customer->id }}">View</button>
+                    <a class="btn secondary" href="{{ route('admin.customers.customers.show', ['customer' => $customer, 'tenant' => $tenant->id]) }}">View</a>
                 </div>
             @empty
                 <div class="empty">No recommendations yet.</div>

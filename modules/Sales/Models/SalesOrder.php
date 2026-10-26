@@ -9,6 +9,7 @@ use App\Shared\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Business\Models\Branch;
 use Modules\Customers\Models\Customer;
@@ -28,7 +29,7 @@ final class SalesOrder extends Model
 
     protected static function booted(): void
     {
-        static::creating(function (SalesOrder $order): void {
+        self::creating(function (SalesOrder $order): void {
             if (blank($order->tracking_reference)) {
                 $order->tracking_reference = self::freshTrackingReference();
             }
@@ -62,6 +63,7 @@ final class SalesOrder extends Model
             'payment_status' => SalesPaymentStatus::class,
             'order_date' => 'date',
             'is_credit_sale' => 'boolean',
+            'credit_due_date' => 'date',
             'stock_reserved' => 'boolean',
             'reserved_until' => 'datetime',
             'check_status' => CheckStatus::class,
@@ -91,7 +93,7 @@ final class SalesOrder extends Model
     }
 
     /** Lines that count towards the bill: everything not voided. */
-    public function liveItems(): \Illuminate\Support\Collection
+    public function liveItems(): Collection
     {
         return $this->items->filter(fn (SalesOrderItem $item): bool => $item->voided_at === null)->values();
     }
@@ -114,7 +116,7 @@ final class SalesOrder extends Model
 
     public function server(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'server_user_id');
+        return $this->belongsTo(User::class, 'server_user_id');
     }
 
     public function tickets(): HasMany
@@ -135,14 +137,14 @@ final class SalesOrder extends Model
      * Items sitting on the pad that have not been sent to the kitchen. These can still be
      * changed or removed freely — nothing has been cooked.
      */
-    public function unfiredItems(): \Illuminate\Support\Collection
+    public function unfiredItems(): Collection
     {
         return $this->items->filter(
             fn (SalesOrderItem $item): bool => $item->fired_at === null && $item->voided_at === null,
         )->values();
     }
 
-    public function firedItems(): \Illuminate\Support\Collection
+    public function firedItems(): Collection
     {
         return $this->items->filter(
             fn (SalesOrderItem $item): bool => $item->fired_at !== null && $item->voided_at === null,

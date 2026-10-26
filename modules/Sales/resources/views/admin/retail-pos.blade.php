@@ -64,6 +64,9 @@
         .rpos-customer .who strong { display: block; font-size: 14px; }
         .rpos-customer .who span { font-size: 12px; color: var(--muted); }
         .rpos-customer .chg { font-size: 12px; font-weight: 700; color: var(--brand-strong); }
+        .rpos-credit-strip { padding: 8px 14px; border-bottom: 1px solid #eef2f0; background: #f8faf9; font-size: 11.5px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+        .rpos-credit-strip strong { color: var(--ink-soft); }
+        .rpos-price-label { display: inline-flex; margin-top: 3px; border-radius: 999px; padding: 2px 7px; background: #eef2ff; color: #3730a3; font-size: 10px; font-weight: 800; }
         .rpos-lines { flex: 1 1 auto; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 180px; }
         .rpos-empty-cart { margin: auto; text-align: center; color: var(--muted); padding: 30px; }
         .rpos-empty-cart svg { width: 46px; height: 46px; color: #cbd5cf; margin-bottom: 8px; }
@@ -359,6 +362,7 @@
          data-branch="{{ $activeTill->branch_id }}"
          data-location="{{ (int) ($activeTill->inventory_location_id ?? 0) }}"
          data-catalog-url="{{ route('admin.sales.retail-pos.catalog', ['tenant' => $tenant->id]) }}"
+         data-pricing-quote-url="{{ route('admin.sales.pricing.quote') }}"
          data-currency="{{ $currency }}"
          data-walkin-id="{{ $walkInCustomer->id }}"
          data-walkin-name="{{ $walkInCustomer->name }}"
@@ -413,6 +417,7 @@
                     <span class="who"><strong data-customer-name>{{ $walkInCustomer->name }}</strong><span data-customer-sub>Walk-in customer</span></span>
                     <span class="chg">Change ›</span>
                 </div>
+                <div class="rpos-credit-strip"><span>Price: <strong data-customer-price-list>Retail</strong></span><span>Available credit: <strong data-customer-credit-available>Checking…</strong></span></div>
 
                 <div class="rpos-lines" data-cart-lines>
                     <div class="rpos-empty-cart" data-empty-cart>
@@ -498,6 +503,7 @@
         <input type="hidden" name="delivery_address" data-f-delivery-address value="">
         <input type="hidden" name="notes" data-f-notes value="">
         <input type="hidden" name="is_credit_sale" data-f-credit value="0">
+        <input type="hidden" name="credit_override_reason" data-f-credit-reason value="">
         <div data-f-items></div>
     </form>
 
@@ -540,7 +546,7 @@
     <div class="rpos-toast" data-toast></div>
 
     <script src="{{ asset('js/retail-pos-catalog.js') }}?v=1"></script>
-    <script src="{{ asset('js/retail-pos.js') }}?v=9"></script>
+    <script src="{{ asset('js/retail-pos.js') }}?v=10"></script>
     <script>
         window.storebootReceiptOrderId = @json(session('receipt_order_id'));
     </script>

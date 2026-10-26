@@ -31,6 +31,7 @@ final class SalesOrderItem extends Model
             'voided_at' => 'datetime',
             'ingredients_depleted_at' => 'datetime',
             'consumed_cost_minor' => 'integer',
+            'price_tier_minimum_quantity' => 'decimal:4',
         ];
     }
 

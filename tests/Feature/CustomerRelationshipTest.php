@@ -24,7 +24,7 @@ class CustomerRelationshipTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_customer_dialog_shows_overall_current_year_and_current_month_sales_values(): void
+    public function test_customer_detail_page_shows_overall_current_year_and_current_month_sales_values(): void
     {
         $this->travelTo('2026-09-14 12:00:00');
 
@@ -52,7 +52,7 @@ class CustomerRelationshipTest extends TestCase
         );
 
         $this->actingAs(User::factory()->create(['is_platform_admin' => true]))
-            ->get(route('admin.customers.index', ['tenant' => $tenant->id]))
+            ->get(route('admin.customers.customers.show', ['customer' => $customer, 'tenant' => $tenant->id]))
             ->assertOk()
             ->assertSee('aria-label="Customer sales values"', false)
             ->assertSeeInOrder([
@@ -128,7 +128,61 @@ class CustomerRelationshipTest extends TestCase
             ->assertOk()
             ->assertSee('customers_page=2', false)
             ->assertSee('VIP Customer 21')
-            ->assertDontSee('data-dialog-open="customer-view-'.$retailCustomer->id.'">Retail Customer', false);
+            ->assertDontSee(route('admin.customers.customers.show', ['customer' => $retailCustomer, 'tenant' => $tenant->id]), false);
+    }
+
+    public function test_customer_listing_uses_the_customer_table_and_links_to_a_full_detail_page(): void
+    {
+        $tenant = $this->tenant();
+        $customer = Customer::query()->create([
+            'tenant_id' => $tenant->id,
+            'first_name' => 'Table',
+            'last_name' => 'Customer',
+            'phone' => '08010002000',
+            'email' => 'table@example.test',
+            'status' => CustomerStatus::Active->value,
+        ]);
+        $user = User::factory()->create(['is_platform_admin' => true]);
+
+        $this->actingAs($user)
+            ->get(route('admin.customers.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('class="table customer-table"', false)
+            ->assertSeeInOrder(['Customer', 'Group / Type', 'Balance', 'Available credit', 'Loyalty', 'Status', 'Actions'])
+            ->assertSee(route('admin.customers.customers.show', ['customer' => $customer, 'tenant' => $tenant->id]), false)
+            ->assertDontSee('id="customer-view-'.$customer->id.'"', false);
+
+        $this->actingAs($user)
+            ->get(route('admin.customers.customers.show', ['customer' => $customer, 'tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('Customer information')
+            ->assertSee('Sales summary')
+            ->assertSee('Purchase history')
+            ->assertSee('Balance adjustments');
+    }
+
+    public function test_customer_detail_page_does_not_leak_across_tenants(): void
+    {
+        $tenant = $this->tenant();
+        $otherTenant = $this->tenant();
+        $customer = Customer::query()->create([
+            'tenant_id' => $otherTenant->id,
+            'first_name' => 'Other',
+            'last_name' => 'Tenant',
+            'phone' => '08010003000',
+            'status' => CustomerStatus::Active->value,
+        ]);
+        $user = User::factory()->create();
+
+        TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $user->id,
+            'status' => MembershipStatus::Active->value,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.customers.customers.show', ['customer' => $customer, 'tenant' => $tenant->id]))
+            ->assertForbidden();
     }
 
     public function test_ticket_view_has_tagged_metadata_and_quick_actions(): void
@@ -148,6 +202,36 @@ class CustomerRelationshipTest extends TestCase
             ->assertSee(route('admin.customers.tickets.status.update', $ticket), false)
             ->assertSee('Claim ticket')
             ->assertSee('Update status');
+    }
+
+    public function test_ticket_listing_can_be_filtered_by_status(): void
+    {
+        $tenant = $this->tenant();
+        $user = User::factory()->create(['is_platform_admin' => true]);
+        $openTicket = $this->ticket($tenant, 'TCK-TEST-001', TicketStatus::Open, 'Billing');
+        $resolvedTicket = $this->ticket($tenant, 'TCK-TEST-002', TicketStatus::Resolved, 'Delivery');
+
+        $this->actingAs($user)
+            ->get(route('admin.customers.index', [
+                'tenant' => $tenant->id,
+                'ticket_status' => TicketStatus::Resolved->value,
+            ]).'#tickets')
+            ->assertOk()
+            ->assertSee('name="ticket_status"', false)
+            ->assertSee('<option value="resolved" selected>Resolved</option>', false)
+            ->assertSee('data-ticket-row="'.$resolvedTicket->id.'"', false)
+            ->assertDontSee('data-ticket-row="'.$openTicket->id.'"', false);
+
+        $this->actingAs($user)
+            ->get(route('admin.customers.index', [
+                'tenant' => $tenant->id,
+                'ticket_category' => 'Billing',
+            ]).'#tickets')
+            ->assertOk()
+            ->assertSee('name="ticket_category"', false)
+            ->assertSee('<option value="Billing" selected>Billing</option>', false)
+            ->assertSee('data-ticket-row="'.$openTicket->id.'"', false)
+            ->assertDontSee('data-ticket-row="'.$resolvedTicket->id.'"', false);
     }
 
     public function test_ticket_assignee_options_are_limited_to_active_members_of_the_tenant(): void
@@ -271,14 +355,19 @@ class CustomerRelationshipTest extends TestCase
         $this->assertSame(TicketStatus::Open, $ticket->refresh()->status);
     }
 
-    private function ticket(Tenant $tenant): SupportTicket
-    {
+    private function ticket(
+        Tenant $tenant,
+        string $ticketNumber = 'TCK-TEST-001',
+        TicketStatus $status = TicketStatus::Open,
+        ?string $category = null,
+    ): SupportTicket {
         return SupportTicket::query()->create([
             'tenant_id' => $tenant->id,
-            'ticket_number' => 'TCK-TEST-001',
+            'ticket_number' => $ticketNumber,
             'type' => TicketType::Complaint->value,
+            'category' => $category,
             'priority' => TicketPriority::High->value,
-            'status' => TicketStatus::Open->value,
+            'status' => $status->value,
             'subject' => 'Damaged delivery',
             'description' => 'The delivered item was damaged.',
         ]);

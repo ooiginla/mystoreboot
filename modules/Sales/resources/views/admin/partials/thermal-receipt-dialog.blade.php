@@ -75,6 +75,7 @@
                         <tr>
                             <td>
                                 <strong>{{ $item->item_name }}</strong>
+                                <span>{{ $item->pricing_label ?: 'Retail' }}</span>
                                 @if ($item->custom_selections)<span>{{ collect($item->custom_selections)->map(fn ($value, $key) => $key.': '.$value)->join(' · ') }}</span>@endif
                                 @if (data_get($item->personalization, 'requested'))
                                     <span>

@@ -6,6 +6,8 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Session\TokenMismatchException;
+use Illuminate\Support\Facades\Route;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
@@ -61,6 +63,86 @@ final class ActiveBranchSelectionTest extends TestCase
             ->assertSee('Choose active branch')
             ->assertSee($mainBranch->name)
             ->assertSee($annexBranch->name);
+    }
+
+    public function test_admin_home_is_a_safe_branch_selection_page_when_context_is_missing(): void
+    {
+        $tenant = $this->tenant();
+        $user = User::factory()->create();
+        $mainBranch = $this->branch($tenant, 'Main Branch');
+        $annexBranch = $this->branch($tenant, 'Annex Branch');
+
+        TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $user->id,
+            'status' => MembershipStatus::Active->value,
+            'joined_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.home'))
+            ->assertOk()
+            ->assertSee('Choose a branch')
+            ->assertSee('Choose active branch')
+            ->assertSee($mainBranch->name)
+            ->assertSee($annexBranch->name);
+    }
+
+    public function test_login_does_not_return_to_a_stale_branch_scoped_intended_url(): void
+    {
+        $tenant = $this->tenant();
+        $user = User::factory()->create();
+        $this->branch($tenant, 'Main Branch');
+        $this->branch($tenant, 'Annex Branch');
+
+        TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $user->id,
+            'status' => MembershipStatus::Active->value,
+            'joined_at' => now(),
+        ]);
+
+        $this->withSession(['url.intended' => route('admin.inventory.index')])
+            ->post(route('login.store'), [
+                'email' => $user->email,
+                'password' => 'password',
+            ])
+            ->assertRedirect(route('admin.home'))
+            ->assertSessionMissing('url.intended');
+
+        $this->get(route('admin.home'))
+            ->assertOk()
+            ->assertSee('Choose active branch');
+    }
+
+    public function test_expired_authenticated_request_redirects_to_login_instead_of_an_error_page(): void
+    {
+        $this->get(route('admin.home'))
+            ->assertRedirect(route('login'))
+            ->assertSessionHas('status', 'Your session has expired. Please sign in again.');
+    }
+
+    public function test_expired_csrf_session_redirects_guest_to_login(): void
+    {
+        Route::middleware('web')
+            ->get('/testing/expired-session', fn () => throw new TokenMismatchException);
+
+        $this->get('/testing/expired-session')
+            ->assertRedirect(route('login'))
+            ->assertSessionHas('status', 'Your session has expired. Please sign in again.');
+    }
+
+    public function test_missing_active_branch_error_redirects_to_safe_admin_home(): void
+    {
+        Route::middleware(['web', 'auth'])
+            ->get('/testing/missing-active-branch', fn () => abort(403, 'Select an active branch first.'));
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get('/testing/missing-active-branch')
+            ->assertRedirect(route('admin.home'))
+            ->assertSessionHas('status', 'Select an active branch to continue.');
     }
 
     public function test_admin_shell_uses_stored_active_branch(): void

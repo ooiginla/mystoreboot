@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Sales\Actions;
 
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Business\Models\BusinessPaymentAccount;
@@ -14,6 +15,8 @@ use Modules\Catalog\Enums\TaxBehavior;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Customers\Models\Customer;
+use Modules\Customers\Support\CustomerCreditService;
+use Modules\Customers\Support\CustomerPricingService;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Inventory\Actions\AdjustInventoryReservationAction;
@@ -42,6 +45,8 @@ final class CreateSalesOrderAction
         private readonly AdjustInventoryReservationAction $reservations,
         private readonly TenantModuleAccess $moduleAccess,
         private readonly SaleRecipeDepletionAction $recipeDepletion,
+        private readonly CustomerPricingService $customerPricing,
+        private readonly CustomerCreditService $customerCredit,
     ) {}
 
     /**
@@ -92,7 +97,12 @@ final class CreateSalesOrderAction
                 $inventoryLocationId = $tillLocationId;
             }
 
-            $customer = Customer::query()->where('tenant_id', $tenant->id)->findOrFail($data['customer_id']);
+            $customer = Customer::query()
+                ->with(['group.priceList', 'priceList'])
+                ->where('tenant_id', $tenant->id)
+                ->where('status', 'active')
+                ->lockForUpdate()
+                ->findOrFail($data['customer_id']);
             $isWalkIn = strcasecmp($customer->phone, 'WALK-IN') === 0;
 
             if ($isCustomerOrder && $isWalkIn) {
@@ -109,7 +119,17 @@ final class CreateSalesOrderAction
                 ]);
             }
 
-            $items = collect((array) $data['items'])->map(function (array $item) use ($tenant, $inventoryEnabled, $inventoryLocationId, $source): array {
+            $usesCustomerPricing = in_array($source, ['offline', 'retail_pos', 'in_store'], true);
+            $catalogQuantities = collect((array) $data['items'])
+                ->filter(fn (array $item): bool => ($item['line_type'] ?? 'catalog') === 'catalog')
+                ->groupBy('product_variant_id')
+                ->map(fn ($lines): float => (float) $lines->sum('quantity'))
+                ->all();
+            $customerQuotes = $usesCustomerPricing
+                ? $this->customerPricing->quotes($tenant, $customer, $catalogQuantities)
+                : collect();
+
+            $items = collect((array) $data['items'])->map(function (array $item) use ($tenant, $inventoryEnabled, $inventoryLocationId, $source, $usesCustomerPricing, $customerQuotes): array {
                 $lineType = (string) ($item['line_type'] ?? 'catalog');
 
                 if ($lineType === 'manual') {
@@ -141,6 +161,12 @@ final class CreateSalesOrderAction
                         'sku' => null,
                         'quantity' => $quantity,
                         'unit_price_minor' => $unitPriceMinor,
+                        'base_unit_price_minor' => $unitPriceMinor,
+                        'pricing_source' => 'manual',
+                        'pricing_label' => 'Manual price',
+                        'pricing_reference_id' => null,
+                        'price_tier_minimum_quantity' => 1,
+                        'allow_additional_discounts' => true,
                         'unit_cost_minor' => $unitCostMinor,
                         'cost_basis' => $costProvided ? 'estimated' : 'unknown',
                         'posts_cost_to_ledger' => false,
@@ -160,7 +186,17 @@ final class CreateSalesOrderAction
                 }
 
                 $quantity = Quantity::round((float) $item['quantity']);
-                $unitPriceMinor = $this->moneyToMinor($item['unit_price']);
+                $submittedUnitPriceMinor = $this->moneyToMinor($item['unit_price']);
+                $quote = $customerQuotes->get($variant->id);
+                $unitPriceMinor = $usesCustomerPricing
+                    ? (int) $quote['unit_price_minor']
+                    : $submittedUnitPriceMinor;
+
+                if ($usesCustomerPricing && $submittedUnitPriceMinor !== $unitPriceMinor) {
+                    throw ValidationException::withMessages([
+                        'items' => "The price of {$variant->product?->name} has changed for this customer. Reprice the cart and try again.",
+                    ]);
+                }
 
                 if ($source === 'retail_pos') {
                     if ($variant->status !== ProductStatus::Active || $variant->product?->status !== ProductStatus::Active) {
@@ -169,11 +205,6 @@ final class CreateSalesOrderAction
                         ]);
                     }
 
-                    if ($unitPriceMinor !== (int) $variant->selling_price_minor) {
-                        throw ValidationException::withMessages([
-                            'items' => "The price of {$variant->product?->name} has changed. Refresh the POS catalogue and try again.",
-                        ]);
-                    }
                 }
 
                 $unitCostMinor = $this->unitCostForSale($tenant, $inventoryLocationId, $variant, $inventoryEnabled);
@@ -191,6 +222,14 @@ final class CreateSalesOrderAction
                     'sku' => $variant->sku,
                     'quantity' => $quantity,
                     'unit_price_minor' => $unitPriceMinor,
+                    'base_unit_price_minor' => $usesCustomerPricing
+                        ? (int) $quote['base_unit_price_minor']
+                        : (int) $variant->selling_price_minor,
+                    'pricing_source' => $usesCustomerPricing ? (string) $quote['source'] : 'retail',
+                    'pricing_label' => $usesCustomerPricing ? (string) $quote['label'] : 'Retail',
+                    'pricing_reference_id' => $usesCustomerPricing ? $quote['reference_id'] : null,
+                    'price_tier_minimum_quantity' => $usesCustomerPricing ? (float) $quote['minimum_quantity'] : 1,
+                    'allow_additional_discounts' => ! $usesCustomerPricing || (bool) $quote['allow_additional_discounts'],
                     'unit_cost_minor' => $unitCostMinor,
                     'cost_basis' => 'inventory',
                     'posts_cost_to_ledger' => true,
@@ -233,6 +272,12 @@ final class CreateSalesOrderAction
             $coupon = $this->coupon($tenant->id, $data['coupon_code'] ?? null);
             $couponDiscountMinor = $coupon ? $this->discountMinor($coupon->discount_type->value, $coupon->discount_type === DiscountType::Percentage ? (float) $coupon->discount_percent : $coupon->discount_value_minor / 100, $subtotalMinor) : 0;
             $adminDiscountMinor = $this->discountMinor((string) ($data['admin_discount_type'] ?? DiscountType::Amount->value), (float) ($data['admin_discount_value'] ?? 0), $subtotalMinor);
+            if (($couponDiscountMinor > 0 || $adminDiscountMinor > 0)
+                && $items->contains(fn (array $item): bool => ! $item['allow_additional_discounts'])) {
+                throw ValidationException::withMessages([
+                    'coupon_code' => 'One or more customer-priced items cannot be combined with coupons or manual discounts.',
+                ]);
+            }
             $this->guardDiscountLimit($userId, $tenant, $subtotalMinor, $adminDiscountMinor);
             $totalMinor = max(0, $subtotalMinor + $taxMinor + $shippingMinor - $couponDiscountMinor - $adminDiscountMinor);
             $amountPaidMinor = $paymentReceived ? $this->moneyToMinor($data['amount_paid'] ?? 0) : 0;
@@ -247,6 +292,21 @@ final class CreateSalesOrderAction
                     'amount_paid' => 'Full payment is required unless this is marked as a credit sale.',
                 ]);
             }
+
+            $newCreditMinor = ! $isCustomerOrder ? max(0, $totalMinor - $paidMinor) : 0;
+            $creditDecision = $this->customerCredit->authorizeNewCredit(
+                $tenant,
+                $customer,
+                $newCreditMinor,
+                User::query()->findOrFail($userId),
+                $data['credit_override_reason'] ?? null,
+            );
+            $creditProfile = $creditDecision['profile'];
+            $creditDueDate = $newCreditMinor > 0 && $creditProfile['terms_days'] !== null
+                ? CarbonImmutable::parse($data['order_date'], $tenant->timezone ?: config('app.timezone'))
+                    ->addDays((int) $creditProfile['terms_days'])
+                    ->toDateString()
+                : null;
 
             $order = SalesOrder::query()->create([
                 'tenant_id' => $tenant->id,
@@ -267,6 +327,10 @@ final class CreateSalesOrderAction
                 'payment_status' => $paymentStatus->value,
                 'order_date' => $data['order_date'],
                 'is_credit_sale' => $isCreditSale,
+                'credit_due_date' => $creditDueDate,
+                'credit_limit_snapshot_minor' => $creditProfile['limit_minor'],
+                'credit_overridden_by' => $creditDecision['overridden'] ? $userId : null,
+                'credit_override_reason' => $creditDecision['overridden'] ? $data['credit_override_reason'] : null,
                 'subtotal_minor' => $subtotalMinor,
                 'tax_minor' => $taxMinor,
                 'shipping_minor' => $shippingMinor,
@@ -313,6 +377,11 @@ final class CreateSalesOrderAction
                     'sku' => $item['sku'],
                     'quantity' => $item['quantity'],
                     'unit_price_minor' => $item['unit_price_minor'],
+                    'base_unit_price_minor' => $item['base_unit_price_minor'],
+                    'pricing_source' => $item['pricing_source'],
+                    'pricing_label' => $item['pricing_label'],
+                    'pricing_reference_id' => $item['pricing_reference_id'],
+                    'price_tier_minimum_quantity' => $item['price_tier_minimum_quantity'],
                     'unit_cost_minor' => $effectiveUnitCostMinor,
                     'cost_basis' => $item['cost_basis'],
                     'tax_minor' => $item['tax_minor'],

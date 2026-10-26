@@ -106,6 +106,15 @@
                 <label class="sales-inline-check" style="display:inline-flex; align-items:center; gap:10px; font-weight:700; cursor:pointer;">
                     <input type="checkbox" data-pay-credit class="switch-input"> <span>Credit sale (pay later)</span>
                 </label>
+                <div style="border:1px solid var(--line);border-radius:11px;background:var(--panel-soft);padding:11px;display:grid;gap:4px;" data-pay-credit-profile>
+                    <div style="display:flex;justify-content:space-between;gap:10px;"><span class="subtle">Pricing</span><strong data-pay-price-list>Retail</strong></div>
+                    <div style="display:flex;justify-content:space-between;gap:10px;"><span class="subtle">Outstanding</span><strong data-pay-credit-outstanding>—</strong></div>
+                    <div style="display:flex;justify-content:space-between;gap:10px;"><span class="subtle">Credit limit</span><strong data-pay-credit-limit>—</strong></div>
+                    <div style="display:flex;justify-content:space-between;gap:10px;"><span class="subtle">Available before sale</span><strong data-pay-credit-available>—</strong></div>
+                    <div style="display:flex;justify-content:space-between;gap:10px;"><span class="subtle">Available after sale</span><strong data-pay-credit-after>—</strong></div>
+                    <span class="subtle" data-pay-credit-message></span>
+                </div>
+                <div class="field" data-pay-credit-override hidden><label>Manager override reason</label><textarea data-pay-credit-reason rows="2" maxlength="1000" placeholder="Why should this sale exceed the available credit?"></textarea></div>
             </div>
             <div style="display:grid; gap:12px; align-content:start;">
                 <div>

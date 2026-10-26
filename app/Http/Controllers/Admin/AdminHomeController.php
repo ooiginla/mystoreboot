@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\ActiveBranchManager;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\View\View;
 use Modules\Access\Support\PermissionService;
 
 /**
@@ -40,7 +41,7 @@ final class AdminHomeController extends Controller
         ['roles.manage', 'admin.business.index'],
     ];
 
-    public function index(Request $request): RedirectResponse
+    public function index(Request $request): RedirectResponse|View
     {
         /** @var User $user */
         $user = $request->user();
@@ -48,11 +49,19 @@ final class AdminHomeController extends Controller
         $tenantParam = $request->query('tenant');
         $suffix = is_string($tenantParam) && $tenantParam !== '' ? ['tenant' => $tenantParam] : [];
 
+        $branchState = app(ActiveBranchManager::class)->stateForRequest($request, $user);
+
+        // Do not send a user without branch context into a branch-scoped module.
+        // The admin layout opens its mandatory branch picker on this safe page.
+        if ($branchState['shouldPrompt']) {
+            return view('admin.home');
+        }
+
         if ($user->is_platform_admin) {
             return redirect()->route('admin.analytics.index', $suffix);
         }
 
-        $tenant = app(ActiveBranchManager::class)->stateForRequest($request, $user)['tenant'] ?? null;
+        $tenant = $branchState['tenant'];
 
         if (! $tenant) {
             return redirect()->route('admin.business.index', $suffix);

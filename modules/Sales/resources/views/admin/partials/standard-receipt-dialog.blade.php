@@ -41,6 +41,7 @@
                         <tr>
                             <td>
                                 {{ $item->item_name }}
+                                <div class="cell-sub">{{ $item->pricing_label ?: 'Retail' }}</div>
                                 @if ($item->custom_selections)
                                     <div class="cell-sub">{{ collect($item->custom_selections)->map(fn ($value, $key) => $key.': '.$value)->join(' · ') }}</div>
                                 @endif

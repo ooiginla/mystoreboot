@@ -131,7 +131,7 @@
                                 @if (data_get($item->personalization, 'requested'))
                                     <div class="cell-sub"><strong>Personalization:</strong>@if (data_get($item->personalization, 'customized_text')) Text: {{ data_get($item->personalization, 'customized_text') }}@endif @if (data_get($item->personalization, 'additional_info')) · Note: {{ data_get($item->personalization, 'additional_info') }}@endif @if (data_get($item->personalization, 'photograph_path')) · <a href="{{ asset('storage/'.ltrim(data_get($item->personalization, 'photograph_path'), '/')) }}" target="_blank" rel="noopener">View photo</a>@endif</div>
                                 @endif
-                                <div class="cell-sub"><span class="od-qty-badge">×{{ $item->quantity }}</span> @ {{ $currencySymbol }} {{ $money($item->unit_price_minor) }} each @if ($item->quantity_returned > 0) · <span style="color: var(--warning, #b45309);">{{ $item->quantity_returned }} returned</span>@endif</div>
+                                <div class="cell-sub"><span class="od-qty-badge">×{{ $item->quantity }}</span> @ {{ $currencySymbol }} {{ $money($item->unit_price_minor) }} each · <strong>{{ $item->pricing_label ?: 'Retail' }}</strong>@if ($item->quantity_returned > 0) · <span style="color: var(--warning, #b45309);">{{ $item->quantity_returned }} returned</span>@endif</div>
                             </div>
                             <div class="od-item-price"><strong>{{ $currencySymbol }} {{ $money($item->line_total_minor) }}</strong></div>
                         </div>
@@ -150,6 +150,8 @@
                     @if (($order->coupon_discount_minor + $order->admin_discount_minor) > 0)<div class="row"><span>Discounts</span><span>−{{ $currencySymbol }} {{ $money($order->coupon_discount_minor + $order->admin_discount_minor) }}</span></div>@endif
                     <div class="row grand"><span>Total</span><span>{{ $currencySymbol }} {{ $money($order->total_minor) }}</span></div>
                     @if ($order->balance_minor > 0)<div class="row"><span>Balance due</span><span>{{ $currencySymbol }} {{ $money($order->balance_minor) }}</span></div>@endif
+                    @if ($order->credit_due_date)<div class="row"><span>Credit due date</span><span>{{ $order->credit_due_date->format('M j, Y') }}</span></div>@endif
+                    @if ($order->credit_overridden_by)<div class="row"><span>Credit limit override</span><span>{{ $order->credit_override_reason ?: 'Approved override' }}</span></div>@endif
                     @if ($order->customer_credit_minor > 0)<div class="row"><span>Customer credit held</span><span>{{ $currencySymbol }} {{ $money($order->customer_credit_minor) }}</span></div>@endif
                 </div>
             </div>
@@ -169,6 +171,9 @@
                                     <option value="completed" @selected($order->order_status === \Modules\Sales\Enums\SalesOrderStatus::Completed)>Completed</option>
                                 </select>
                             </div>
+                            @if ($order->balance_minor > 0)
+                                <div class="field"><label>Credit-limit override reason <span class="subtle">(only required if completion exceeds the limit)</span></label><textarea name="credit_override_reason" rows="2"></textarea></div>
+                            @endif
                             <button class="btn primary" type="submit" style="margin-top: 10px;">Update order status</button>
                         </form>
                     @endif

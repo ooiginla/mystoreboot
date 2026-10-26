@@ -45,7 +45,12 @@ final class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('admin.home'));
+        // A remembered deep link may require branch context that disappeared when
+        // the previous session expired. Always re-enter through the safe admin
+        // landing so the user can select a branch before opening that area.
+        $request->session()->forget('url.intended');
+
+        return redirect()->route('admin.home');
     }
 
     public function destroy(Request $request): RedirectResponse

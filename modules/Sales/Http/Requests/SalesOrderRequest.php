@@ -61,6 +61,7 @@ final class SalesOrderRequest extends FormRequest
             'customer_id' => ['required', 'integer', Rule::exists('customers', 'id')->where('tenant_id', $tenantId)],
             'order_date' => ['required', 'date'],
             'is_credit_sale' => ['boolean'],
+            'credit_override_reason' => ['nullable', 'string', 'max:1000'],
             'payment_received' => ['boolean'],
             'payment_method' => [Rule::requiredIf($paymentReceived), 'nullable', 'string', 'max:80'],
             'business_payment_account_id' => ['nullable', 'integer', Rule::exists('business_payment_accounts', 'id')->where('tenant_id', $tenantId)->where('status', 'active')],

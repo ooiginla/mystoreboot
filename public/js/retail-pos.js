@@ -37,6 +37,11 @@
         var note = '';
         var pay = { received: 0, method: '', accountId: '', credit: false };
         var pins = loadPins();
+        var customerTerms = null;
+        var pricingPending = false;
+        var pricingFailed = false;
+        var pricingSequence = 0;
+        var pricingTimer = null;
 
         function loadPins() { try { return new Set(JSON.parse(localStorage.getItem(PIN_KEY) || '[]')); } catch (e) { return new Set(); } }
         function savePins() { try { localStorage.setItem(PIN_KEY, JSON.stringify(Array.from(pins))); } catch (e) {} }
@@ -47,6 +52,88 @@
             var t = $('[data-toast]'); if (!t) return;
             t.textContent = msg; t.classList.add('show');
             clearTimeout(t._t); t._t = setTimeout(function () { t.classList.remove('show'); }, 2200);
+        }
+
+        function setText(sel, value) { var el = $(sel); if (el) el.textContent = value; }
+        function renderCreditTerms() {
+            var credit = customerTerms && customerTerms.credit;
+            setText('[data-customer-price-list]', customerTerms ? (customerTerms.customer.price_list || 'Retail') : 'Checking…');
+            setText('[data-customer-credit-available]', !credit ? 'Checking…' : (credit.available_minor === null ? 'Unlimited' : fmt(credit.available_minor / 100)));
+            setText('[data-pay-price-list]', customerTerms ? (customerTerms.customer.price_list || 'Retail') : '—');
+            setText('[data-pay-credit-outstanding]', credit ? fmt(credit.outstanding_minor / 100) : '—');
+            setText('[data-pay-credit-limit]', credit ? (credit.limit_minor === null ? 'Unlimited' : fmt(credit.limit_minor / 100)) : '—');
+            setText('[data-pay-credit-available]', credit ? (credit.available_minor === null ? 'Unlimited' : fmt(credit.available_minor / 100)) : '—');
+
+            var newCreditMinor = pay.credit ? Math.max(0, Math.round((totals().total - clean($('[data-pay-received]') && $('[data-pay-received]').value)) * 100)) : 0;
+            var after = credit && credit.available_minor !== null ? credit.available_minor - newCreditMinor : null;
+            setText('[data-pay-credit-after]', !credit ? '—' : (after === null ? 'Unlimited' : fmt(Math.max(0, after) / 100)));
+            var message = pricingPending ? 'Updating customer prices…' : (pricingFailed ? 'Pricing and credit could not be verified.' : '');
+            if (credit && !pricingPending && !pricingFailed) {
+                message = credit.on_hold ? 'Credit is on hold.' : (credit.enabled ? (credit.terms_days === null ? 'Credit enabled.' : 'Credit enabled · ' + credit.terms_days + ' day terms.') : 'Credit is not enabled.');
+                if (after !== null && after < 0) message += ' This sale is ' + fmt(Math.abs(after) / 100) + ' over the limit.';
+            }
+            setText('[data-pay-credit-message]', message);
+            var override = $('[data-pay-credit-override]');
+            if (override) override.hidden = !(pay.credit && after !== null && after < 0 && customerTerms && customerTerms.can_override_credit);
+        }
+
+        function repriceCart(options) {
+            options = options || {};
+            var seq = ++pricingSequence;
+            pricingPending = true;
+            pricingFailed = false;
+            renderCreditTerms();
+            renderCart();
+            var prior = cart.map(function (item) { return item.price + ':' + (item.pricingLabel || 'Retail'); });
+            return fetch(root.dataset.pricingQuoteUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': ($('meta[name=csrf-token]') || {}).content || ''
+                },
+                body: JSON.stringify({
+                    tenant_id: TENANT,
+                    customer_id: customer.id,
+                    items: cart.map(function (item) { return { product_variant_id: item.id, quantity: item.qty }; })
+                })
+            }).then(function (response) {
+                return response.json().then(function (json) { if (!response.ok) throw new Error(json.message || 'Could not verify customer pricing.'); return json; });
+            }).then(function (result) {
+                if (seq !== pricingSequence) return false;
+                var prices = {};
+                (result.prices || []).forEach(function (quote) { prices[String(quote.variant_id)] = quote; });
+                cart.forEach(function (item) {
+                    var quote = prices[String(item.id)];
+                    if (!quote) return;
+                    item.price = Number(quote.unit_price_minor) / 100;
+                    item.pricingLabel = quote.label || 'Retail';
+                    item.pricingSource = quote.source || 'retail';
+                    item.allowAdditionalDiscounts = !!quote.allow_additional_discounts;
+                    item.minimumQuantity = Number(quote.minimum_quantity || 1);
+                });
+                customerTerms = result;
+                pricingFailed = false;
+                var changed = cart.some(function (item, index) { return prior[index] !== item.price + ':' + (item.pricingLabel || 'Retail'); });
+                if (options.recalled && changed) toast('Held sale recalled and updated to current customer prices.');
+                return changed;
+            }).catch(function (error) {
+                if (seq !== pricingSequence) return false;
+                pricingFailed = true;
+                toast(error.message || 'Could not verify customer pricing.');
+                return false;
+            }).finally(function () {
+                if (seq !== pricingSequence) return;
+                pricingPending = false;
+                renderCart();
+                renderCreditTerms();
+            });
+        }
+
+        function queueReprice() {
+            clearTimeout(pricingTimer);
+            pricingTimer = setTimeout(function () { repriceCart(); }, 250);
         }
 
         on('[data-rpos-menu-toggle]', function () {
@@ -100,7 +187,7 @@
                     var div = document.createElement('div');
                     div.className = 'rpos-line';
                     div.innerHTML =
-                        '<div class="nm">' + esc(item.name) + '<small>' + fmt(item.price) + ' each</small></div>' +
+                        '<div class="nm">' + esc(item.name) + '<small>' + fmt(item.price) + ' each</small><span class="rpos-price-label">' + esc(item.pricingLabel || 'Retail') + '</span></div>' +
                         '<div class="rpos-qty"><button type="button" data-dec="' + idx + '">−</button>' +
                         '<input type="text" inputmode="numeric" value="' + item.qty + '" data-qty="' + idx + '">' +
                         '<button type="button" data-inc="' + idx + '">+</button></div>' +
@@ -117,7 +204,7 @@
             toggleLine('[data-discount-line]', t.adminDisc > 0, '[data-sum-discount]', '-' + fmt(t.adminDisc));
             toggleLine('[data-shipping-line]', t.shipping > 0, '[data-sum-shipping]', fmt(t.shipping));
             var tag = $('[data-coupon-tag]'); if (tag) tag.textContent = t.couponValid ? '(' + coupon.toUpperCase() + ')' : '';
-            var payBtn = $('[data-open-pay]'); if (payBtn) payBtn.disabled = cart.length === 0;
+            var payBtn = $('[data-open-pay]'); if (payBtn) payBtn.disabled = cart.length === 0 || pricingPending || pricingFailed;
 
             // Mobile cart bar sync
             var qtyCount = cart.reduce(function (n, i) { return n + i.qty; }, 0);
@@ -126,6 +213,7 @@
             var cbTotal = $('[data-cartbar-total]'); if (cbTotal) cbTotal.textContent = fmt(t.total);
             var bar = $('[data-cart-open]'); if (bar) bar.classList.toggle('is-empty', cart.length === 0);
             if (!cart.length) document.body.classList.remove('rpos-cart-open');
+            renderCreditTerms();
         }
         function toggleLine(sel, show, valSel, val) {
             var line = $(sel); if (!line) return; line.hidden = !show;
@@ -136,8 +224,9 @@
             var id = tile.dataset.variantId;
             var existing = cart.find(function (i) { return i.id === id; });
             if (existing) existing.qty += 1;
-            else cart.push({ id: id, name: tile.dataset.name, qty: 1, price: clean(tile.dataset.price), taxRate: clean(tile.dataset.taxRate), sku: tile.dataset.sku });
+            else cart.push({ id: id, name: tile.dataset.name, qty: 1, price: clean(tile.dataset.price), taxRate: clean(tile.dataset.taxRate), sku: tile.dataset.sku, pricingLabel: 'Retail' });
             renderCart();
+            repriceCart();
         }
 
         // ================= CUSTOMER =================
@@ -147,6 +236,8 @@
             $('[data-customer-sub]').textContent = c.sub || '';
             $('[data-customer-initial]').textContent = (c.name || 'W').charAt(0).toUpperCase();
             var pc = $('[data-pay-customer]'); if (pc) pc.textContent = c.name;
+            customerTerms = null;
+            repriceCart();
         }
 
         // ================= EVENTS =================
@@ -164,9 +255,9 @@
             if (pin) { e.preventDefault(); e.stopPropagation(); togglePin(pin.closest('[data-tile]')); return; }
             if (tile) { addProduct(tile); return; }
 
-            var inc = e.target.closest('[data-inc]'); if (inc) { cart[+inc.dataset.inc].qty += 1; renderCart(); return; }
-            var dec = e.target.closest('[data-dec]'); if (dec) { var i = +dec.dataset.dec; cart[i].qty = Math.max(1, cart[i].qty - 1); renderCart(); return; }
-            var rm = e.target.closest('[data-rm]'); if (rm) { cart.splice(+rm.dataset.rm, 1); renderCart(); return; }
+            var inc = e.target.closest('[data-inc]'); if (inc) { cart[+inc.dataset.inc].qty += 1; renderCart(); repriceCart(); return; }
+            var dec = e.target.closest('[data-dec]'); if (dec) { var i = +dec.dataset.dec; cart[i].qty = Math.max(1, cart[i].qty - 1); renderCart(); repriceCart(); return; }
+            var rm = e.target.closest('[data-rm]'); if (rm) { cart.splice(+rm.dataset.rm, 1); renderCart(); repriceCart(); return; }
 
             var sel = e.target.closest('[data-select-customer]');
             if (sel) { setCustomer({ id: sel.dataset.id, name: sel.dataset.name, sub: sel.dataset.sub }); close('rpos-customer-dialog'); toast('Customer set: ' + sel.dataset.name); return; }
@@ -174,7 +265,7 @@
 
         document.addEventListener('input', function (e) {
             var q = e.target.closest('[data-qty]');
-            if (q) { var i = +q.dataset.qty; var v = Math.max(1, parseInt(q.value.replace(/[^\d]/g, ''), 10) || 1); cart[i].qty = v; var t = totals(); $('[data-sum-subtotal]').textContent = fmt(t.subtotal); $('[data-sum-total]').textContent = fmt(t.total); $('[data-pay-amount]').textContent = fmt(t.total); q.closest('.rpos-line').querySelector('.lt').textContent = fmt(cart[i].qty * cart[i].price); return; }
+            if (q) { var i = +q.dataset.qty; var v = Math.max(1, parseInt(q.value.replace(/[^\d]/g, ''), 10) || 1); cart[i].qty = v; var t = totals(); $('[data-sum-subtotal]').textContent = fmt(t.subtotal); $('[data-sum-total]').textContent = fmt(t.total); q.closest('.rpos-line').querySelector('.lt').textContent = fmt(cart[i].qty * cart[i].price); queueReprice(); return; }
             var cs = e.target.closest('[data-customer-search]');
             if (cs) { var term = cs.value.toLowerCase(); $$('[data-select-customer][data-search]').forEach(function (b) { b.style.display = b.dataset.search.indexOf(term) !== -1 ? '' : 'none'; }); return; }
             var ps = e.target.closest('[data-product-search]');
@@ -254,19 +345,21 @@
         });
 
         // ================= PAY =================
-        on('[data-open-pay]', function () { if (!cart.length) return; openPay(); });
+        on('[data-open-pay]', function () { if (!cart.length) return; if (pricingPending || pricingFailed || !customerTerms) { toast('Wait for customer pricing and credit to finish updating.'); return; } openPay(); });
         function openPay() {
             var t = totals();
             pay.received = 0; pay.credit = false; pay.method = ''; pay.accountId = '';
             $$('[data-pay-method]').forEach(function (x) { x.classList.remove('active'); });
             $$('[data-payment-account]').forEach(function (x) { x.classList.remove('active'); });
             $('[data-pay-credit]').checked = false;
+            var reason = $('[data-pay-credit-reason]'); if (reason) reason.value = '';
             $('[data-pay-total]').textContent = fmt(t.total);
             $('[data-pay-received]').value = '0.00';
             var err = $('[data-pay-error]'); if (err) err.hidden = true;
             buildQuickCash(t.total);
             syncPaymentAccounts();
             syncChange();
+            renderCreditTerms();
             var d = document.getElementById('rpos-pay-dialog'); if (d) d.showModal();
         }
         function buildQuickCash(total) {
@@ -297,12 +390,13 @@
             }
             var err = $('[data-pay-error]');
             if (err && (diff >= -0.001 || pay.credit)) err.hidden = true;
+            renderCreditTerms();
         }
         if ($('[data-pay-received]')) {
             $('[data-pay-received]').addEventListener('input', syncChange);
             $('[data-pay-received]').addEventListener('blur', function () { this.value = commafy(this.value); });
         }
-        $('[data-pay-credit]') && $('[data-pay-credit]').addEventListener('change', function () { pay.credit = this.checked; syncChange(); });
+        $('[data-pay-credit]') && $('[data-pay-credit]').addEventListener('change', function () { pay.credit = this.checked; syncChange(); renderCreditTerms(); });
         $$('[data-pay-method]').forEach(function (b) { b.addEventListener('click', function () { $$('[data-pay-method]').forEach(function (x) { x.classList.remove('active'); }); b.classList.add('active'); pay.method = b.dataset.payMethod; pay.accountId = ''; syncPaymentAccounts(); }); });
         $$('[data-payment-account]').forEach(function (b) { b.addEventListener('click', function () { $$('[data-payment-account]').forEach(function (x) { x.classList.remove('active'); }); b.classList.add('active'); pay.accountId = b.dataset.accountId || ''; }); });
         function canonicalMethod(method) {
@@ -352,8 +446,11 @@
         }
         on('[data-confirm-pay]', function (btn) {
             if (!cart.length) return;
+            if (pricingPending || pricingFailed || !customerTerms) { payError('Customer pricing and credit are still being verified. Wait and try again.'); return; }
             var t = totals();
             var received = clean($('[data-pay-received]').value);
+            var hasBlockedDiscount = cart.some(function (item) { return item.allowAdditionalDiscounts === false; }) && (t.couponDisc > 0 || t.adminDisc > 0);
+            if (hasBlockedDiscount) { payError('The selected customer price cannot be combined with a coupon or manual discount.'); return; }
             if (received > 0.001 && !pay.method) { payError('Select a payment method for the amount received.'); return; }
             if (!pay.credit && received < t.total - 0.001) {
                 var status = $('[data-pay-status]'); if (status) { status.classList.remove('over', 'exact'); status.classList.add('short'); }
@@ -361,6 +458,13 @@
                 return;
             }
             if (pay.credit && (customer.id === WALKIN.id)) { payError('Select or create a customer before booking a credit sale.'); return; }
+            if (pay.credit && (!customerTerms.credit.enabled || customerTerms.credit.on_hold)) { payError(customerTerms.credit.on_hold ? 'This customer is on credit hold.' : 'Credit sales are not enabled for this customer.'); return; }
+            var newCreditMinor = pay.credit ? Math.max(0, Math.round((t.total - received) * 100)) : 0;
+            var availableMinor = customerTerms.credit.available_minor;
+            var exceedsCredit = availableMinor !== null && newCreditMinor > availableMinor;
+            if (exceedsCredit && !customerTerms.can_override_credit) { payError('This sale exceeds available credit by ' + fmt((newCreditMinor - availableMinor) / 100) + '. Collect more payment or ask an authorised manager.'); return; }
+            var overrideReason = ($('[data-pay-credit-reason]') && $('[data-pay-credit-reason]').value || '').trim();
+            if (exceedsCredit && customerTerms.can_override_credit && !overrideReason) { payError('Enter a manager override reason before exceeding the credit limit.'); $('[data-pay-credit-reason]').focus(); return; }
             if (canonicalMethod(pay.method) !== 'cash' && $('[data-payment-account]:not([hidden])') && !pay.accountId) {
                 payError('Select the receiving account for this ' + String(pay.method || 'payment').toUpperCase() + ' payment.');
                 return;
@@ -380,6 +484,7 @@
             $('[data-f-delivery-address]', f).value = delivery.address || '';
             $('[data-f-notes]', f).value = note || '';
             $('[data-f-credit]', f).value = pay.credit ? '1' : '0';
+            $('[data-f-credit-reason]', f).value = exceedsCredit ? overrideReason : '';
             var items = $('[data-f-items]', f); items.innerHTML = '';
             cart.forEach(function (it, i) {
                 items.insertAdjacentHTML('beforeend',
@@ -440,7 +545,7 @@
             if (rc) {
                 if (cart.length && !confirm('Replace the current cart with the held sale?')) return;
                 var held = loadHeld(); var h = held[+rc.dataset.recall];
-                if (h) { cart = h.cart; coupon = h.coupon || ''; discount = h.discount || { type: 'amount', value: 0 }; delivery = h.delivery || { method: '', shipping: 0, status: 'delivered', address: '' }; note = h.note || ''; setCustomer(h.customer); renderCart(); held.splice(+rc.dataset.recall, 1); saveHeld(held); refreshHeld(); close('rpos-held-dialog'); toast('Sale recalled'); }
+                if (h) { cart = h.cart; coupon = h.coupon || ''; discount = h.discount || { type: 'amount', value: 0 }; delivery = h.delivery || { method: '', shipping: 0, status: 'delivered', address: '' }; note = h.note || ''; customer = h.customer; $('[data-customer-name]').textContent = customer.name; $('[data-customer-sub]').textContent = customer.sub || ''; $('[data-customer-initial]').textContent = (customer.name || 'W').charAt(0).toUpperCase(); renderCart(); repriceCart({ recalled: true }); held.splice(+rc.dataset.recall, 1); saveHeld(held); refreshHeld(); close('rpos-held-dialog'); toast('Sale recalled; checking current prices…'); }
                 return;
             }
             var dh = e.target.closest('[data-delhold]');
@@ -517,6 +622,7 @@
         applyPinState();
         filterGrid();
         renderCart();
+        repriceCart();
         refreshHeld();
         var tillForm = $('[data-till-close-form]');
         if (tillForm) updateTillVariance(tillForm);

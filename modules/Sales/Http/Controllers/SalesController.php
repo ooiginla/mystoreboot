@@ -23,12 +23,15 @@ use Modules\Access\Models\TenantMembership;
 use Modules\Access\Support\ApprovalService;
 use Modules\Business\Models\Branch;
 use Modules\Business\Models\BusinessPaymentAccount;
+use Modules\Business\Models\OnlineStore;
 use Modules\Catalog\Enums\CategoryType;
 use Modules\Catalog\Enums\ProductType;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Catalog\Support\CatalogRevisionManager;
 use Modules\Customers\Models\Customer;
+use Modules\Customers\Support\CustomerCreditService;
+use Modules\Customers\Support\CustomerPricingService;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Inventory\Actions\AdjustInventoryReservationAction;
@@ -39,10 +42,13 @@ use Modules\Sales\Actions\CreateSalesOrderAction;
 use Modules\Sales\Actions\ProcessSalesReturnAction;
 use Modules\Sales\Actions\RecordSalesPaymentAction;
 use Modules\Sales\Actions\RefundCancelledOrderAction;
+use Modules\Sales\Actions\RequestWalletWithdrawalAction;
 use Modules\Sales\Actions\SendOnlineOrderProgressMailAction;
 use Modules\Sales\Enums\DiscountType;
+use Modules\Sales\Enums\PayoutMode;
 use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Enums\SalesPaymentStatus;
+use Modules\Sales\Http\Requests\CustomerPricingQuoteRequest;
 use Modules\Sales\Http\Requests\SalesCouponRequest;
 use Modules\Sales\Http\Requests\SalesOrderRefundRequest;
 use Modules\Sales\Http\Requests\SalesOrderRequest;
@@ -56,7 +62,12 @@ use Modules\Sales\Models\SalesCashLocation;
 use Modules\Sales\Models\SalesCoupon;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesTillSession;
+use Modules\Sales\Models\WalletTransaction;
+use Modules\Sales\Models\WalletWithdrawal;
+use Modules\Sales\Support\Payments\PaymentGatewayManager;
+use Modules\Sales\Support\PlatformFees;
 use Modules\Sales\Support\PosCatalog;
+use Modules\Sales\Support\Wallet\WalletService;
 use Modules\Subscriptions\Support\TenantModuleAccess;
 use Modules\Tenancy\Models\Tenant;
 
@@ -109,7 +120,7 @@ final class SalesController extends Controller
             ->latest('opened_at')
             ->limit(10)
             ->get();
-        $customers = Customer::query()->where('tenant_id', $tenant->id)->orderBy('first_name')->get();
+        $customers = Customer::query()->where('tenant_id', $tenant->id)->where('status', 'active')->orderBy('first_name')->get();
         $variants = ProductVariant::query()
             ->with(['product', 'product.category', 'product.taxes'])
             ->where('tenant_id', $tenant->id)
@@ -229,7 +240,7 @@ final class SalesController extends Controller
             ->latest('opened_at')
             ->limit(10)
             ->get();
-        $customers = Customer::query()->where('tenant_id', $tenant->id)->orderBy('first_name')->get();
+        $customers = Customer::query()->where('tenant_id', $tenant->id)->where('status', 'active')->orderBy('first_name')->get();
         $coupons = SalesCoupon::query()->where('tenant_id', $tenant->id)->latest()->get();
         $sessionOrders = $activeTill
             ? SalesOrder::query()
@@ -351,12 +362,47 @@ final class SalesController extends Controller
             'phone' => $data['phone'] ?? null,
             'email' => $data['email'] ?? null,
             'status' => 'active',
+            'credit_policy' => 'disabled',
         ]);
 
         return response()->json([
             'id' => $customer->id,
             'name' => $customer->name,
             'phone' => $customer->phone,
+        ]);
+    }
+
+    public function customerPricingQuote(
+        CustomerPricingQuoteRequest $request,
+        CustomerPricingService $pricing,
+        CustomerCreditService $credit,
+    ): JsonResponse {
+        $data = $request->validated();
+        $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+        $tenant = Tenant::query()->findOrFail($data['tenant_id']);
+        $customer = Customer::query()
+            ->with(['group.priceList', 'priceList'])
+            ->where('tenant_id', $tenant->id)
+            ->where('status', 'active')
+            ->findOrFail($data['customer_id']);
+        $quantities = collect($data['items'] ?? [])
+            ->groupBy('product_variant_id')
+            ->map(fn ($lines): float => (float) $lines->sum('quantity'))
+            ->all();
+        $quotes = $pricing->quotes($tenant, $customer, $quantities)->values();
+        $profile = $credit->profile($customer);
+
+        return response()->json([
+            'customer' => [
+                'id' => $customer->id,
+                'name' => $customer->name,
+                'group' => $customer->group?->name,
+                'price_list' => $profile['price_list_label'],
+            ],
+            'credit' => $profile,
+            'can_override_credit' => $request->user()->is_platform_admin
+                || $request->user()->hasPermission($tenant, 'sales.credit.override'),
+            'prices' => $quotes,
         ]);
     }
 
@@ -499,8 +545,8 @@ final class SalesController extends Controller
             ->where('status', 'successful')
             ->get(['customer_total_minor', 'is_settled']);
 
-        $payoutMode = \Modules\Sales\Enums\PayoutMode::fromTenant($tenant);
-        $onlineStore = \Modules\Business\Models\OnlineStore::query()->where('tenant_id', $tenant->id)->first();
+        $payoutMode = PayoutMode::fromTenant($tenant);
+        $onlineStore = OnlineStore::query()->where('tenant_id', $tenant->id)->first();
         $settlementBank = (array) ($onlineStore?->payment_settings['settlement_bank_account'] ?? []);
 
         return view('sales::admin.settlements.index', [
@@ -511,7 +557,7 @@ final class SalesController extends Controller
             'settlementBank' => $settlementBank,
             'payments' => $payments,
             'filters' => $filters,
-            'payoutModes' => \Modules\Sales\Enums\PayoutMode::cases(),
+            'payoutModes' => PayoutMode::cases(),
             'stats' => [
                 'earnings_minor' => (int) $all->sum('customer_total_minor'),
                 'earnings_settled_minor' => (int) $all->where('is_settled', true)->sum('customer_total_minor'),
@@ -619,23 +665,23 @@ final class SalesController extends Controller
 
         abort_if(! $tenant, 403);
 
-        $payoutMode = \Modules\Sales\Enums\PayoutMode::fromTenant($tenant);
-        $wallet = app(\Modules\Sales\Support\Wallet\WalletService::class)->walletFor($tenant);
+        $payoutMode = PayoutMode::fromTenant($tenant);
+        $wallet = app(WalletService::class)->walletFor($tenant);
         $from = $request->string('from')->toString();
         $to = $request->string('to')->toString();
-        $transactions = \Modules\Sales\Models\WalletTransaction::query()
+        $transactions = WalletTransaction::query()
             ->where('tenant_id', $tenant->id)
             ->when($from !== '', fn ($query) => $query->whereDate('created_at', '>=', $from))
             ->when($to !== '', fn ($query) => $query->whereDate('created_at', '<=', $to))
             ->latest('id')
             ->limit(200)
             ->get();
-        $withdrawals = \Modules\Sales\Models\WalletWithdrawal::query()
+        $withdrawals = WalletWithdrawal::query()
             ->where('tenant_id', $tenant->id)
             ->latest('id')
             ->limit(50)
             ->get();
-        $onlineStore = \Modules\Business\Models\OnlineStore::query()->where('tenant_id', $tenant->id)->first();
+        $onlineStore = OnlineStore::query()->where('tenant_id', $tenant->id)->first();
         $settlementBank = (array) ($onlineStore?->payment_settings['settlement_bank_account'] ?? []);
         // Withdrawal depends on having a settlement bank and a positive balance — not on the
         // payout mode. A business can always move any balance held for them.
@@ -671,7 +717,7 @@ final class SalesController extends Controller
         $to = $request->string('to')->toString();
         $currency = $tenant->currency_code ?: 'NGN';
 
-        $transactions = \Modules\Sales\Models\WalletTransaction::query()
+        $transactions = WalletTransaction::query()
             ->where('tenant_id', $tenant->id)
             ->when($from !== '', fn ($query) => $query->whereDate('created_at', '>=', $from))
             ->when($to !== '', fn ($query) => $query->whereDate('created_at', '<=', $to))
@@ -711,11 +757,11 @@ final class SalesController extends Controller
 
         $receiveMinor = $this->moneyToMinor($request->input('amount'));
         $currency = $tenant->currency_code ?: 'NGN';
-        $gatewayFee = app(\Modules\Sales\Support\Payments\PaymentGatewayManager::class)
+        $gatewayFee = app(PaymentGatewayManager::class)
             ->payout((string) config('services.payments.default', 'paystack'))
             ->transferFeeMinor($receiveMinor, $currency);
-        $platformFee = app(\Modules\Sales\Support\PlatformFees::class)->transferFeeMinor($tenant->id, $receiveMinor);
-        $available = (int) app(\Modules\Sales\Support\Wallet\WalletService::class)->walletFor($tenant)->available_balance_minor;
+        $platformFee = app(PlatformFees::class)->transferFeeMinor($tenant->id, $receiveMinor);
+        $available = (int) app(WalletService::class)->walletFor($tenant)->available_balance_minor;
         $total = $receiveMinor + $gatewayFee + $platformFee;
 
         return response()->json([
@@ -728,7 +774,7 @@ final class SalesController extends Controller
         ]);
     }
 
-    public function walletWithdraw(Request $request, \Modules\Sales\Actions\RequestWalletWithdrawalAction $withdraw): RedirectResponse
+    public function walletWithdraw(Request $request, RequestWalletWithdrawalAction $withdraw): RedirectResponse
     {
         /** @var User $user */
         $user = $request->user();
@@ -758,13 +804,13 @@ final class SalesController extends Controller
         abort_if(! $tenant, 403);
 
         $data = $request->validate([
-            'payout_mode' => ['required', Rule::in(array_map(static fn (\Modules\Sales\Enums\PayoutMode $mode): string => $mode->value, \Modules\Sales\Enums\PayoutMode::cases()))],
+            'payout_mode' => ['required', Rule::in(array_map(static fn (PayoutMode $mode): string => $mode->value, PayoutMode::cases()))],
         ]);
 
         $tenant->settings = array_merge($tenant->settings ?? [], ['payout_mode' => $data['payout_mode']]);
         $tenant->save();
 
-        return back()->with('status', 'Payout mode set to '.\Modules\Sales\Enums\PayoutMode::from($data['payout_mode'])->label().'.');
+        return back()->with('status', 'Payout mode set to '.PayoutMode::from($data['payout_mode'])->label().'.');
     }
 
     public function openTill(TillOpenRequest $request, PostJournalEntryAction $postJournalEntry): RedirectResponse
@@ -1035,6 +1081,7 @@ final class SalesController extends Controller
                 SalesOrderStatus::Processing->value,
                 SalesOrderStatus::Completed->value,
             ])],
+            'credit_override_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $requestedStatus = SalesOrderStatus::from($data['order_status']);
@@ -1047,7 +1094,7 @@ final class SalesController extends Controller
         }
 
         if ($requestedStatus === SalesOrderStatus::Completed) {
-            $completeSalesOrder->execute($order);
+            $completeSalesOrder->execute($order, $request->user(), $data['credit_override_reason'] ?? null);
         } elseif ($currentStatus !== $requestedStatus) {
             $order->update(['order_status' => $requestedStatus->value]);
 
@@ -1156,6 +1203,7 @@ final class SalesController extends Controller
             'first_name' => 'Walk-In',
             'last_name' => 'Customer',
             'status' => 'active',
+            'credit_policy' => 'disabled',
         ]);
     }
 

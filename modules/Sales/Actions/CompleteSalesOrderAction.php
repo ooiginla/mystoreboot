@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Modules\Sales\Actions;
 
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Catalog\Enums\ProductType;
+use Modules\Customers\Models\Customer;
+use Modules\Customers\Support\CustomerCreditService;
 use Modules\Finance\Actions\PostJournalEntryAction;
 use Modules\Inventory\Actions\AdjustInventoryReservationAction;
 use Modules\Inventory\Actions\EnsureInventoryLocationsAction;
@@ -29,11 +32,12 @@ final class CompleteSalesOrderAction
         private readonly EnsureInventoryLocationsAction $inventoryLocations,
         private readonly TenantModuleAccess $moduleAccess,
         private readonly SaleRecipeDepletionAction $recipeDepletion,
+        private readonly CustomerCreditService $customerCredit,
     ) {}
 
-    public function execute(SalesOrder $order): SalesOrder
+    public function execute(SalesOrder $order, ?User $actor = null, ?string $creditOverrideReason = null): SalesOrder
     {
-        return DB::transaction(function () use ($order): SalesOrder {
+        return DB::transaction(function () use ($order, $actor, $creditOverrideReason): SalesOrder {
             $lockedOrder = SalesOrder::query()
                 ->with([
                     'tenant',
@@ -181,6 +185,29 @@ final class CompleteSalesOrderAction
             $paidMinor = min((int) $lockedOrder->paid_minor, (int) $lockedOrder->total_minor);
             $balanceMinor = max(0, (int) $lockedOrder->total_minor - $paidMinor);
             $gatewayChargeMinor = (int) ($lockedOrder->gateway_charge_minor ?? 0);
+            $creditDecision = null;
+            $creditCustomer = null;
+
+            if ($balanceMinor > 0) {
+                if (! $actor) {
+                    throw ValidationException::withMessages([
+                        'order_status' => 'An authorised user is required to complete an order with an outstanding balance.',
+                    ]);
+                }
+
+                $creditCustomer = Customer::query()
+                    ->with(['group.priceList', 'priceList'])
+                    ->where('tenant_id', $lockedOrder->tenant_id)
+                    ->lockForUpdate()
+                    ->findOrFail($lockedOrder->customer_id);
+                $creditDecision = $this->customerCredit->authorizeNewCredit(
+                    $lockedOrder->tenant,
+                    $creditCustomer,
+                    $balanceMinor,
+                    $actor,
+                    $creditOverrideReason,
+                );
+            }
 
             // Payments taken while the order was pending are already recognised as
             // cash/gateway assets offset by Customer Deposits (2310). Completing the
@@ -208,9 +235,9 @@ final class CompleteSalesOrderAction
                 'completed',
             );
 
-            if ($balanceMinor > 0 && $lockedOrder->customer) {
-                $lockedOrder->customer->update([
-                    'account_balance_minor' => max(0, (int) $lockedOrder->customer->account_balance_minor + $balanceMinor),
+            if ($balanceMinor > 0 && $creditCustomer) {
+                $creditCustomer->update([
+                    'account_balance_minor' => max(0, (int) $creditCustomer->account_balance_minor + $balanceMinor),
                     'last_purchase_at' => now(),
                 ]);
             } elseif ($lockedOrder->customer) {
@@ -221,6 +248,12 @@ final class CompleteSalesOrderAction
                 'inventory_location_id' => $location?->id,
                 'order_status' => SalesOrderStatus::Completed->value,
                 'is_credit_sale' => $balanceMinor > 0,
+                'credit_due_date' => $balanceMinor > 0 && $creditDecision['profile']['terms_days'] !== null
+                    ? now($lockedOrder->tenant->timezone ?: config('app.timezone'))->addDays((int) $creditDecision['profile']['terms_days'])->toDateString()
+                    : null,
+                'credit_limit_snapshot_minor' => $balanceMinor > 0 ? $creditDecision['profile']['limit_minor'] : null,
+                'credit_overridden_by' => ($creditDecision['overridden'] ?? false) ? $actor?->id : null,
+                'credit_override_reason' => ($creditDecision['overridden'] ?? false) ? $creditOverrideReason : null,
                 'stock_reserved' => false,
                 'reserved_until' => null,
             ]);

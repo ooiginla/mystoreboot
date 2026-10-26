@@ -8,6 +8,7 @@ use App\Shared\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\Customers\Enums\CustomerCreditPolicy;
 use Modules\Customers\Enums\CustomerStatus;
 
 final class Customer extends Model
@@ -23,12 +24,29 @@ final class Customer extends Model
             'birthday' => 'date',
             'anniversary' => 'date',
             'last_purchase_at' => 'date',
+            'credit_policy' => CustomerCreditPolicy::class,
+            'credit_hold' => 'boolean',
         ];
     }
 
     public function group(): BelongsTo
     {
         return $this->belongsTo(CustomerGroup::class, 'customer_group_id');
+    }
+
+    public function priceList(): BelongsTo
+    {
+        return $this->belongsTo(CustomerPriceList::class, 'customer_price_list_id');
+    }
+
+    public function specificPrices(): HasMany
+    {
+        return $this->hasMany(CustomerSpecificPrice::class);
+    }
+
+    public function balanceAdjustments(): HasMany
+    {
+        return $this->hasMany(CustomerBalanceAdjustment::class);
     }
 
     public function purchases(): HasMany
