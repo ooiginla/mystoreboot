@@ -45,6 +45,16 @@ final class HrStaff extends Model
         return $this->hasMany(HrPayrollItem::class);
     }
 
+    public function shiftAssignments(): HasMany
+    {
+        return $this->hasMany(HrShiftAssignment::class);
+    }
+
+    public function attendanceRecords(): HasMany
+    {
+        return $this->hasMany(HrAttendanceRecord::class);
+    }
+
     public function getNameAttribute(): string
     {
         return trim($this->first_name.' '.$this->last_name);

@@ -7,6 +7,7 @@ use Modules\Inventory\Http\Controllers\BatchTraceController;
 use Modules\Inventory\Http\Controllers\InventoryController;
 use Modules\Inventory\Http\Controllers\LocationTypeController;
 use Modules\Inventory\Http\Controllers\ProductionController;
+use Modules\Inventory\Http\Controllers\ProductionOperationsController;
 use Modules\Inventory\Http\Controllers\ReorderLevelController;
 use Modules\Inventory\Http\Controllers\RequisitionController;
 use Modules\Inventory\Http\Controllers\StockCountController;
@@ -26,6 +27,20 @@ Route::get('/reorder-levels', [ReorderLevelController::class, 'index'])->name('r
 
 // Recipes & production (F&B)
 Route::get('/production', [ProductionController::class, 'index'])->name('production.index');
+Route::get('/production/runs', [ProductionController::class, 'runs'])->name('production.runs.index');
+Route::get('/production/planning', [ProductionOperationsController::class, 'planning'])->name('production.planning');
+Route::get('/production/planning/day/{date}', [ProductionOperationsController::class, 'planningDay'])->name('production.planning.day');
+Route::post('/production/planning', [ProductionOperationsController::class, 'storePlan'])->name('production.planning.store');
+Route::put('/production/planning/{plan}', [ProductionOperationsController::class, 'updatePlan'])->name('production.planning.update');
+Route::post('/production/planning/{plan}/start', [ProductionOperationsController::class, 'startPlan'])->name('production.planning.start');
+Route::post('/production/planning/{plan}/cancel', [ProductionOperationsController::class, 'cancelPlan'])->name('production.planning.cancel');
+Route::get('/production/orders', [ProductionOperationsController::class, 'workOrders'])->name('production.orders');
+Route::post('/production/orders/{workOrder}/start', [ProductionOperationsController::class, 'startWorkOrder'])->name('production.orders.start');
+Route::post('/production/orders/{workOrder}/cancel', [ProductionOperationsController::class, 'cancelWorkOrder'])->name('production.orders.cancel');
+Route::get('/production/waste', [ProductionOperationsController::class, 'waste'])->name('production.waste');
+Route::post('/production/waste', [ProductionOperationsController::class, 'storeWaste'])->name('production.waste.store');
+Route::get('/production/reports/download', [ProductionOperationsController::class, 'downloadReport'])->name('production.reports.download');
+Route::get('/production/reports', [ProductionOperationsController::class, 'reports'])->name('production.reports');
 Route::post('/production/finished-products', [ProductionController::class, 'storeFinishedProduct'])->name('production.finished-products.store');
 Route::delete('/production/finished-products/{product}', [ProductionController::class, 'destroyFinishedProduct'])->name('production.finished-products.destroy');
 Route::post('/production/recipes', [ProductionController::class, 'storeRecipe'])->name('production.recipes.store');

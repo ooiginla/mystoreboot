@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Modules\Inventory\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+use Modules\Inventory\Enums\ProductionVarianceReason;
 
 final class ProductionRequest extends FormRequest
 {
@@ -23,10 +25,12 @@ final class ProductionRequest extends FormRequest
             'recipe_id' => ['required', 'integer', 'exists:recipes,id'],
             'source_location_id' => ['required', 'integer', 'exists:inventory_locations,id'],
             'output_location_id' => ['nullable', 'integer', 'exists:inventory_locations,id'],
+            'production_lead_user_id' => ['required', 'integer', 'exists:users,id'],
             // How many the cook set out to make. Optional so older callers keep working;
             // when absent, one batch of the recipe is the plan.
             'planned_quantity' => ['nullable', 'numeric', 'gt:0', 'max:999999999'],
             'actual_yield_quantity' => ['required', 'numeric', 'gt:0', 'max:999999999'],
+            'variance_reason' => ['nullable', Rule::enum(ProductionVarianceReason::class)],
             'reference_number' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'items' => ['required', 'array', 'min:1'],

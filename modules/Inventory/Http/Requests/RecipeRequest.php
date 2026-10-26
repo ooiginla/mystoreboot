@@ -21,6 +21,7 @@ final class RecipeRequest extends FormRequest
         return [
             'tenant' => ['nullable', 'string'],
             'name' => ['required', 'string', 'max:160'],
+            'preparation_instructions' => ['nullable', 'string', 'max:10000'],
             'output_product_variant_id' => ['required', 'integer', 'exists:product_variants,id'],
             'yield_quantity' => ['required', 'numeric', 'gt:0', 'max:999999999'],
             'yield_unit_id' => ['nullable', 'integer', 'exists:units_of_measure,id'],

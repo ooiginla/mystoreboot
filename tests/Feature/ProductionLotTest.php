@@ -6,6 +6,8 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Access\Enums\MembershipStatus;
+use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
@@ -77,6 +79,13 @@ final class ProductionLotTest extends TestCase
         ]);
 
         $this->user = User::factory()->create(['is_platform_admin' => true]);
+        TenantMembership::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'user_id' => $this->user->id,
+            'branch_id' => $branch->id,
+            'status' => MembershipStatus::Active,
+            'joined_at' => now(),
+        ]);
     }
 
     public function test_a_recipe_stores_its_shelf_life(): void
@@ -297,6 +306,7 @@ final class ProductionLotTest extends TestCase
                 'tenant' => $this->tenant->id,
                 'recipe_id' => $recipe->id,
                 'source_location_id' => $this->location->id,
+                'production_lead_user_id' => $this->user->id,
                 'actual_yield_quantity' => $yield,
                 'reference_number' => $reference,
                 'items' => [['component_product_variant_id' => $this->rice->id, 'actual_quantity' => 20, 'planned_quantity' => 20]],

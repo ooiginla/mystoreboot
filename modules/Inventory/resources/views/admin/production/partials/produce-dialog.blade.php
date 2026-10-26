@@ -19,6 +19,8 @@
         #produce-{{ $recipe->id }} .plan-note { font-size: .88rem; color: #3538cd; font-weight: 650; }
         #produce-{{ $recipe->id }} .is-short { color: #b42318; font-weight: 800; }
         #produce-{{ $recipe->id }} .own-figure { box-shadow: inset 3px 0 0 #f79009; }
+        #produce-{{ $recipe->id }} .variance-box { border: 1px solid #fec84b; border-radius: 10px; background: #fffaeb; padding: 12px 14px; }
+        #produce-{{ $recipe->id }} .variance-value { color: #b54708; font-weight: 800; }
         @media (max-width: 640px) { #produce-{{ $recipe->id }} .plan-box { grid-template-columns: 1fr; } }
     </style>
     <div class="dialog-header">
@@ -29,6 +31,12 @@
         <button class="icon-btn" type="button" data-dialog-close aria-label="Close">✕</button>
     </div>
     <div class="dialog-body">
+        @if(filled($recipe->preparation_instructions))
+            <section style="border:1px solid var(--line); border-radius:10px; background:var(--panel-soft); padding:12px 14px; margin-bottom:14px;">
+                <strong>Preparation instructions</strong>
+                <div style="white-space:pre-line; margin-top:6px; color:var(--ink-soft);">{{ $recipe->preparation_instructions }}</div>
+            </section>
+        @endif
         <form class="mini-form" method="POST" action="{{ route('admin.inventory.production.record') }}" data-produce-form data-yield="{{ $num($yield) }}">
             @csrf
             <input type="hidden" name="tenant" value="{{ $tenantParam }}">
@@ -44,6 +52,16 @@
             </div>
 
             <div class="form-grid">
+                <div class="field full">
+                    <label>Production lead</label>
+                    <select name="production_lead_user_id" required>
+                        <option value="">Select the user leading this production</option>
+                        @foreach ($productionLeads as $lead)
+                            <option value="{{ $lead->id }}">{{ $lead->name }} ({{ $lead->email }})</option>
+                        @endforeach
+                    </select>
+                    @if ($productionLeads->isEmpty())<small class="is-short">No active user is assigned to this branch.</small>@endif
+                </div>
                 <div class="field">
                     <label>Take raw materials from</label>
                     <select name="source_location_id" data-produce-source="{{ $recipe->id }}" required>
@@ -84,6 +102,15 @@
                     <label>Actual yield ({{ $yieldUnit }})</label>
                     <input name="actual_yield_quantity" type="number" step="any" min="0" value="{{ $num($yield) }}" required data-actual-yield>
                     <small class="subtle">Change it only if the batch came out different — three pies burnt, a tray short.</small>
+                </div>
+                <div class="field full variance-box" data-variance-fields hidden>
+                    <label data-variance-label>Reason for yield loss</label>
+                    <select name="variance_reason" data-variance-reason>
+                        <option value="">Select a loss reason</option>
+                        @foreach ($varianceReasons as $value => $label)<option value="{{ $value }}" @if($value === 'overproduction') hidden @endif>{{ $label }}</option>@endforeach
+                    </select>
+                    <div data-variance-surplus hidden style="color:#067647; font-weight:800;">Automatically classified as Overproduction. All actual output will be added to sellable inventory.</div>
+                    <small class="variance-value"><span data-variance-value-label>Estimated loss value:</span> <span data-variance-value>—</span></small>
                 </div>
                 <div class="field full">
                     <label>Reference</label>
@@ -148,6 +175,9 @@
             <p class="subtle" style="font-size:.8rem; margin:6px 0 0;">
                 Actual amounts follow the plan until you type your own — rows you changed are marked on the left and keep your figure.
             </p>
+            <p class="is-short" data-stock-warning hidden style="font-size:.82rem; margin:8px 0 0;">
+                This source location does not have enough ingredients for the plan. Reduce the quantity or choose another source before starting.
+            </p>
 
             <div class="field full" style="margin-top: 12px;">
                 <label>Notes</label>
@@ -177,14 +207,25 @@
 
         const form = dialog.querySelector('[data-produce-form]');
         const source = dialog.querySelector('[data-produce-source]');
+        const productionLead = dialog.querySelector('[name="production_lead_user_id"]');
         const plan = dialog.querySelector('[data-plan]');
         const note = dialog.querySelector('[data-plan-note]');
         const expected = dialog.querySelector('[data-expected]');
         const actualYield = dialog.querySelector('[data-actual-yield]');
         const neededHead = dialog.querySelector('[data-needed-head]');
         const submit = dialog.querySelector('[data-produce-submit]');
+        const startButton = dialog.querySelector('[data-produce-start]');
+        const stockWarning = dialog.querySelector('[data-stock-warning]');
+        const varianceFields = dialog.querySelector('[data-variance-fields]');
+        const varianceReason = dialog.querySelector('[data-variance-reason]');
+        const varianceLabel = dialog.querySelector('[data-variance-label]');
+        const varianceSurplus = dialog.querySelector('[data-variance-surplus]');
+        const varianceValueLabel = dialog.querySelector('[data-variance-value-label]');
+        const varianceValue = dialog.querySelector('[data-variance-value]');
         const yieldPerBatch = Number(form.dataset.yield) || 1;
         const unit = @json($yieldUnit);
+        const estimatedUnitCostMinor = Number(@json($margin['unit_cost_minor'] ?? 0));
+        const currency = @json($tenant->currency_code);
 
         const round = (n) => Math.round(n * 10000) / 10000;
         const trim = (n) => String(round(n));
@@ -192,6 +233,26 @@
 
         function planned() {
             return Math.max(0, Number(plan.value) || 0);
+        }
+
+        function money(minor) {
+            return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(minor / 100);
+        }
+
+        function refreshVariance() {
+            const variance = (Number(actualYield.value) || 0) - planned();
+            const hasVariance = Math.abs(variance) > 0.00001;
+            const isSurplus = variance > 0.00001;
+            varianceFields.hidden = ! hasVariance;
+            varianceReason.hidden = ! hasVariance || isSurplus;
+            varianceReason.required = hasVariance && ! isSurplus;
+            varianceSurplus.hidden = ! isSurplus;
+            varianceLabel.textContent = isSurplus ? 'Yield surplus' : 'Reason for yield loss';
+            varianceValueLabel.textContent = isSurplus ? 'Estimated surplus value:' : 'Estimated loss value:';
+            if (isSurplus) varianceReason.value = 'overproduction';
+            if (hasVariance && ! isSurplus && varianceReason.value === 'overproduction') varianceReason.value = '';
+            if (! hasVariance) varianceReason.value = '';
+            varianceValue.textContent = money(Math.round(Math.abs(variance) * estimatedUnitCostMinor));
         }
 
         // Scale every line from the plan. Lines the cook has typed over keep their figure.
@@ -217,32 +278,46 @@
             });
 
             submit.disabled = make <= 0;
-            const startButton = dialog.querySelector('[data-produce-start]');
             if (startButton) startButton.disabled = make <= 0;
             refreshAvailability();
+            refreshVariance();
         }
 
         // What the chosen store holds, in each ingredient's own unit, against what will be used.
         function refreshAvailability() {
             const atLocation = STOCK[String(source ? source.value : '')] || {};
+            let planIsShort = false;
+            let actualIsShort = false;
 
             dialog.querySelectorAll('[data-ingredient]').forEach(function (row) {
                 const factor = Number(row.dataset.factor) || 1;
                 const have = Number(atLocation[String(row.dataset.variant)] || 0) / factor;
+                const needed = Number(row.querySelector('[data-planned]').value) || 0;
                 const used = Number(row.querySelector('[data-used]').value) || 0;
                 const cell = row.querySelector('[data-available]');
-                const short = used > have + 0.00001;
+                const shortPlan = needed > have + 0.00001;
+                const shortActual = used > have + 0.00001;
+                planIsShort = planIsShort || shortPlan;
+                actualIsShort = actualIsShort || shortActual;
 
                 cell.textContent = `${show(have)} ${row.dataset.unit}`;
-                // Not blocked here — the movement itself refuses it — but seeing it before
-                // committing a batch beats a failed save.
-                cell.classList.toggle('is-short', short);
-                cell.classList.toggle('subtle', ! short);
+                cell.classList.toggle('is-short', shortPlan || shortActual);
+                cell.classList.toggle('subtle', ! shortPlan && ! shortActual);
             });
+
+            if (startButton) startButton.disabled = planned() <= 0 || planIsShort;
+            submit.disabled = planned() <= 0 || actualIsShort;
+            stockWarning.hidden = ! planIsShort;
         }
 
         plan.addEventListener('input', applyPlan);
         if (source) source.addEventListener('change', refreshAvailability);
+        startButton?.addEventListener('click', function (event) {
+            if (! productionLead.value) {
+                event.preventDefault();
+                productionLead.reportValidity();
+            }
+        });
 
         dialog.addEventListener('input', function (e) {
             if (e.target.matches('[data-used]')) {
@@ -251,6 +326,7 @@
                 refreshAvailability();
             } else if (e.target.matches('[data-actual-yield]')) {
                 actualYield.dataset.own = '1';
+                refreshVariance();
             }
         });
 

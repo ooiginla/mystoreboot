@@ -25,6 +25,8 @@
             <h1>HR & Payroll</h1>
             <p class="subtle">Staff records, branch assignment, bonuses, deductions, monthly salary schedules, payroll posting, and payslips for {{ $tenant->name }}.</p>
         </div>
+        <div class="button-row">
+            <a class="btn secondary" href="{{ route('admin.hr-payroll.workforce.index', ['tenant' => $tenant->id]) }}">Shifts &amp; attendance</a>
         @if ($isPlatformAdmin)
             <form method="GET" action="{{ route('admin.hr-payroll.index') }}" style="min-width: 260px;">
                 <input type="hidden" name="payroll_month" value="{{ $payrollMonth }}">
@@ -35,6 +37,7 @@
                 </select>
             </form>
         @endif
+        </div>
     </div>
 
     @if (session('status'))

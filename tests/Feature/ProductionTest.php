@@ -7,6 +7,8 @@ namespace Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Modules\Access\Enums\MembershipStatus;
+use Modules\Access\Models\TenantMembership;
 use Modules\Business\Models\Branch;
 use Modules\Catalog\Enums\ProductStatus;
 use Modules\Catalog\Enums\ProductType;
@@ -32,6 +34,7 @@ final class ProductionTest extends TestCase
     {
         [$tenant, $location, $rice, $oil, $jollof] = $this->productionContext();
         $user = User::factory()->create(['is_platform_admin' => true]);
+        $this->assignUserToBranch($tenant, $location, $user);
 
         // Opening stock for the raw materials.
         $post = app(PostInventoryMovementAction::class);
@@ -51,6 +54,7 @@ final class ProductionTest extends TestCase
             ->post(route('admin.inventory.production.recipes.store'), [
                 'tenant' => $tenant->id,
                 'name' => 'Jollof Rice (tray)',
+                'preparation_instructions' => "1. Wash the rice.\n2. Cook in the sauce.",
                 'output_product_variant_id' => $jollof->id,
                 'yield_quantity' => 10,
                 'items' => [
@@ -62,6 +66,7 @@ final class ProductionTest extends TestCase
 
         $recipe = Recipe::query()->where('tenant_id', $tenant->id)->firstOrFail();
         $this->assertSame(2, $recipe->items()->count());
+        $this->assertSame("1. Wash the rice.\n2. Cook in the sauce.", $recipe->preparation_instructions);
 
         // Record a production batch via HTTP.
         $this->actingAs($user)
@@ -69,6 +74,7 @@ final class ProductionTest extends TestCase
                 'tenant' => $tenant->id,
                 'recipe_id' => $recipe->id,
                 'source_location_id' => $location->id,
+                'production_lead_user_id' => $user->id,
                 'actual_yield_quantity' => 10,
                 'items' => [
                     ['component_product_variant_id' => $rice->id, 'actual_quantity' => 20, 'planned_quantity' => 20],
@@ -103,6 +109,7 @@ final class ProductionTest extends TestCase
         // Only finished products have a production page.
         $pie->product->update(['is_finished_product' => true]);
         $user = User::factory()->create(['is_platform_admin' => true]);
+        $this->assignUserToBranch($tenant, $location, $user);
 
         $post = app(PostInventoryMovementAction::class);
         foreach ([[$flour, 10000, 2], [$meat, 5000, 10]] as [$variant, $quantity, $cost]) {
@@ -141,8 +148,10 @@ final class ProductionTest extends TestCase
                 'tenant' => $tenant->id,
                 'recipe_id' => $recipe->id,
                 'source_location_id' => $location->id,
+                'production_lead_user_id' => $user->id,
                 'planned_quantity' => 50,
                 'actual_yield_quantity' => 48,
+                'variance_reason' => 'burnt',
                 'items' => [
                     ['component_product_variant_id' => $flour->id, 'planned_quantity' => 4000, 'actual_quantity' => 4100],
                     ['component_product_variant_id' => $meat->id, 'planned_quantity' => 2000, 'actual_quantity' => 2000],
@@ -155,6 +164,9 @@ final class ProductionTest extends TestCase
         // Variance is against the real plan (50), not the recipe's single piece.
         $this->assertSame(50.0, (float) $order->planned_quantity);
         $this->assertSame(48.0, (float) $order->actual_yield_quantity);
+        $this->assertSame($user->id, $order->production_lead_user_id);
+        $this->assertSame('burnt', $order->variance_reason->value);
+        $this->assertSame(1128, (int) $order->variance_value_minor);
         $this->assertSame(4000.0, (float) $order->items->firstWhere('component_product_variant_id', $flour->id)->planned_quantity);
 
         $onHand = fn (int $variantId): float => (float) InventoryStockLevel::query()
@@ -178,6 +190,7 @@ final class ProductionTest extends TestCase
             ->post(route('admin.inventory.production.start'), [
                 'tenant' => $tenant->id, 'recipe_id' => $recipe->id,
                 'source_location_id' => $location->id, 'planned_quantity' => 50,
+                'production_lead_user_id' => $user->id,
             ])
             ->assertSessionHasNoErrors();
 
@@ -194,7 +207,14 @@ final class ProductionTest extends TestCase
         $this->actingAs($user)
             ->get(route('admin.inventory.production.show', ['product' => $pie->product_id, 'tenant' => $tenant->id]))
             ->assertOk()
-            ->assertSee('In progress')
+            ->assertDontSee('Recent production &amp; yield', false)
+            ->assertDontSee('Complete &amp; deduct ingredients', false);
+
+        $this->actingAs($user)
+            ->get(route('admin.inventory.production.runs.index', ['tenant' => $tenant->id]))
+            ->assertOk()
+            ->assertSee('Pending completion')
+            ->assertSee($pie->product->name)
             ->assertSee('Complete &amp; deduct ingredients', false);
 
         $flourLine = $run->items->firstWhere('component_product_variant_id', $flour->id);
@@ -204,6 +224,7 @@ final class ProductionTest extends TestCase
             ->post(route('admin.inventory.production.runs.complete', $run), [
                 'tenant' => $tenant->id,
                 'actual_yield_quantity' => 48,
+                'variance_reason' => 'burnt',
                 'items' => [
                     $flourLine->id => ['actual_quantity' => 4100],
                     $meatLine->id => ['actual_quantity' => 2000],
@@ -217,6 +238,9 @@ final class ProductionTest extends TestCase
         $this->assertSame(50.0, (float) $run->planned_quantity);
         $this->assertSame(48.0, (float) $run->actual_yield_quantity);
         $this->assertSame(28200, (int) $run->total_cost_minor);
+        $this->assertSame($user->id, $run->production_lead_user_id);
+        $this->assertSame('burnt', $run->variance_reason->value);
+        $this->assertSame(1128, (int) $run->variance_value_minor);
 
         // The hold is gone and only what was really used left the shelf.
         $this->assertSame(0.0, $this->reserved($location, $flour));
@@ -239,6 +263,7 @@ final class ProductionTest extends TestCase
         $this->actingAs($user)->post(route('admin.inventory.production.start'), [
             'tenant' => $tenant->id, 'recipe_id' => $recipe->id,
             'source_location_id' => $location->id, 'planned_quantity' => 50,
+            'production_lead_user_id' => $user->id,
         ]);
         $run = ProductionOrder::query()->where('tenant_id', $tenant->id)->firstOrFail();
 
@@ -252,7 +277,7 @@ final class ProductionTest extends TestCase
         $this->assertSame(0.0, $this->onHand($location, $pie));
     }
 
-    public function test_starting_more_than_the_store_holds_holds_what_it_can_and_says_what_is_short(): void
+    public function test_starting_more_than_the_store_holds_is_refused_without_creating_a_run_or_hold(): void
     {
         [$tenant, $location, $flour, $meat, $pie, $recipe, $user] = $this->pieRecipe();
 
@@ -261,11 +286,116 @@ final class ProductionTest extends TestCase
             ->post(route('admin.inventory.production.start'), [
                 'tenant' => $tenant->id, 'recipe_id' => $recipe->id,
                 'source_location_id' => $location->id, 'planned_quantity' => 200,
+                'production_lead_user_id' => $user->id,
             ])
-            ->assertSessionHasNoErrors()
-            ->assertSessionHas('status', fn (string $status): bool => str_contains($status, 'Not enough in stock to hold all of: Rice'));
+            ->assertSessionHasErrors('planned_quantity');
 
-        $this->assertSame(10000.0, $this->reserved($location, $flour));
+        $this->assertDatabaseCount('production_orders', 0);
+        $this->assertSame(0.0, $this->reserved($location, $flour));
+    }
+
+    public function test_a_yield_variance_requires_a_reason(): void
+    {
+        [$tenant, $location, $flour, $meat, $pie, $recipe, $user] = $this->pieRecipe();
+
+        $this->actingAs($user)
+            ->post(route('admin.inventory.production.record'), [
+                'tenant' => $tenant->id,
+                'recipe_id' => $recipe->id,
+                'source_location_id' => $location->id,
+                'production_lead_user_id' => $user->id,
+                'planned_quantity' => 50,
+                'actual_yield_quantity' => 48,
+                'items' => [
+                    ['component_product_variant_id' => $flour->id, 'actual_quantity' => 4000],
+                    ['component_product_variant_id' => $meat->id, 'actual_quantity' => 2000],
+                ],
+            ])
+            ->assertSessionHasErrors('variance_reason');
+
+        $this->assertDatabaseCount('production_orders', 0);
+        $this->assertSame(10000.0, $this->onHand($location, $flour));
+        $this->assertSame(0.0, $this->onHand($location, $pie));
+    }
+
+    public function test_excess_yield_is_automatically_classified_as_overproduction_and_not_waste(): void
+    {
+        [$tenant, $location, $flour, $meat, $pie, $recipe, $user] = $this->pieRecipe();
+
+        $this->actingAs($user)
+            ->post(route('admin.inventory.production.record'), [
+                'tenant' => $tenant->id,
+                'recipe_id' => $recipe->id,
+                'source_location_id' => $location->id,
+                'production_lead_user_id' => $user->id,
+                'planned_quantity' => 50,
+                'actual_yield_quantity' => 52,
+                // A stale or malicious loss reason must not classify usable surplus as waste.
+                'variance_reason' => 'burnt',
+                'items' => [
+                    ['component_product_variant_id' => $flour->id, 'actual_quantity' => 4000],
+                    ['component_product_variant_id' => $meat->id, 'actual_quantity' => 2000],
+                ],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $order = ProductionOrder::query()->firstOrFail();
+        $this->assertSame('overproduction', $order->variance_reason->value);
+        $this->assertSame(52.0, $this->onHand($location, $pie));
+        $this->assertSame(0, \Modules\Inventory\Models\ProductionWasteRecord::query()->count());
+    }
+
+    public function test_overproduction_cannot_be_used_as_the_reason_for_a_yield_loss(): void
+    {
+        [$tenant, $location, $flour, $meat, $pie, $recipe, $user] = $this->pieRecipe();
+
+        $this->actingAs($user)
+            ->post(route('admin.inventory.production.record'), [
+                'tenant' => $tenant->id,
+                'recipe_id' => $recipe->id,
+                'source_location_id' => $location->id,
+                'production_lead_user_id' => $user->id,
+                'planned_quantity' => 50,
+                'actual_yield_quantity' => 48,
+                'variance_reason' => 'overproduction',
+                'items' => [
+                    ['component_product_variant_id' => $flour->id, 'actual_quantity' => 4000],
+                    ['component_product_variant_id' => $meat->id, 'actual_quantity' => 2000],
+                ],
+            ])
+            ->assertSessionHasErrors('variance_reason');
+
+        $this->assertDatabaseCount('production_orders', 0);
+    }
+
+    public function test_the_production_lead_must_be_an_active_user_in_the_current_branch(): void
+    {
+        [$tenant, $location, $flour, $meat, $pie, $recipe, $user] = $this->pieRecipe();
+        $otherBranch = Branch::query()->create([
+            'tenant_id' => $tenant->id, 'name' => 'Annex', 'code' => 'ANNEX', 'status' => 'active', 'is_primary' => false,
+        ]);
+        $otherLead = User::factory()->create();
+        TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $otherLead->id,
+            'branch_id' => $otherBranch->id,
+            'status' => MembershipStatus::Active,
+            'joined_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->withSession(['active_branch_ids' => [$tenant->id => $location->branch_id]])
+            ->post(route('admin.inventory.production.start'), [
+                'tenant' => $tenant->id,
+                'recipe_id' => $recipe->id,
+                'source_location_id' => $location->id,
+                'production_lead_user_id' => $otherLead->id,
+                'planned_quantity' => 50,
+            ])
+            ->assertSessionHasErrors('production_lead_user_id');
+
+        $this->assertDatabaseCount('production_orders', 0);
+        $this->assertSame(0.0, $this->reserved($location, $flour));
     }
 
     public function test_without_a_plan_one_batch_of_the_recipe_is_the_plan(): void
@@ -284,6 +414,7 @@ final class ProductionTest extends TestCase
         app(RecordProductionAction::class)->execute([
             'tenant_id' => $tenant->id, 'recipe_id' => $recipe->id, 'source_location_id' => $location->id,
             'actual_yield_quantity' => 9,
+            'variance_reason' => 'unknown_loss',
             'items' => [['component_product_variant_id' => $rice->id, 'actual_quantity' => 20]],
         ]);
 
@@ -310,6 +441,7 @@ final class ProductionTest extends TestCase
             'tenant_id' => $tenant->id, 'component_product_variant_id' => $rice->id, 'quantity' => 20, 'sort_order' => 0,
         ]);
         $user = User::factory()->create(['is_platform_admin' => true]);
+        $this->assignUserToBranch($tenant, $mainLocation, $user);
         $session = ['active_branch_ids' => [$tenant->id => $mainBranch->id]];
 
         $this->actingAs($user)
@@ -325,6 +457,7 @@ final class ProductionTest extends TestCase
                 'tenant' => $tenant->id,
                 'recipe_id' => $recipe->id,
                 'source_location_id' => $annexLocation->id,
+                'production_lead_user_id' => $user->id,
                 'actual_yield_quantity' => 10,
                 'items' => [['component_product_variant_id' => $rice->id, 'actual_quantity' => 20]],
             ])
@@ -344,6 +477,7 @@ final class ProductionTest extends TestCase
         [$tenant, $location, $flour, $meat, $pie] = $this->productionContext();
         $pie->product->update(['is_finished_product' => true]);
         $user = User::factory()->create(['is_platform_admin' => true]);
+        $this->assignUserToBranch($tenant, $location, $user);
 
         $post = app(PostInventoryMovementAction::class);
         foreach ([[$flour, 10000, 2], [$meat, 5000, 10]] as [$variant, $quantity, $cost]) {
@@ -362,6 +496,17 @@ final class ProductionTest extends TestCase
         $recipe->items()->create(['tenant_id' => $tenant->id, 'component_product_variant_id' => $meat->id, 'quantity' => 40, 'sort_order' => 1]);
 
         return [$tenant, $location, $flour, $meat, $pie, $recipe, $user];
+    }
+
+    private function assignUserToBranch(Tenant $tenant, InventoryLocation $location, User $user): void
+    {
+        TenantMembership::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $user->id,
+            'branch_id' => $location->branch_id,
+            'status' => MembershipStatus::Active,
+            'joined_at' => now(),
+        ]);
     }
 
     private function onHand(InventoryLocation $location, ProductVariant $variant): float

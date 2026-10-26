@@ -139,6 +139,22 @@
             .field { display: grid; align-content: start; gap: 7px; min-width: 0; }
             .field.full { grid-column: 1 / -1; }
             label { color: var(--ink-soft); font-size: 13px; font-weight: 600; }
+            .inline-check {
+                display: inline-flex;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 8px;
+                width: fit-content;
+                cursor: pointer;
+            }
+            .inline-check input[type="checkbox"], .inline-check input[type="radio"] {
+                width: 18px;
+                min-width: 18px;
+                height: 18px;
+                margin: 0;
+                padding: 0;
+                flex: 0 0 18px;
+            }
             input, select, textarea {
                 width: 100%;
                 border: 1px solid #d4ddd8;
@@ -207,6 +223,8 @@
             .btn.primary:hover { background: var(--brand-strong); }
             .btn.accent { background: var(--brand); color: #fff; box-shadow: 0 4px 12px -2px rgba(6,193,104,.35); }
             .btn.accent:hover { background: var(--brand-strong); }
+            .btn.warning { background: #fdb022; color: #3d2b00; border-color: #fdb022; box-shadow: 0 4px 12px -2px rgba(253,176,34,.35); }
+            .btn.warning:hover { background: #f79009; border-color: #f79009; color: #271b00; }
             .btn.danger, .btn.destructive { background: #fff; color: var(--danger); border-color: var(--danger-border); }
             .btn.danger:hover, .btn.destructive:hover { background: var(--danger); color: #fff; border-color: var(--danger); box-shadow: 0 4px 12px -2px rgba(220,38,38,.35); }
             .btn.secondary { background: #fff; color: var(--ink-soft); border-color: var(--line); box-shadow: var(--shadow-sm); }
@@ -289,6 +307,33 @@
             .dialog-body { padding: 22px; max-height: min(72vh, 760px); overflow: auto; }
             .icon-btn { width: 36px; height: 36px; display: inline-grid; place-items: center; border: 1px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer; font-weight: 700; color: var(--ink-soft); transition: background .15s, border-color .15s; line-height: 0; }
             .icon-btn:hover { background: var(--panel-soft); border-color: #d4ddd8; }
+            .action-icon-btn { width: 36px; height: 36px; display: inline-grid; place-items: center; flex: 0 0 36px; border: 0; border-radius: 9px; padding: 0; color: #fff; cursor: pointer; box-shadow: var(--shadow-sm); transition: filter .15s, transform .15s; }
+            .action-icon-btn:hover { filter: brightness(.9); transform: translateY(-1px); }
+            .action-icon-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+            .action-icon-btn.edit { background: var(--accent); }
+            .action-icon-btn.start, .action-icon-btn.open { background: var(--brand); }
+            .action-icon-btn.cancel { background: var(--danger); }
+            .production-details-table { min-width: 1000px; }
+            .production-table-scroll { overflow-x: auto; min-height: 430px; }
+            .production-details-table th:last-child, .production-details-table td:last-child { width: 126px; min-width: 126px; }
+            .production-line-actions { display: flex; align-items: center; flex-direction: row; flex-wrap: nowrap !important; gap: 6px; min-width: max-content; white-space: nowrap; }
+            .production-line-actions form { margin: 0; }
+            .production-line-actions .action-icon-btn { width: 34px; height: 34px; flex-basis: 34px; }
+            .table-action-menu { position: relative; display: inline-block; }
+            .table-action-menu > summary { list-style: none; }
+            .table-action-menu > summary::-webkit-details-marker { display: none; }
+            .table-action-menu[open] > summary { background: var(--brand-strong); }
+            .table-action-dropdown { position: absolute; z-index: 80; top: calc(100% + 7px); right: 0; width: 220px; border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 8px; box-shadow: 0 18px 40px rgba(16,24,40,.2); }
+            .table tbody tr:last-child .table-action-dropdown { top: auto; bottom: calc(100% + 7px); }
+            .table-action-heading { padding: 7px 10px 5px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+            .table-action-dropdown form { margin: 0; }
+            .table-action-option { width: 100%; display: flex; align-items: center; gap: 9px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); padding: 10px; text-align: left; cursor: pointer; font-weight: 700; }
+            .table-action-option:hover { background: var(--panel-soft); color: var(--ink); }
+            .table-action-option::before { content: ''; width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: #98a2b3; }
+            .table-action-option.edit::before { background: var(--accent); }
+            .table-action-option.start::before, .table-action-option.open::before { background: var(--brand); }
+            .table-action-option.cancel { color: var(--danger); }
+            .table-action-option.cancel::before { background: var(--danger); }
 
             @media (max-width: 960px) {
                 .shell { grid-template-columns: 1fr; }
@@ -501,7 +546,11 @@
                             ]],
                             ['key' => 'fnb-production', 'label' => 'F&B Production', 'icon' => 'i-package', 'links' => [
                                 ['show' => $fnbOn && $allows('catalog.view'), 'route' => 'admin.catalog.raw-materials.index', 'active' => request()->routeIs('admin.catalog.raw-materials.*'), 'icon' => 'i-package', 'label' => 'Raw Materials'],
-                                ['show' => $fnbOn && $allows('inventory.view'), 'route' => 'admin.inventory.production.index', 'active' => request()->routeIs('admin.inventory.production.*'), 'icon' => 'i-layers', 'label' => 'Production & Recipes'],
+                                ['show' => $fnbOn && $allows('inventory.view'), 'route' => 'admin.inventory.production.index', 'active' => request()->routeIs('admin.inventory.production.index', 'admin.inventory.production.show', 'admin.inventory.production.recipes.*', 'admin.inventory.production.finished-products.*'), 'icon' => 'i-layers', 'label' => 'Production & Recipes'],
+                                ['show' => $fnbOn && $allows('inventory.view'), 'route' => 'admin.inventory.production.runs.index', 'active' => request()->routeIs('admin.inventory.production.runs.*'), 'icon' => 'i-package', 'label' => 'Production Runs'],
+                                ['show' => $fnbOn && $allows('inventory.view'), 'route' => 'admin.inventory.production.planning', 'active' => request()->routeIs('admin.inventory.production.planning*', 'admin.inventory.production.orders*'), 'icon' => 'i-clipboard', 'label' => 'Production Planning'],
+                                ['show' => $fnbOn && $allows('inventory.view'), 'route' => 'admin.inventory.production.waste', 'active' => request()->routeIs('admin.inventory.production.waste*'), 'icon' => 'i-clipboard', 'label' => 'Waste Register'],
+                                ['show' => $fnbOn && $allows('inventory.view'), 'route' => 'admin.inventory.production.reports', 'active' => request()->routeIs('admin.inventory.production.reports'), 'icon' => 'i-chart', 'label' => 'Production Reports', 'target' => '_blank'],
                                 ['show' => $fnbOn && $allows('inventory.view'), 'route' => 'admin.inventory.requisitions.index', 'active' => request()->routeIs('admin.inventory.requisitions.*'), 'icon' => 'i-truck', 'label' => 'Requisitions'],
                             ]],
                             ['key' => 'restaurant-pos', 'label' => 'Restaurant POS', 'icon' => 'i-utensils', 'links' => [
@@ -526,7 +575,7 @@
                                 </summary>
                                 <div class="nav-sub">
                                     @foreach ($foldLinks as $link)
-                                        <a class="{{ $link['active'] ? 'active' : '' }}" href="{{ route($link['route'], $activeTenantRouteParams) }}" @if ($link['active']) aria-current="page" @endif><svg viewBox="0 0 24 24"><use href="#{{ $link['icon'] }}"/></svg><span>{{ $link['label'] }}</span></a>
+                                        <a class="{{ $link['active'] ? 'active' : '' }}" href="{{ route($link['route'], $activeTenantRouteParams) }}" @if ($link['active']) aria-current="page" @endif @if(isset($link['target'])) target="{{ $link['target'] }}" rel="noopener" @endif><svg viewBox="0 0 24 24"><use href="#{{ $link['icon'] }}"/></svg><span>{{ $link['label'] }}</span></a>
                                     @endforeach
                                 </div>
                             </details>
@@ -578,7 +627,8 @@
                     @endif
                     @if ($hasTenantModule('hrpayroll'))
                         @permission('hr.staff.view')
-                        <a class="{{ request()->routeIs('admin.hr-payroll.*') ? 'active' : '' }}" href="{{ route('admin.hr-payroll.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-badge"/></svg><span>HR &amp; Payroll</span></a>
+                        <a class="{{ request()->routeIs('admin.hr-payroll.index', 'admin.hr-payroll.staff.*', 'admin.hr-payroll.bonuses.*', 'admin.hr-payroll.deductions.*', 'admin.hr-payroll.payroll-runs.*') ? 'active' : '' }}" href="{{ route('admin.hr-payroll.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-badge"/></svg><span>HR &amp; Payroll</span></a>
+                        <a class="{{ request()->routeIs('admin.hr-payroll.workforce.*') ? 'active' : '' }}" href="{{ route('admin.hr-payroll.workforce.index', $activeTenantRouteParams) }}"><svg viewBox="0 0 24 24"><use href="#i-clipboard"/></svg><span>Shifts &amp; Attendance</span></a>
                         @endpermission
                     @endif
                     @if ($hasTenantModule('finance'))
@@ -1125,6 +1175,20 @@
                     const button = event.target.closest('[data-print-dialog]');
                     if (!button) return;
                     window.print();
+                });
+
+                document.querySelectorAll('details.table-action-menu').forEach((menu) => {
+                    menu.addEventListener('toggle', () => {
+                        if (!menu.open) return;
+                        document.querySelectorAll('details.table-action-menu[open]').forEach((other) => {
+                            if (other !== menu) other.removeAttribute('open');
+                        });
+                    });
+                });
+                document.addEventListener('click', (event) => {
+                    document.querySelectorAll('details.table-action-menu[open]').forEach((menu) => {
+                        if (!menu.contains(event.target)) menu.removeAttribute('open');
+                    });
                 });
 
                 activateTab(window.location.hash.replace('#', '') || document.querySelector('[data-default-tab]')?.dataset.defaultTab || '');

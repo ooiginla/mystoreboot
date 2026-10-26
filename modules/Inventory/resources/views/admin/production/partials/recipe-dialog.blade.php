@@ -35,6 +35,11 @@
                     <label>Recipe name</label>
                     <input name="name" required value="{{ old('name', $recipe?->name ?? $product->name) }}">
                 </div>
+                <div class="field full">
+                    <label>Preparation instructions</label>
+                    <textarea name="preparation_instructions" rows="7" maxlength="10000" placeholder="Enter the method step by step, for example:&#10;1. Preheat the oven.&#10;2. Mix the dry ingredients.&#10;3. Add the wet ingredients and knead.">{{ old('preparation_instructions', $recipe?->preparation_instructions) }}</textarea>
+                    <small class="subtle">These production notes stay attached to the recipe and are shown to the production team.</small>
+                </div>
                 <div class="field">
                     <label>Yield quantity</label>
                     <input name="yield_quantity" type="number" step="0.0001" min="0" required value="{{ old('yield_quantity', $recipe ? rtrim(rtrim((string) $recipe->yield_quantity, '0'), '.') : '') }}" placeholder="e.g. 10">

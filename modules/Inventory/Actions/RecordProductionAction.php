@@ -7,6 +7,7 @@ namespace Modules\Inventory\Actions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Inventory\Enums\InventoryMovementType;
+use Modules\Inventory\Enums\ProductionVarianceReason;
 use Modules\Inventory\Enums\StockCondition;
 use Modules\Inventory\Models\InventoryStockLevel;
 use Modules\Inventory\Models\ProductionOrder;
@@ -51,6 +52,8 @@ final class RecordProductionAction
      *     actual_yield_quantity: float|int|string,
      *     reference_number?: string|null,
      *     notes?: string|null,
+     *     production_lead_user_id?: int|null,
+     *     variance_reason?: string|null,
      *     produced_at?: string|null,
      *     items: array<int, array{component_product_variant_id: int, unit_id?: int|null, actual_quantity: float|int|string, planned_quantity?: float|int|string}>,
      * }  $data
@@ -62,6 +65,7 @@ final class RecordProductionAction
             $yield = $this->yieldFrom($data);
             $planned = $this->plannedFrom($data, $recipe);
             $sourceLocationId = (int) $data['source_location_id'];
+            $varianceReason = $this->varianceReasonFor($data, $planned, $yield);
 
             $order = ProductionOrder::query()->create([
                 'tenant_id' => $data['tenant_id'],
@@ -70,9 +74,11 @@ final class RecordProductionAction
                 'output_product_variant_id' => $recipe->output_product_variant_id,
                 'source_location_id' => $sourceLocationId,
                 'output_location_id' => (int) ($data['output_location_id'] ?? $sourceLocationId),
+                'production_lead_user_id' => $data['production_lead_user_id'] ?? null,
                 'reference_number' => $data['reference_number'] ?? null,
                 'planned_quantity' => $planned,
                 'actual_yield_quantity' => $yield,
+                'variance_reason' => $varianceReason,
                 'status' => ProductionOrder::STATUS_COMPLETED,
                 'produced_at' => $data['produced_at'] ?? now(),
                 'notes' => $data['notes'] ?? null,
@@ -84,8 +90,8 @@ final class RecordProductionAction
 
     /**
      * Start a batch: record the plan and hold each ingredient, scaled to it, at the source
-     * store. Nothing is deducted. Ingredients the store cannot fully cover are held as far
-     * as possible and named back, so the kitchen knows before it is halfway through.
+     * store. Nothing is deducted. The run is refused unless the source location can fully
+     * cover every ingredient, so a batch never starts with an incomplete hold.
      *
      * @param  array{
      *     tenant_id: string,
@@ -95,6 +101,7 @@ final class RecordProductionAction
      *     planned_quantity: float|int|string,
      *     reference_number?: string|null,
      *     notes?: string|null,
+     *     production_lead_user_id?: int|null,
      * }  $data
      * @return array{order: ProductionOrder, short: list<string>}
      */
@@ -106,6 +113,52 @@ final class RecordProductionAction
             $sourceLocationId = (int) $data['source_location_id'];
             $scale = $planned / max(0.0001, (float) $recipe->yield_quantity);
 
+            $requirements = [];
+
+            foreach ($recipe->items as $item) {
+                $plannedQuantity = Quantity::round((float) $item->quantity * (1 + (float) $item->wastage_percent / 100) * $scale);
+                $baseQuantity = $item->unit && $item->unit->isConvertible()
+                    ? $this->converter->toBase($plannedQuantity, $item->unit)
+                    : $plannedQuantity;
+                $variantId = (int) $item->component_product_variant_id;
+
+                $requirements[$variantId] ??= [
+                    'quantity' => 0.0,
+                    'name' => $item->componentVariant?->product?->name ?? 'An ingredient',
+                ];
+                $requirements[$variantId]['quantity'] = Quantity::round(
+                    (float) $requirements[$variantId]['quantity'] + $baseQuantity,
+                );
+            }
+
+            $shortages = [];
+
+            foreach ($requirements as $variantId => $requirement) {
+                $stockLevel = InventoryStockLevel::query()
+                    ->where('tenant_id', $data['tenant_id'])
+                    ->where('inventory_location_id', $sourceLocationId)
+                    ->where('product_variant_id', $variantId)
+                    ->lockForUpdate()
+                    ->first();
+                $available = max(0, (float) ($stockLevel?->quantity_available ?? 0));
+                $needed = (float) $requirement['quantity'];
+
+                if ($available < $needed - 0.00001) {
+                    $shortages[] = sprintf(
+                        '%s needs %s but only %s is available',
+                        $requirement['name'],
+                        Quantity::format($needed),
+                        Quantity::format($available),
+                    );
+                }
+            }
+
+            if ($shortages !== []) {
+                throw ValidationException::withMessages([
+                    'planned_quantity' => 'Production cannot start. '.implode('; ', $shortages).'.',
+                ]);
+            }
+
             $order = ProductionOrder::query()->create([
                 'tenant_id' => $data['tenant_id'],
                 'recipe_id' => $recipe->id,
@@ -113,6 +166,7 @@ final class RecordProductionAction
                 'output_product_variant_id' => $recipe->output_product_variant_id,
                 'source_location_id' => $sourceLocationId,
                 'output_location_id' => (int) ($data['output_location_id'] ?? $sourceLocationId),
+                'production_lead_user_id' => $data['production_lead_user_id'] ?? null,
                 'reference_number' => $data['reference_number'] ?? null,
                 'planned_quantity' => $planned,
                 'actual_yield_quantity' => 0,
@@ -120,8 +174,6 @@ final class RecordProductionAction
                 'started_at' => now(),
                 'notes' => $data['notes'] ?? null,
             ]);
-
-            $short = [];
 
             foreach ($recipe->items as $item) {
                 // Same amount the dialog shows: the recipe line, its waste, scaled to the plan.
@@ -135,33 +187,25 @@ final class RecordProductionAction
                     ? $this->converter->toBase($plannedQuantity, $item->unit)
                     : $plannedQuantity;
 
-                $available = (float) (InventoryStockLevel::query()
-                    ->where('tenant_id', $data['tenant_id'])
-                    ->where('inventory_location_id', $sourceLocationId)
-                    ->where('product_variant_id', $item->component_product_variant_id)
-                    ->first()?->quantity_available ?? 0);
-
-                $held = Quantity::round(max(0.0, min($baseQuantity, $available)));
-
-                if ($held > 0) {
-                    $this->reservations->reserve($data['tenant_id'], $sourceLocationId, (int) $item->component_product_variant_id, $held);
-                }
-
-                if ($held < $baseQuantity - 0.00001) {
-                    $short[] = $item->componentVariant?->product?->name ?? 'An ingredient';
-                }
+                $this->reservations->reserve(
+                    $data['tenant_id'],
+                    $sourceLocationId,
+                    (int) $item->component_product_variant_id,
+                    $baseQuantity,
+                    $item->componentVariant?->product?->name,
+                );
 
                 $order->items()->create([
                     'tenant_id' => $data['tenant_id'],
                     'component_product_variant_id' => $item->component_product_variant_id,
                     'unit_id' => $item->unit_id,
                     'planned_quantity' => $plannedQuantity,
-                    'reserved_base_quantity' => $held,
+                    'reserved_base_quantity' => $baseQuantity,
                     'actual_quantity' => 0,
                 ]);
             }
 
-            return ['order' => $order->refresh()->load('items'), 'short' => $short];
+            return ['order' => $order->refresh()->load('items'), 'short' => []];
         });
     }
 
@@ -173,6 +217,7 @@ final class RecordProductionAction
      *     actual_yield_quantity: float|int|string,
      *     output_location_id?: int|null,
      *     notes?: string|null,
+     *     variance_reason?: string|null,
      *     items?: array<int|string, array{actual_quantity?: float|int|string|null}>,
      * }  $data  items keyed by production item id; a line left out uses its planned amount
      */
@@ -188,6 +233,7 @@ final class RecordProductionAction
             }
 
             $yield = $this->yieldFrom($data);
+            $varianceReason = $this->varianceReasonFor($data, (float) $order->planned_quantity, $yield);
 
             // Hand the held ingredients back first, so the real consumption below is checked
             // against what is truly on the shelf rather than blocked by its own hold.
@@ -198,6 +244,7 @@ final class RecordProductionAction
             $order->update([
                 'output_location_id' => ! empty($data['output_location_id']) ? (int) $data['output_location_id'] : $order->output_location_id,
                 'actual_yield_quantity' => $yield,
+                'variance_reason' => $varianceReason,
                 'status' => ProductionOrder::STATUS_COMPLETED,
                 'produced_at' => now(),
                 'notes' => $note === '' ? $order->notes : trim(($order->notes ? $order->notes."\n" : '').$note),
@@ -343,6 +390,10 @@ final class RecordProductionAction
         $order->update([
             'total_cost_minor' => $totalCostMinor,
             'unit_cost_minor' => $finishedUnitCostMinor,
+            'variance_value_minor' => (int) round(
+                abs($yield - (float) $order->planned_quantity)
+                * ($totalCostMinor / max(0.0001, (float) $order->planned_quantity)),
+            ),
         ]);
 
         return $order->refresh()->load('items');
@@ -409,6 +460,31 @@ final class RecordProductionAction
         }
 
         return $planned;
+    }
+
+    /** @param array<string, mixed> $data */
+    private function varianceReasonFor(array $data, float $planned, float $actual): ?string
+    {
+        if (abs($actual - $planned) < 0.00001) {
+            return null;
+        }
+
+        // Extra finished units are usable production output, not waste. Classify the
+        // positive variance consistently instead of allowing a loss reason such as
+        // "Burnt" to be attached to sellable surplus stock.
+        if ($actual > $planned) {
+            return ProductionVarianceReason::Overproduction->value;
+        }
+
+        $reason = ProductionVarianceReason::tryFrom((string) ($data['variance_reason'] ?? ''));
+
+        if (! $reason || $reason === ProductionVarianceReason::Overproduction) {
+            throw ValidationException::withMessages([
+                'variance_reason' => 'Select a loss reason when actual yield is below the expected yield.',
+            ]);
+        }
+
+        return $reason->value;
     }
 
     private function resolveUnit(mixed $unitId): ?UnitOfMeasure

@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Modules\Access\Enums\MembershipStatus;
 use Modules\Business\Models\Branch;
@@ -19,12 +21,15 @@ use Modules\Catalog\Enums\StockPolicy;
 use Modules\Catalog\Models\Product;
 use Modules\Catalog\Models\ProductVariant;
 use Modules\Inventory\Actions\RecordProductionAction;
+use Modules\Inventory\Enums\ProductionVarianceReason;
 use Modules\Inventory\Enums\UnitDimension;
 use Modules\Inventory\Http\Requests\ProductionRequest;
 use Modules\Inventory\Http\Requests\RecipeRequest;
 use Modules\Inventory\Models\InventoryLocation;
 use Modules\Inventory\Models\InventoryStockLevel;
 use Modules\Inventory\Models\ProductionOrder;
+use Modules\Inventory\Models\ProductionPlan;
+use Modules\Inventory\Models\ProductionWorkOrder;
 use Modules\Inventory\Models\Recipe;
 use Modules\Inventory\Models\UnitCategory;
 use Modules\Inventory\Models\UnitOfMeasure;
@@ -87,7 +92,7 @@ final class ProductionController extends Controller
         ]);
     }
 
-    /** Per-finished-product detail: recipe, margins, production history. */
+    /** Per-finished-product recipe and margin detail. */
     public function show(Request $request, Product $product): View
     {
         $tenant = $this->tenantFromRequest($request);
@@ -150,27 +155,6 @@ final class ProductionController extends Controller
                 'food_cost_pct' => $sellMinor > 0 ? round($unitCostMinor / $sellMinor * 100, 1) : null,
                 'margin_pct' => $sellMinor > 0 ? round(($sellMinor - $unitCostMinor) / $sellMinor * 100, 1) : null,
             ],
-            'orders' => ProductionOrder::query()
-                ->with(['sourceLocation', 'outputLocation'])
-                ->where('tenant_id', $tenant->id)
-                ->where('output_product_variant_id', $variant->id)
-                ->when($activeBranch, fn ($query) => $query
-                    ->whereHas('sourceLocation', fn ($location) => $location->where('branch_id', $activeBranch->id))
-                    ->whereHas('outputLocation', fn ($location) => $location->where('branch_id', $activeBranch->id)), fn ($query) => $query->whereRaw('1 = 0'))
-                ->latest('id')
-                ->limit(50)
-                ->get(),
-            // Batches started and not yet finished — shown first, with their held ingredients.
-            'inProgress' => ProductionOrder::query()
-                ->with(['sourceLocation', 'outputLocation', 'items.componentVariant.product', 'items.unit'])
-                ->where('tenant_id', $tenant->id)
-                ->where('output_product_variant_id', $variant->id)
-                ->where('status', ProductionOrder::STATUS_IN_PROGRESS)
-                ->when($activeBranch, fn ($query) => $query
-                    ->whereHas('sourceLocation', fn ($location) => $location->where('branch_id', $activeBranch->id))
-                    ->whereHas('outputLocation', fn ($location) => $location->where('branch_id', $activeBranch->id)), fn ($query) => $query->whereRaw('1 = 0'))
-                ->oldest('started_at')
-                ->get(),
             'locations' => InventoryLocation::query()->where('tenant_id', $tenant->id)
                 ->when($activeBranch, fn ($query) => $query->where('branch_id', $activeBranch->id), fn ($query) => $query->whereRaw('1 = 0'))
                 ->where('status', 'active')->orderBy('name')->get(),
@@ -190,6 +174,79 @@ final class ProductionController extends Controller
             // Available stock per location per variant, so the produce dialog can show
             // what the chosen source store actually holds before anyone commits a batch.
             'jsStock' => $this->availabilityMap($tenant->id, $activeBranch?->id),
+            'productionLeads' => $this->productionLeads($tenant, $activeBranch),
+            'varianceReasons' => ProductionVarianceReason::options(),
+        ]);
+    }
+
+    /** Started batches awaiting completion, followed by recent yield history. */
+    public function runs(Request $request): View
+    {
+        $tenant = $this->tenantFromRequest($request);
+        $activeBranch = $this->activeBranch($request, $tenant);
+
+        $relations = [
+            'sourceLocation',
+            'outputLocation',
+            'productionLead',
+            'productionLeadStaff',
+            'recipe.yieldUnit',
+            'outputVariant.product',
+        ];
+
+        $inProgress = ProductionOrder::query()
+            ->with([...$relations, 'items.componentVariant.product', 'items.unit'])
+            ->where('tenant_id', $tenant->id)
+            ->where('status', ProductionOrder::STATUS_IN_PROGRESS)
+            ->when($activeBranch, fn ($query) => $query
+                ->whereHas('sourceLocation', fn ($location) => $location->where('branch_id', $activeBranch->id))
+                ->whereHas('outputLocation', fn ($location) => $location->where('branch_id', $activeBranch->id)), fn ($query) => $query->whereRaw('1 = 0'))
+            ->oldest('started_at')
+            ->get();
+
+        $costMap = InventoryStockLevel::query()
+            ->where('tenant_id', $tenant->id)
+            ->when($activeBranch, fn ($query) => $query->whereHas('location', fn ($location) => $location->where('branch_id', $activeBranch->id)), fn ($query) => $query->whereRaw('1 = 0'))
+            ->get(['product_variant_id', 'average_cost_minor'])
+            ->groupBy('product_variant_id')
+            ->map(fn (Collection $rows): int => (int) $rows->max('average_cost_minor'));
+
+        foreach ($inProgress as $run) {
+            $estimatedTotalMinor = $run->items->sum(function ($item) use ($costMap): int {
+                $quantity = (float) $item->planned_quantity;
+                $baseQuantity = $item->unit && $item->unit->isConvertible()
+                    ? $this->converter->toBase($quantity, $item->unit)
+                    : $quantity;
+
+                return (int) round($baseQuantity * (int) ($costMap[$item->component_product_variant_id] ?? 0));
+            });
+            $run->setAttribute('estimated_unit_cost_minor', (int) round(
+                $estimatedTotalMinor / max(0.0001, (float) $run->planned_quantity),
+            ));
+        }
+
+        $recentOrders = ProductionOrder::query()
+            ->with($relations)
+            ->where('tenant_id', $tenant->id)
+            ->where('status', '!=', ProductionOrder::STATUS_IN_PROGRESS)
+            ->when($activeBranch, fn ($query) => $query
+                ->whereHas('sourceLocation', fn ($location) => $location->where('branch_id', $activeBranch->id))
+                ->whereHas('outputLocation', fn ($location) => $location->where('branch_id', $activeBranch->id)), fn ($query) => $query->whereRaw('1 = 0'))
+            ->latest('id')
+            ->limit(100)
+            ->get();
+
+        return view('inventory::admin.production.runs', [
+            'tenant' => $tenant,
+            'tenants' => $this->visibleTenantsFor($request->user()),
+            'isPlatformAdmin' => $request->user()->is_platform_admin,
+            'branch' => $activeBranch,
+            'inProgress' => $inProgress,
+            'recentOrders' => $recentOrders,
+            'locations' => InventoryLocation::query()->where('tenant_id', $tenant->id)
+                ->when($activeBranch, fn ($query) => $query->where('branch_id', $activeBranch->id), fn ($query) => $query->whereRaw('1 = 0'))
+                ->where('status', 'active')->orderBy('name')->get(),
+            'varianceReasons' => ProductionVarianceReason::options(),
         ]);
     }
 
@@ -287,6 +344,7 @@ final class ProductionController extends Controller
             'prep_location_id' => $request->input('prep_station_id') ? (int) $request->integer('prep_station_id') : null,
             'shelf_life_days' => $request->filled('shelf_life_days') ? (int) $request->integer('shelf_life_days') : null,
             'name' => (string) $request->string('name'),
+            'preparation_instructions' => $request->string('preparation_instructions')->trim()->toString() ?: null,
             'yield_quantity' => Quantity::round((float) $request->input('yield_quantity')),
             'version' => 1,
             'is_active' => true,
@@ -309,6 +367,7 @@ final class ProductionController extends Controller
             'prep_location_id' => $request->input('prep_station_id') ? (int) $request->integer('prep_station_id') : null,
             'shelf_life_days' => $request->filled('shelf_life_days') ? (int) $request->integer('shelf_life_days') : null,
             'name' => (string) $request->string('name'),
+            'preparation_instructions' => $request->string('preparation_instructions')->trim()->toString() ?: null,
             'yield_quantity' => Quantity::round((float) $request->input('yield_quantity')),
             'version' => (int) $recipe->version + 1,
         ]);
@@ -336,20 +395,23 @@ final class ProductionController extends Controller
         $recipe = Recipe::query()->where('tenant_id', $tenant->id)->findOrFail((int) $request->integer('recipe_id'));
         $this->locationInBranch($tenant, $activeBranch, (int) $request->integer('source_location_id'));
         $this->assertOptionalLocationInBranch($tenant, $activeBranch, $request->integer('output_location_id'));
+        $productionLead = $this->productionLeadInBranch($tenant, $activeBranch, (int) $request->integer('production_lead_user_id'));
 
         $action->execute([
             'tenant_id' => $tenant->id,
             'recipe_id' => $recipe->id,
             'source_location_id' => (int) $request->integer('source_location_id'),
             'output_location_id' => $request->input('output_location_id') ? (int) $request->integer('output_location_id') : null,
+            'production_lead_user_id' => $productionLead->id,
             'planned_quantity' => $request->filled('planned_quantity') ? (float) $request->input('planned_quantity') : null,
             'actual_yield_quantity' => (float) $request->input('actual_yield_quantity'),
+            'variance_reason' => $request->input('variance_reason'),
             'reference_number' => $request->input('reference_number'),
             'notes' => $request->input('notes'),
             'items' => (array) $request->input('items', []),
         ]);
 
-        return redirect()->to($this->showUrlForVariant($request, $recipe->output_product_variant_id))->with('status', 'Production recorded.');
+        return redirect()->to($this->runsUrl($request))->with('status', 'Production recorded.');
     }
 
     /**
@@ -365,6 +427,7 @@ final class ProductionController extends Controller
             'recipe_id' => ['required', 'integer'],
             'source_location_id' => ['required', 'integer'],
             'output_location_id' => ['nullable', 'integer'],
+            'production_lead_user_id' => ['required', 'integer', 'exists:users,id'],
             'planned_quantity' => ['required', 'numeric', 'gt:0', 'max:999999999'],
             'reference_number' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:2000'],
@@ -375,12 +438,14 @@ final class ProductionController extends Controller
         $output = ! empty($data['output_location_id'])
             ? $this->locationInBranch($tenant, $activeBranch, (int) $data['output_location_id'])
             : null;
+        $productionLead = $this->productionLeadInBranch($tenant, $activeBranch, (int) $data['production_lead_user_id']);
 
         $result = $action->start([
             'tenant_id' => $tenant->id,
             'recipe_id' => $recipe->id,
             'source_location_id' => $source->id,
             'output_location_id' => $output?->id,
+            'production_lead_user_id' => $productionLead->id,
             'planned_quantity' => (float) $data['planned_quantity'],
             'reference_number' => $data['reference_number'] ?? null,
             'notes' => $data['notes'] ?? null,
@@ -392,11 +457,7 @@ final class ProductionController extends Controller
             $source->name,
         );
 
-        if ($result['short'] !== []) {
-            $message .= ' Not enough in stock to hold all of: '.implode(', ', $result['short']).'.';
-        }
-
-        return redirect()->to($this->showUrlForVariant($request, $recipe->output_product_variant_id))->with('status', $message);
+        return redirect()->to($this->runsUrl($request))->with('status', $message);
     }
 
     /** Finish a started batch with the real yield and the amounts actually used. */
@@ -409,6 +470,7 @@ final class ProductionController extends Controller
 
         $data = $request->validate([
             'actual_yield_quantity' => ['required', 'numeric', 'gt:0', 'max:999999999'],
+            'variance_reason' => ['nullable', Rule::enum(ProductionVarianceReason::class)],
             'output_location_id' => ['nullable', 'integer'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'items' => ['nullable', 'array'],
@@ -420,8 +482,11 @@ final class ProductionController extends Controller
         }
 
         $order = $action->complete($order, $data);
+        ProductionPlan::query()->where('tenant_id', $tenant->id)->where('production_order_id', $order->id)
+            ->update(['status' => 'completed']);
+        $this->syncWorkOrderStatus($order);
 
-        return redirect()->to($this->showUrlForVariant($request, $order->output_product_variant_id))->with('status', sprintf(
+        return redirect()->to($this->runsUrl($request))->with('status', sprintf(
             'Production completed: %s made. The ingredients used were deducted and the finished goods added to stock.',
             Quantity::format($order->actual_yield_quantity),
         ));
@@ -434,9 +499,59 @@ final class ProductionController extends Controller
         $this->assertOrderInBranch($order, $this->activeBranchOrFail($request, $tenant));
 
         $action->cancel($order, $request->string('reason')->toString() ?: null);
+        ProductionPlan::query()->where('tenant_id', $tenant->id)->where('production_order_id', $order->id)
+            ->update(['status' => 'cancelled']);
+        $this->syncWorkOrderStatus($order->refresh());
 
-        return redirect()->to($this->showUrlForVariant($request, $order->output_product_variant_id))
+        return redirect()->to($this->runsUrl($request))
             ->with('status', 'Production cancelled. The held ingredients are available again.');
+    }
+
+    /** @return Collection<int, User> */
+    private function productionLeads(Tenant $tenant, ?Branch $branch): Collection
+    {
+        if (! $branch) {
+            return collect();
+        }
+
+        return User::query()
+            ->whereHas('tenantMemberships', fn ($query) => $query
+                ->where('tenant_id', $tenant->id)
+                ->where('status', MembershipStatus::Active->value)
+                ->where(fn ($scope) => $scope->whereNull('branch_id')->orWhere('branch_id', $branch->id)))
+            ->orderBy('name')
+            ->get();
+    }
+
+    private function productionLeadInBranch(Tenant $tenant, Branch $branch, int $userId): User
+    {
+        $user = $this->productionLeads($tenant, $branch)->firstWhere('id', $userId);
+
+        if (! $user) {
+            throw ValidationException::withMessages([
+                'production_lead_user_id' => 'Select an active production lead assigned to this branch.',
+            ]);
+        }
+
+        return $user;
+    }
+
+    private function syncWorkOrderStatus(ProductionOrder $order): void
+    {
+        if (! $order->production_work_order_id) {
+            return;
+        }
+
+        $workOrder = ProductionWorkOrder::query()->with(['productionRuns', 'plans'])->find($order->production_work_order_id);
+        if (! $workOrder) {
+            return;
+        }
+
+        $planStatuses = $workOrder->plans->pluck('status');
+        $status = $planStatuses->contains('in_progress') ? 'in_progress'
+            : ($planStatuses->contains('planned') ? 'planned'
+                : ($planStatuses->contains('completed') ? 'completed' : 'cancelled'));
+        $workOrder->update(['status' => $status]);
     }
 
     /**
@@ -496,6 +611,13 @@ final class ProductionController extends Controller
         $tenantId = $request->string('tenant')->toString();
 
         return route('admin.inventory.production.index', $tenantId !== '' ? ['tenant' => $tenantId] : []);
+    }
+
+    private function runsUrl(Request $request): string
+    {
+        $tenantId = $request->string('tenant')->toString();
+
+        return route('admin.inventory.production.runs.index', $tenantId !== '' ? ['tenant' => $tenantId] : []);
     }
 
     private function tenantFromRequest(Request $request): Tenant
