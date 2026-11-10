@@ -330,6 +330,26 @@
         @media (max-width: 560px) { .profile-grid { grid-template-columns: 1fr; } }
         .online-store-section-panel[hidden] { display: none; }
         .online-store-section-panel { display: grid; gap: 14px; }
+        .domain-summary-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: var(--shadow-sm); }
+        .domain-summary-copy { min-width: 0; display: grid; gap: 4px; }
+        .domain-summary-copy strong { overflow-wrap: anywhere; color: var(--ink); font-size: 16px; }
+        .domain-card-list { display: grid; gap: 12px; }
+        .domain-card { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: var(--shadow-sm); }
+        .domain-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+        .domain-card-title { min-width: 0; display: grid; gap: 5px; }
+        .domain-card-title strong { overflow-wrap: anywhere; font-size: 15px; color: var(--ink); }
+        .domain-statuses { display: flex; gap: 6px; flex-wrap: wrap; }
+        .dns-instructions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px; border-radius: 12px; background: var(--panel-soft); border: 1px solid var(--line); }
+        .dns-record { min-width: 0; display: grid; gap: 5px; }
+        .dns-record span { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+        .dns-record code { overflow-wrap: anywhere; color: var(--ink); font-size: 12px; }
+        .domain-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .domain-actions form { margin: 0; }
+        .connect-domain-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-soft); }
+        @media (max-width: 700px) {
+            .domain-summary-card, .domain-card-head { align-items: stretch; flex-direction: column; }
+            .dns-instructions, .connect-domain-form { grid-template-columns: 1fr; }
+        }
         .rich-text-editor { overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #fff; transition: border-color .15s, box-shadow .15s; }
         .rich-text-editor:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-050); }
         .rich-text-toolbar { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; padding: 7px; border-bottom: 1px solid var(--line); background: var(--panel-soft); }
@@ -789,6 +809,7 @@
                                     <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-socials">Socials</button>
                                     <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-pages">Pages</button>
                                     <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-faq">FAQ</button>
+                                    <button class="btn secondary" type="button" role="tab" aria-selected="false" data-online-store-section-target="online-store-domains">Custom Domains</button>
                                 </div>
 
                                 <div class="setup-section online-store-section-panel" id="online-store-basics" role="tabpanel" data-online-store-section-panel>
@@ -1279,6 +1300,135 @@
                                     </div>
                                 </dialog>
                             </form>
+
+                            @php
+                                $managedDomain = $tenantDomains->firstWhere('domain_type', \Modules\Tenancy\Models\TenantDomain::TYPE_STOREBOOT);
+                                $customDomains = $tenantDomains->where('domain_type', \Modules\Tenancy\Models\TenantDomain::TYPE_CUSTOM);
+                                $customDomainTarget = config('storefront.custom_domain_target', 'custom.storeboot.com');
+                            @endphp
+                            <div class="setup-section online-store-section-panel" id="online-store-domains" role="tabpanel" data-online-store-section-panel hidden>
+                                <div>
+                                    <h3 class="setup-section-title">Custom Domains</h3>
+                                    <p class="subtle">Connect a domain you own to the public storefront. Merchant sign-in and admin pages remain on Storeboot.</p>
+                                </div>
+
+                                <div class="domain-summary-card">
+                                    <div class="domain-summary-copy">
+                                        <span class="subtle">Your Storeboot domain</span>
+                                        <strong>{{ $managedDomain?->domain ?? (($onlineStore?->subdomain ?: $onlineStore?->username) ? ($onlineStore?->subdomain ?: $onlineStore?->username).'.'.(config('storefront.base_domain') ?: 'storeboot.com') : 'Save Store Basics to create your domain') }}</strong>
+                                    </div>
+                                    @if ($managedDomain)
+                                        <div class="domain-statuses">
+                                            <span class="status-pill status-pill--success"><span class="dot"></span>Active</span>
+                                            @if ($managedDomain->is_primary)<span class="status-pill status-pill--neutral">Primary</span>@endif
+                                        </div>
+                                        @unless ($managedDomain->is_primary)
+                                            <form method="POST" action="{{ route('admin.business.online-store.domains.primary', $managedDomain) }}">
+                                                @csrf
+                                                <button class="btn secondary" type="submit">Make primary</button>
+                                            </form>
+                                        @endunless
+                                    @endif
+                                </div>
+
+                                @if (! $onlineStore)
+                                    <div class="empty">Save the Online Store Basics before connecting a custom domain.</div>
+                                @elseif ($isStarterPlan)
+                                    <div class="empty">Custom domains are available on Business Growth and higher plans.</div>
+                                @elseif ($customDomains->isEmpty())
+                                    <form class="connect-domain-form" method="POST" action="{{ route('admin.business.online-store.domains.store') }}">
+                                        @csrf
+                                        <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                                        <input type="hidden" name="online_store_section" value="online-store-domains">
+                                        <div class="field">
+                                            <label for="custom-domain">Connect your own domain</label>
+                                            <input id="custom-domain" name="domain" value="{{ old('domain') }}" placeholder="www.mybakery.com" autocomplete="url" required>
+                                            <small>Enter a root domain or subdomain. Protocols and paths are removed automatically.</small>
+                                        </div>
+                                        <button class="btn primary" type="submit">Connect domain</button>
+                                    </form>
+                                @endif
+
+                                @if ($customDomains->isNotEmpty())
+                                    <div class="domain-card-list">
+                                        @foreach ($customDomains as $domain)
+                                            @php
+                                                $domainActive = $domain->status === \Modules\Tenancy\Models\TenantDomain::STATUS_ACTIVE;
+                                                $domainFailed = $domain->status === \Modules\Tenancy\Models\TenantDomain::STATUS_FAILED;
+                                                $customDomainTargetIp = trim((string) config('storefront.custom_domain_target_ip'));
+                                                $connectionRecordType = $domain->isApex()
+                                                    ? ($customDomainTargetIp !== '' ? 'A' : 'ALIAS / ANAME')
+                                                    : 'CNAME';
+                                                $connectionRecordValue = $domain->isApex() && $customDomainTargetIp !== ''
+                                                    ? $customDomainTargetIp
+                                                    : $customDomainTarget;
+                                            @endphp
+                                            <article class="domain-card">
+                                                <div class="domain-card-head">
+                                                    <div class="domain-card-title">
+                                                        <strong>{{ $domain->domain }}</strong>
+                                                        <span class="subtle">Last checked: {{ $domain->last_dns_check_at?->diffForHumans() ?? 'Not checked yet' }}</span>
+                                                    </div>
+                                                    <div class="domain-statuses">
+                                                        <span class="status-pill status-pill--{{ $domainActive ? 'success' : ($domainFailed ? 'danger' : 'warn') }}"><span class="dot"></span>{{ ucfirst(strtolower($domain->status)) }}</span>
+                                                        <span class="status-pill status-pill--{{ $domain->ssl_status === 'ACTIVE' ? 'success' : ($domain->ssl_status === 'FAILED' ? 'danger' : 'neutral') }}">SSL {{ ucfirst(strtolower($domain->ssl_status)) }}</span>
+                                                        @if ($domain->is_primary)<span class="status-pill status-pill--neutral">Primary</span>@endif
+                                                    </div>
+                                                </div>
+
+                                                @unless ($domainActive)
+                                                    <div>
+                                                        <strong>DNS setup</strong>
+                                                        <p class="subtle">Add both records with your DNS provider. DNS changes can take time to propagate.</p>
+                                                    </div>
+                                                    <div class="dns-instructions">
+                                                        <div class="dns-record">
+                                                            <span>{{ $connectionRecordType }} · {{ $domain->dnsHostLabel() }}</span>
+                                                            <code>{{ $connectionRecordValue }}</code>
+                                                        </div>
+                                                        <div class="dns-record">
+                                                            <span>TXT · {{ $domain->verificationHost() }}</span>
+                                                            <code>{{ $domain->verificationRecordValue() }}</code>
+                                                        </div>
+                                                    </div>
+                                                @endunless
+
+                                                @if ($domain->failure_reason)
+                                                    <div class="alert errors">{{ $domain->failure_reason }}</div>
+                                                @endif
+
+                                                <div class="domain-actions">
+                                                    @unless ($domainActive)
+                                                        <form method="POST" action="{{ route('admin.business.online-store.domains.verify', $domain) }}">
+                                                            @csrf
+                                                            <button class="btn secondary" type="submit">Verify domain</button>
+                                                        </form>
+                                                    @endunless
+                                                    @if ($isPlatformAdmin && $domain->status === \Modules\Tenancy\Models\TenantDomain::STATUS_VERIFIED)
+                                                        <form method="POST" action="{{ route('admin.business.online-store.domains.activate', $domain) }}">
+                                                            @csrf
+                                                            <button class="btn primary" type="submit">Mark SSL active</button>
+                                                        </form>
+                                                    @endif
+                                                    @if ($domainActive && ! $domain->is_primary)
+                                                        <form method="POST" action="{{ route('admin.business.online-store.domains.primary', $domain) }}">
+                                                            @csrf
+                                                            <button class="btn primary" type="submit">Make primary</button>
+                                                        </form>
+                                                    @endif
+                                                    <form method="POST" action="{{ route('admin.business.online-store.domains.destroy', $domain) }}" onsubmit="return confirm('Remove {{ $domain->domain }} from this storefront?');">
+                                                        @csrf
+                                                        @method('DELETE')
+                                                        <button class="btn danger" type="submit">Remove</button>
+                                                    </form>
+                                                </div>
+                                            </article>
+                                        @endforeach
+                                    </div>
+                                @else
+                                    <div class="empty">No custom domains connected yet.</div>
+                                @endif
+                            </div>
                         @endif
                     </div>
                 </section>

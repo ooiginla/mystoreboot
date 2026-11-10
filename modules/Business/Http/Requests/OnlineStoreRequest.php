@@ -10,6 +10,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use Modules\Business\Models\OnlineStore;
 use Modules\Business\Support\BusinessBankAccountOptions;
+use Modules\Sales\Enums\PayoutMode;
 use Modules\Tenancy\Models\Tenant;
 
 final class OnlineStoreRequest extends FormRequest
@@ -88,6 +89,7 @@ final class OnlineStoreRequest extends FormRequest
                 'online-store-socials',
                 'online-store-pages',
                 'online-store-faq',
+                'online-store-domains',
             ])],
             'username' => [
                 'required',
@@ -136,7 +138,7 @@ final class OnlineStoreRequest extends FormRequest
             'settlement_bank_account.bank_code' => ['nullable', 'string', 'max:20'],
             'settlement_bank_account.account_number' => ['nullable', 'string', 'max:80'],
             'settlement_bank_account.account_name' => ['nullable', 'string', 'max:160'],
-            'payout_mode' => ['nullable', Rule::in(array_column(\Modules\Sales\Enums\PayoutMode::cases(), 'value'))],
+            'payout_mode' => ['nullable', Rule::in(array_column(PayoutMode::cases(), 'value'))],
             'bank_account_key' => ['nullable', 'string', 'size:40'],
             'maintenance_mode' => ['boolean'],
             'shipping_options' => ['array', 'max:30'],

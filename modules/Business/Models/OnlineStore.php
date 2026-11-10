@@ -13,6 +13,7 @@ use Illuminate\Support\Str;
 use Modules\Catalog\Actions\EnsureDefaultProductCategoryAction;
 use Modules\Catalog\Models\ProductCategory;
 use Modules\Catalog\Models\ProductCollection;
+use Modules\Tenancy\Support\TenantDomainService;
 
 final class OnlineStore extends Model
 {
@@ -42,6 +43,10 @@ final class OnlineStore extends Model
             $category = app(EnsureDefaultProductCategoryAction::class)->execute((string) $store->tenant_id);
 
             $store->categories()->syncWithoutDetaching([$category->id]);
+        });
+
+        self::saved(function (OnlineStore $store): void {
+            app(TenantDomainService::class)->syncStorebootDomain($store);
         });
     }
 

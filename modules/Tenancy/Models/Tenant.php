@@ -7,6 +7,7 @@ namespace Modules\Tenancy\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Access\Models\Role;
 use Modules\Access\Models\TenantMembership;
@@ -61,5 +62,17 @@ final class Tenant extends Model
     public function memberships(): HasMany
     {
         return $this->hasMany(TenantMembership::class);
+    }
+
+    public function domains(): HasMany
+    {
+        return $this->hasMany(TenantDomain::class);
+    }
+
+    public function primaryDomain(): HasOne
+    {
+        return $this->hasOne(TenantDomain::class)
+            ->where('is_primary', true)
+            ->where('status', TenantDomain::STATUS_ACTIVE);
     }
 }

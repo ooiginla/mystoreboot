@@ -5,6 +5,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Modules\Storefront\Http\Middleware\ValidateStorefrontHost;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -15,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->redirectGuestsTo(fn (Request $request): string => route('login'));
+        $middleware->web(append: [ValidateStorefrontHost::class]);
 
         // Payment webhooks are server-to-server POSTs from the gateway; they carry no CSRF
         // token and are authenticated by signature verification in the controller.

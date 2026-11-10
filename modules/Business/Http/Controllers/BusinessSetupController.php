@@ -6,6 +6,7 @@ namespace Modules\Business\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\ActiveBranchManager;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -28,6 +29,7 @@ use Modules\Business\Actions\SaveBusinessProfileAction;
 use Modules\Business\Enums\BusinessType;
 use Modules\Business\Http\Requests\BranchRequest;
 use Modules\Business\Http\Requests\BusinessProfileRequest;
+use Modules\Business\Http\Requests\CustomDomainRequest;
 use Modules\Business\Http\Requests\DepartmentRequest;
 use Modules\Business\Http\Requests\OnlineStoreRequest;
 use Modules\Business\Http\Requests\UpdateDepartmentRequest;
@@ -57,6 +59,8 @@ use Modules\Subscriptions\Models\TenantSubscription;
 use Modules\Subscriptions\Support\TenantModuleAccess;
 use Modules\Tenancy\Enums\CommerceMode;
 use Modules\Tenancy\Models\Tenant;
+use Modules\Tenancy\Models\TenantDomain;
+use Modules\Tenancy\Support\TenantDomainService;
 
 final class BusinessSetupController extends Controller
 {
@@ -186,6 +190,9 @@ final class BusinessSetupController extends Controller
             'onlineStore' => $tenant
                 ? OnlineStore::query()->with(['categories', 'fulfilmentBranch'])->where('tenant_id', $tenant->id)->first()
                 : null,
+            'tenantDomains' => $tenant
+                ? TenantDomain::query()->where('tenant_id', $tenant->id)->orderByDesc('is_primary')->orderBy('domain')->get()
+                : collect(),
             'productCategories' => $tenant
                 ? ProductCategory::query()->where('tenant_id', $tenant->id)->orderBy('name')->get()
                 : collect(),
@@ -196,6 +203,185 @@ final class BusinessSetupController extends Controller
             'payoutModes' => PayoutMode::cases(),
             'payoutProfile' => (array) ($tenant->settings['payout'] ?? []),
         ];
+    }
+
+    public function connectCustomDomain(
+        CustomDomainRequest $request,
+        TenantDomainService $domains,
+    ): RedirectResponse {
+        $data = $request->validated();
+        $this->authorizeTenantIdAccess($request->user(), $data['tenant_id']);
+        $tenant = Tenant::query()->findOrFail($data['tenant_id']);
+
+        if (! OnlineStore::query()->where('tenant_id', $tenant->id)->exists()) {
+            throw ValidationException::withMessages([
+                'domain' => 'Save the Online Store Basics before connecting a custom domain.',
+            ]);
+        }
+
+        if (TenantDomain::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('domain_type', TenantDomain::TYPE_CUSTOM)
+            ->exists()) {
+            throw ValidationException::withMessages([
+                'domain' => 'This Storeboot business already has a custom domain. Remove it before connecting another one.',
+            ]);
+        }
+
+        $planSlug = DB::table('tenant_subscriptions')
+            ->join('plans', 'plans.id', '=', 'tenant_subscriptions.plan_id')
+            ->where('tenant_subscriptions.tenant_id', $tenant->id)
+            ->latest('tenant_subscriptions.id')
+            ->value('plans.slug');
+
+        if ($planSlug === 'starter') {
+            throw ValidationException::withMessages([
+                'domain' => 'Custom domains are not available on the Starter plan.',
+            ]);
+        }
+
+        $domain = $domains->connect($tenant, $data['domain']);
+
+        app(AuditLogger::class)->log(
+            $tenant->id,
+            $request->user(),
+            'custom_domain.added',
+            "Connected custom domain {$domain->domain} for verification.",
+            'storefront',
+            'tenant_domain',
+            (string) $domain->id,
+            ['domain' => $domain->domain],
+        );
+
+        return $this->customDomainRedirect($tenant->id)
+            ->with('status', 'Custom domain added. Add the DNS records below, then verify it.');
+    }
+
+    public function verifyCustomDomain(
+        Request $request,
+        TenantDomain $tenantDomain,
+        TenantDomainService $domains,
+    ): RedirectResponse {
+        $this->authorizeTenantDomainAccess($request, $tenantDomain);
+        abort_unless($tenantDomain->isCustom(), 404);
+
+        $result = $domains->verify($tenantDomain);
+
+        app(AuditLogger::class)->log(
+            $tenantDomain->tenant_id,
+            $request->user(),
+            $result['ok'] ? 'custom_domain.verified' : 'custom_domain.verification_failed',
+            $result['message'],
+            'storefront',
+            'tenant_domain',
+            (string) $tenantDomain->id,
+            ['domain' => $tenantDomain->domain],
+        );
+
+        $redirect = $this->customDomainRedirect($tenantDomain->tenant_id);
+
+        return $result['ok']
+            ? $redirect->with('status', $result['message'])
+            : $redirect->withErrors(['domain' => $result['message']]);
+    }
+
+    public function activateCustomDomain(
+        Request $request,
+        TenantDomain $tenantDomain,
+        TenantDomainService $domains,
+    ): RedirectResponse {
+        $this->authorizeTenantDomainAccess($request, $tenantDomain);
+        abort_unless($request->user()?->is_platform_admin, 403);
+        abort_unless($tenantDomain->isCustom(), 404);
+
+        if ($tenantDomain->status !== TenantDomain::STATUS_VERIFIED) {
+            return $this->customDomainRedirect($tenantDomain->tenant_id)
+                ->withErrors(['domain' => 'Verify the domain before marking SSL and storefront routing active.']);
+        }
+
+        $domains->activate($tenantDomain);
+
+        app(AuditLogger::class)->log(
+            $tenantDomain->tenant_id,
+            $request->user(),
+            'custom_domain.activated',
+            "Activated custom domain {$tenantDomain->domain} after SSL provisioning.",
+            'storefront',
+            'tenant_domain',
+            (string) $tenantDomain->id,
+        );
+
+        return $this->customDomainRedirect($tenantDomain->tenant_id)
+            ->with('status', 'Custom domain activated. It can now be selected as the primary storefront domain.');
+    }
+
+    public function makeCustomDomainPrimary(
+        Request $request,
+        TenantDomain $tenantDomain,
+        TenantDomainService $domains,
+    ): RedirectResponse {
+        $this->authorizeTenantDomainAccess($request, $tenantDomain);
+
+        if (! $tenantDomain->isActive()) {
+            return $this->customDomainRedirect($tenantDomain->tenant_id)
+                ->withErrors(['domain' => 'Only an active domain can be made primary.']);
+        }
+
+        $domains->makePrimary($tenantDomain);
+
+        app(AuditLogger::class)->log(
+            $tenantDomain->tenant_id,
+            $request->user(),
+            'custom_domain.made_primary',
+            "Made {$tenantDomain->domain} the primary storefront domain.",
+            'storefront',
+            'tenant_domain',
+            (string) $tenantDomain->id,
+        );
+
+        return $this->customDomainRedirect($tenantDomain->tenant_id)
+            ->with('status', 'Primary storefront domain updated.');
+    }
+
+    public function removeCustomDomain(
+        Request $request,
+        TenantDomain $tenantDomain,
+        TenantDomainService $domains,
+    ): RedirectResponse {
+        $this->authorizeTenantDomainAccess($request, $tenantDomain);
+        abort_unless($tenantDomain->isCustom(), 404);
+
+        $tenantId = $tenantDomain->tenant_id;
+        $domainName = $tenantDomain->domain;
+        $domainId = (string) $tenantDomain->id;
+        $domains->remove($tenantDomain);
+
+        app(AuditLogger::class)->log(
+            $tenantId,
+            $request->user(),
+            'custom_domain.removed',
+            "Removed custom domain {$domainName}.",
+            'storefront',
+            'tenant_domain',
+            $domainId,
+            ['domain' => $domainName],
+        );
+
+        return $this->customDomainRedirect($tenantId)
+            ->with('status', 'Custom domain removed.');
+    }
+
+    private function authorizeTenantDomainAccess(Request $request, TenantDomain $domain): void
+    {
+        $this->authorizeTenantIdAccess($request->user(), $domain->tenant_id);
+    }
+
+    private function customDomainRedirect(string $tenantId): RedirectResponse
+    {
+        return redirect()->to(route('admin.business.online-store.index', [
+            'tenant' => $tenantId,
+            'online_store_section' => 'online-store-domains',
+        ]).'#online-store');
     }
 
     public function saveProfile(BusinessProfileRequest $request, SaveBusinessProfileAction $action): RedirectResponse
@@ -1055,7 +1241,7 @@ final class BusinessSetupController extends Controller
         $tenantId = (string) $tenant->id;
         $tenantName = $tenant->name;
 
-        app(\App\Support\ActiveBranchManager::class)->forget($request, $tenantId);
+        app(ActiveBranchManager::class)->forget($request, $tenantId);
         if ($request->session()->get('active_tenant_id') === $tenantId) {
             $request->session()->forget('active_tenant_id');
         }

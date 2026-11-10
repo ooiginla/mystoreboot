@@ -23,6 +23,11 @@ Route::put('/payment-accounts/{paymentAccount}', [BusinessSetupController::class
 Route::delete('/payment-accounts/{paymentAccount}', [BusinessSetupController::class, 'destroyPaymentAccount'])->name('payment-accounts.destroy');
 Route::post('/online-store', [BusinessSetupController::class, 'saveOnlineStore'])->name('online-store.save');
 Route::post('/online-store/ai-content', [BusinessSetupController::class, 'generateOnlineStoreContent'])->name('online-store.ai-content');
+Route::post('/online-store/domains', [BusinessSetupController::class, 'connectCustomDomain'])->name('online-store.domains.store');
+Route::post('/online-store/domains/{tenantDomain}/verify', [BusinessSetupController::class, 'verifyCustomDomain'])->name('online-store.domains.verify');
+Route::post('/online-store/domains/{tenantDomain}/activate', [BusinessSetupController::class, 'activateCustomDomain'])->name('online-store.domains.activate');
+Route::post('/online-store/domains/{tenantDomain}/primary', [BusinessSetupController::class, 'makeCustomDomainPrimary'])->name('online-store.domains.primary');
+Route::delete('/online-store/domains/{tenantDomain}', [BusinessSetupController::class, 'removeCustomDomain'])->name('online-store.domains.destroy');
 Route::post('/subscriptions', [BusinessSetupController::class, 'storeSubscription'])->name('subscriptions.store');
 Route::put('/subscriptions/{subscription}', [BusinessSetupController::class, 'updateSubscription'])->name('subscriptions.update');
 Route::put('/subscriptions/{subscription}/modules/{module}', [BusinessSetupController::class, 'updateSubscriptionModule'])->name('subscriptions.modules.update');

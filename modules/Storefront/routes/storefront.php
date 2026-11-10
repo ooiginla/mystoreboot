@@ -3,14 +3,18 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
-use Modules\Storefront\Http\Controllers\StorefrontController;
-use Modules\Storefront\Http\Middleware\ShowOnlineStoreMaintenancePage;
 use Modules\Reseller\Http\Middleware\UseResellerStorefront;
+use Modules\Storefront\Http\Controllers\StorefrontController;
+use Modules\Storefront\Http\Middleware\RedirectToPrimaryStorefrontDomain;
+use Modules\Storefront\Http\Middleware\ResolveCustomStorefrontDomain;
+use Modules\Storefront\Http\Middleware\ShowOnlineStoreMaintenancePage;
 
 $routes = function (): void {
-    Route::get('/sitemap.xml', [StorefrontController::class, 'sitemap'])->middleware(UseResellerStorefront::class)->name('sitemap');
+    Route::get('/sitemap.xml', [StorefrontController::class, 'sitemap'])
+        ->middleware([UseResellerStorefront::class, RedirectToPrimaryStorefrontDomain::class])
+        ->name('sitemap');
 
-    Route::middleware([UseResellerStorefront::class, ShowOnlineStoreMaintenancePage::class])->group(function (): void {
+    Route::middleware([UseResellerStorefront::class, RedirectToPrimaryStorefrontDomain::class, ShowOnlineStoreMaintenancePage::class])->group(function (): void {
         Route::get('/', [StorefrontController::class, 'home'])->name('home');
         Route::get('/categories/{categorySlug}', [StorefrontController::class, 'category'])->name('categories.show');
         Route::get('/collections/{collectionSlug}', [StorefrontController::class, 'collection'])->name('collections.show');
@@ -53,6 +57,15 @@ Route::domain('{store:subdomain}.'.$baseDomain)
     // must not be resolved as tenant stores by the wildcard domain route.
     ->where(['store' => $storeSubdomainPattern])
     ->name('subdomain.')
+    ->group($routes);
+
+$customDomainPattern = '(?!(?:[a-z0-9-]+\.)*'.preg_quote($baseDomain, '/').'$)'
+    .'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}';
+
+Route::domain('{customDomain}')
+    ->where(['customDomain' => $customDomainPattern])
+    ->middleware(ResolveCustomStorefrontDomain::class)
+    ->name('custom.')
     ->group($routes);
 
 Route::prefix('store/{store:username}')
