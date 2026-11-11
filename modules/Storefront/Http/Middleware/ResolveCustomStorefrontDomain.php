@@ -36,8 +36,16 @@ final class ResolveCustomStorefrontDomain
             ->firstOrFail();
 
         $route = $request->route();
-        $route?->forgetParameter('customDomain');
-        $route?->setParameter('store', $store);
+
+        if ($route) {
+            $parameters = $route->parameters();
+            unset($parameters['customDomain'], $parameters['store']);
+
+            // ControllerDispatcher invokes route parameters positionally. The
+            // resolved store must therefore precede page defaults and path
+            // parameters such as productSlug or categorySlug.
+            $route->parameters = ['store' => $store, ...$parameters];
+        }
 
         return $next($request);
     }

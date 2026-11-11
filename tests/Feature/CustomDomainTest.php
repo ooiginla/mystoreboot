@@ -7,6 +7,9 @@ namespace Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Business\Models\OnlineStore;
+use Modules\Catalog\Enums\ProductStatus;
+use Modules\Catalog\Enums\ProductType;
+use Modules\Catalog\Models\Product;
 use Modules\Storefront\Support\StorefrontUrl;
 use Modules\Subscriptions\Enums\SubscriptionStatus;
 use Modules\Subscriptions\Models\Plan;
@@ -239,9 +242,24 @@ final class CustomDomainTest extends TestCase
         $this->assertSame(TenantDomain::STATUS_ACTIVE, $domain->status);
         $this->assertSame('https://shop.acme.com', rtrim(StorefrontUrl::route($store), '/'));
 
+        $product = Product::query()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Custom Domain Product',
+            'slug' => 'custom-domain-product',
+            'product_type' => ProductType::Product,
+            'status' => ProductStatus::Active,
+            'base_price_minor' => 10000,
+        ]);
+
         $this->get('https://shop.acme.com/')
             ->assertOk()
             ->assertSee('Acme Store');
+        foreach (['about', 'terms-of-service', 'refunds', 'privacy-policy', 'shipping-info'] as $page) {
+            $this->get('https://shop.acme.com/'.$page)->assertOk();
+        }
+        $this->get('https://shop.acme.com/products/'.$product->slug)
+            ->assertOk()
+            ->assertSee('Custom Domain Product');
         $this->get('https://shop.acme.com/login')->assertNotFound();
         $this->get('https://unknown-example.com/login')->assertNotFound();
         $this->get('https://acme.storeboot.test/login')->assertNotFound();
