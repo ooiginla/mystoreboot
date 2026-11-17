@@ -4,8 +4,11 @@ namespace App\Providers;
 
 use App\Models\User;
 use App\Support\ActiveBranchManager;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Modules\Access\Support\PermissionCatalogue;
@@ -22,6 +25,17 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        RateLimiter::for('contact', fn (Request $request): Limit => Limit::perMinutes(10, 5)
+            ->by('contact|'.$request->ip()));
+
+        RateLimiter::for('storefront-contact', function (Request $request): Limit {
+            $store = $request->route('store');
+            $storeKey = is_object($store) && isset($store->id) ? (string) $store->id : (string) $store;
+
+            return Limit::perMinutes(10, 5)
+                ->by('storefront-contact|'.$storeKey.'|'.$request->ip());
+        });
+
         $permissions = null;
 
         Tenant::created(function (Tenant $tenant): void {

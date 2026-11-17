@@ -60,6 +60,7 @@
                             <th>Status</th>
                             <th>Branches</th>
                             <th>Roles</th>
+                            <th>Created</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -75,6 +76,13 @@
                                 <td>{{ $tenant->branches_count }}</td>
                                 <td>{{ $tenant->roles_count }}</td>
                                 <td>
+                                    @if ($tenant->created_at)
+                                        <span title="{{ $tenant->created_at->format('M j, Y g:i A') }}">{{ $tenant->created_at->format('M j, Y') }}</span>
+                                    @else
+                                        <span class="subtle">—</span>
+                                    @endif
+                                </td>
+                                <td>
                                     <div class="organization-actions">
                                         @if ((string) $activeOrganizationId === (string) $tenant->id)
                                             <span class="badge success">Active organization</span>
@@ -88,6 +96,7 @@
                                             </form>
                                         @endif
                                         <a class="btn secondary" href="{{ route('admin.business.organizations.show', $tenant) }}">Details</a>
+                                        <button class="btn warning" type="button" data-dialog-open="reset-organization-{{ $tenant->id }}">Reset</button>
                                         <button class="btn danger" type="button" data-dialog-open="delete-organization-{{ $tenant->id }}">Delete</button>
                                     </div>
                                 </td>
@@ -107,6 +116,10 @@
         @include('business::admin.organizations.partials.delete-dialog', [
             'tenant' => $tenant,
             'deleteDialogId' => 'delete-organization-'.$tenant->id,
+        ])
+        @include('business::admin.organizations.partials.reset-dialog', [
+            'tenant' => $tenant,
+            'resetDialogId' => 'reset-organization-'.$tenant->id,
         ])
     @endforeach
 

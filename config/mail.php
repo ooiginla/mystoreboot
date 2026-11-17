@@ -111,8 +111,37 @@ return [
     */
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
-        'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
+        'address' => env('MAIL_FROM_ADDRESS', 'notifications@storeboot.com'),
+        'name' => env('MAIL_FROM_NAME', 'Storeboot Notifications'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Storeboot Mail Identities
+    |--------------------------------------------------------------------------
+    |
+    | These addresses are selected only by server-side mail classes. Public
+    | request fields must never be used as a message's From or To address.
+    |
+    */
+
+    'identities' => [
+        'contact' => [
+            'address' => env('MAIL_CONTACT_ADDRESS', 'contact@storeboot.com'),
+            'name' => env('MAIL_CONTACT_NAME', 'Storeboot Website'),
+        ],
+        'notifications' => [
+            'address' => env('MAIL_NOTIFICATIONS_ADDRESS', 'notifications@storeboot.com'),
+            'name' => env('MAIL_NOTIFICATIONS_NAME', 'Storeboot Notifications'),
+        ],
+        'orders' => [
+            'address' => env('MAIL_ORDERS_ADDRESS', 'orders@storeboot.com'),
+            'name' => env('MAIL_ORDERS_NAME', 'Storeboot Orders'),
+        ],
+        'support' => [
+            'address' => env('MAIL_SUPPORT_ADDRESS', 'support@storeboot.com'),
+            'name' => env('MAIL_SUPPORT_NAME', 'Storeboot Support'),
+        ],
     ],
 
 ];

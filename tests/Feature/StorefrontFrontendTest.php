@@ -976,6 +976,10 @@ class StorefrontFrontendTest extends TestCase
 
     public function test_contact_page_creates_customer_support_ticket(): void
     {
+        config([
+            'services.recaptcha.site_key' => null,
+            'services.recaptcha.secret_key' => null,
+        ]);
         [, $store] = $this->storeFixture([
             'hero_image_path' => 'tenants/demo/online-store/heroes/contact-banner.jpg',
             'site_email' => 'hello@demo-store.test',
@@ -995,7 +999,19 @@ class StorefrontFrontendTest extends TestCase
             ->assertSee('hello@demo-store.test')
             ->assertSee('10 Market Road, Lagos, Nigeria')
             ->assertSee('Send us a message')
-            ->assertSee('Your message here...');
+            ->assertSee('Your message here...')
+            ->assertSee('name="company_website"', false);
+
+        $this->post(route('storefront.storefront.store.contact.submit', $store), [
+            'company_website' => 'https://spam.example',
+            'name' => 'Spam Bot',
+            'phone' => '08039999999',
+            'email' => 'bot@example.com',
+            'subject' => 'Spam',
+            'message' => 'This must not become a ticket.',
+        ])->assertRedirect();
+
+        $this->assertSame(0, SupportTicket::query()->count());
 
         $this->post(route('storefront.storefront.store.contact.submit', $store), [
             'name' => 'Ada Lovelace',
@@ -1017,6 +1033,39 @@ class StorefrontFrontendTest extends TestCase
             'category' => 'Online store contact',
         ]);
         $this->assertSame(1, SupportTicket::query()->count());
+    }
+
+    public function test_storefront_contact_requires_successful_recaptcha_when_configured(): void
+    {
+        config([
+            'services.recaptcha.site_key' => 'public-storefront-site-key',
+            'services.recaptcha.secret_key' => 'private-storefront-secret-key',
+            'services.recaptcha.verify_url' => 'https://www.google.com/recaptcha/api/siteverify',
+        ]);
+        Http::fake([
+            'www.google.com/recaptcha/api/siteverify' => Http::response(['success' => false]),
+        ]);
+        [, $store] = $this->storeFixture();
+
+        $this->get(route('storefront.storefront.store.contact', $store))
+            ->assertOk()
+            ->assertSee('public-storefront-site-key')
+            ->assertDontSee('private-storefront-secret-key');
+
+        $this->from(route('storefront.storefront.store.contact', $store))
+            ->post(route('storefront.storefront.store.contact.submit', $store), [
+                'name' => 'Ada Lovelace',
+                'phone' => '08030000000',
+                'email' => 'ada@example.com',
+                'subject' => 'Delivery question',
+                'message' => 'Can you deliver tomorrow?',
+                'g-recaptcha-response' => 'invalid-token',
+            ])
+            ->assertRedirect(route('storefront.storefront.store.contact', $store))
+            ->assertSessionHasErrors('g-recaptcha-response');
+
+        $this->assertSame(0, SupportTicket::query()->count());
+        $this->assertDatabaseMissing('customers', ['phone' => '08030000000']);
     }
 
     public function test_checkout_creates_pending_online_sales_order_and_returns_reference(): void

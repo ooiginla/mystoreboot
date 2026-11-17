@@ -80,6 +80,10 @@
 
                     <form method="POST" action="{{ route('contact.submit') }}" class="space-y-4">
                         @csrf
+                        <div class="absolute -left-[10000px] top-auto h-px w-px overflow-hidden" aria-hidden="true">
+                            <label for="company_website">Company website</label>
+                            <input id="company_website" name="company_website" type="text" value="" tabindex="-1" autocomplete="off">
+                        </div>
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div>
                                 <label for="name" class="{{ $lbl }}">Your name</label>
@@ -98,6 +102,12 @@
                             <label for="message" class="{{ $lbl }}">Message</label>
                             <textarea id="message" name="message" rows="5" required class="{{ $field }}" placeholder="Tell us a little about your business and what you need...">{{ old('message') }}</textarea>
                         </div>
+                        @if ($recaptchaEnabled)
+                            <div>
+                                <div class="g-recaptcha" data-sitekey="{{ $recaptchaSiteKey }}"></div>
+                                @error('g-recaptcha-response') <p class="mt-1 text-sm text-red-600 dark:text-red-300">{{ $message }}</p> @enderror
+                            </div>
+                        @endif
                         <button type="submit" class="sb-btn sb-btn-primary w-full py-3 text-base">
                             Send message
                             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z"/></svg>
@@ -108,3 +118,9 @@
         </div>
     </section>
 @endsection
+
+@if ($recaptchaEnabled)
+    @push('scripts')
+        <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    @endpush
+@endif

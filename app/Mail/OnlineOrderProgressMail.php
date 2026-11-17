@@ -6,6 +6,7 @@ namespace App\Mail;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -35,7 +36,13 @@ final class OnlineOrderProgressMail extends Mailable
             default => "Order {$this->order->order_number} update — {$this->store->store_name}",
         };
 
-        return new Envelope(subject: $subject);
+        return new Envelope(
+            from: new Address(
+                (string) config('mail.identities.orders.address'),
+                (string) config('mail.identities.orders.name'),
+            ),
+            subject: $subject,
+        );
     }
 
     public function content(): Content

@@ -184,6 +184,10 @@
 
                 <form method="POST" action="{{ $storefrontRoute($store, 'contact.submit') }}" class="mt-7 grid gap-5" data-disable-on-submit>
                     @csrf
+                    <div class="absolute -left-[10000px] top-auto h-px w-px overflow-hidden" aria-hidden="true">
+                        <label for="company_website">Company website</label>
+                        <input id="company_website" name="company_website" type="text" value="" tabindex="-1" autocomplete="off">
+                    </div>
                     <div>
                         <label for="name" class="sf-body-md font-semibold">Name</label>
                         <input id="name" name="name" value="{{ old('name') }}" class="store-input mt-2" placeholder="Your name here" required autofocus autocomplete="name">
@@ -211,6 +215,12 @@
                         <textarea id="message" name="message" class="store-input mt-2" placeholder="Your message here..." required>{{ old('message') }}</textarea>
                         @error('message') <p class="sf-body-md mt-1 text-red-600">{{ $message }}</p> @enderror
                     </div>
+                    @if ($recaptchaEnabled)
+                        <div>
+                            <div class="g-recaptcha" data-sitekey="{{ $recaptchaSiteKey }}"></div>
+                            @error('g-recaptcha-response') <p class="sf-body-md mt-1 text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                    @endif
                     <button type="submit" class="store-btn store-btn-primary justify-self-start disabled:cursor-not-allowed disabled:opacity-60">
                         Submit
                         @include('storefront::partials.icon', ['name' => 'chevron_right', 'class' => 'contact-submit-icon h-5 w-5'])
@@ -220,3 +230,9 @@
         </section>
     </div>
 @endsection
+
+@if ($recaptchaEnabled)
+    @push('scripts')
+        <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    @endpush
+@endif

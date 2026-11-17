@@ -49,6 +49,7 @@ final class RoutePermissionMap
             'admin.business.organizations.show' => 'business.settings.manage',
             'admin.business.organizations.activate' => 'business.settings.manage',
             'admin.business.organizations.destroy' => 'business.settings.manage',
+            'admin.business.organizations.reset' => 'business.settings.manage',
             'admin.business.online-store.index' => 'storefront.manage',
             'admin.business.online-store.address-availability' => 'storefront.manage',
             'admin.business.online-store.save' => 'storefront.manage',

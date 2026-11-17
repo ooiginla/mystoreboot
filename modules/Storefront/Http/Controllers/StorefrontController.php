@@ -7,6 +7,7 @@ namespace Modules\Storefront\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Mail\OnlineOrderConfirmationMail;
 use App\Mail\OnlineOrderPlacedMail;
+use App\Support\RecaptchaVerifier;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -277,11 +278,13 @@ final class StorefrontController extends Controller
         ]);
     }
 
-    public function contact(OnlineStore $store): View
+    public function contact(OnlineStore $store, RecaptchaVerifier $recaptcha): View
     {
         return view('storefront::contact', [
             'store' => $this->preparedStore($store),
             'metaDescription' => "Contact {$store->store_name} for product, order and delivery enquiries.",
+            'recaptchaEnabled' => $recaptcha->enabled(),
+            'recaptchaSiteKey' => $recaptcha->siteKey(),
         ]);
     }
 
@@ -403,7 +406,7 @@ final class StorefrontController extends Controller
         ];
     }
 
-    public function submitContact(OnlineStore $store, Request $request): RedirectResponse
+    public function submitContact(OnlineStore $store, Request $request, RecaptchaVerifier $recaptcha): RedirectResponse
     {
         $store = $this->preparedStore($store);
 
@@ -413,12 +416,28 @@ final class StorefrontController extends Controller
             ]);
         }
 
+        if ($request->filled('company_website')) {
+            return back()->with('status', 'Your message has been sent. The store team will respond shortly.');
+        }
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:160'],
             'email' => ['nullable', 'email:rfc', 'max:160'],
             'phone' => ['required', 'string', 'max:60'],
             'subject' => ['required', 'string', 'max:180'],
             'message' => ['required', 'string', 'max:3000'],
+            'company_website' => ['nullable', 'string', 'max:0'],
+            'g-recaptcha-response' => [
+                Rule::requiredIf($recaptcha->enabled()),
+                'nullable',
+                'string',
+                'max:4096',
+                function (string $attribute, mixed $value, \Closure $fail) use ($request, $recaptcha): void {
+                    if ($recaptcha->enabled() && ! $recaptcha->verify($request, (string) $value)) {
+                        $fail('Please complete the captcha verification.');
+                    }
+                },
+            ],
         ]);
 
         $nameParts = preg_split('/\s+/', trim($data['name']), 2) ?: [];

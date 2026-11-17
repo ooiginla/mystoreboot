@@ -30,7 +30,9 @@ $routes = function (): void {
         Route::get('/contact', [StorefrontController::class, 'contact'])->name('contact');
         Route::get('/track', [StorefrontController::class, 'track'])->name('track');
     });
-    Route::post('/contact', [StorefrontController::class, 'submitContact'])->name('contact.submit');
+    Route::post('/contact', [StorefrontController::class, 'submitContact'])
+        ->middleware('throttle:storefront-contact')
+        ->name('contact.submit');
     Route::post('/checkout/customer-lookup', [StorefrontController::class, 'lookupCustomer'])
         ->middleware('throttle:30,1')
         ->name('checkout.customer-lookup');

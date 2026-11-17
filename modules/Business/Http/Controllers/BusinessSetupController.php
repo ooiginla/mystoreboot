@@ -25,6 +25,7 @@ use Modules\Business\Actions\CreateBranchAction;
 use Modules\Business\Actions\CreateDepartmentAction;
 use Modules\Business\Actions\DeleteTenantAction;
 use Modules\Business\Actions\GenerateStoreContentAction;
+use Modules\Business\Actions\ResetTenantTransactionsAction;
 use Modules\Business\Actions\SaveBusinessProfileAction;
 use Modules\Business\Enums\BusinessType;
 use Modules\Business\Http\Requests\BranchRequest;
@@ -1181,7 +1182,8 @@ final class BusinessSetupController extends Controller
                             ->orWhereLike('business_type', '%'.$organizationSearch.'%');
                     });
                 })
-                ->orderBy('name')
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
                 ->paginate(20)
                 ->withQueryString(),
             'organizationSearch' => $organizationSearch,
@@ -1251,6 +1253,26 @@ final class BusinessSetupController extends Controller
         return redirect()
             ->route('admin.business.organizations.index')
             ->with('status', "{$tenantName} and all related organization data were permanently deleted.");
+    }
+
+    public function resetOrganization(
+        Request $request,
+        Tenant $tenant,
+        ResetTenantTransactionsAction $resetTransactions,
+    ): RedirectResponse {
+        abort_unless($request->user()?->is_platform_admin, 403);
+
+        $request->validate([
+            'confirmation' => ['required', 'string', Rule::in([$tenant->name])],
+        ], [
+            'confirmation.in' => 'Enter the organization name exactly as shown to confirm the reset.',
+        ]);
+
+        $resetTransactions->execute($tenant);
+
+        return redirect()
+            ->route('admin.business.organizations.index')
+            ->with('status', "{$tenant->name}'s transactions were reset. Settings, products and configuration were kept; inventory, balances and reports are back to zero.");
     }
 
     /**

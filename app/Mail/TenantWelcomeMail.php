@@ -7,6 +7,7 @@ namespace App\Mail;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -25,6 +26,10 @@ final class TenantWelcomeMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
+            from: new Address(
+                (string) config('mail.identities.notifications.address'),
+                (string) config('mail.identities.notifications.name'),
+            ),
             subject: 'Welcome to Storeboot',
         );
     }

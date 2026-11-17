@@ -35,7 +35,9 @@ foreach ([
 Route::get('/sitemap.xml', [MarketingController::class, 'sitemap'])->name('sitemap');
 Route::get('/about', [MarketingController::class, 'about'])->name('about');
 Route::get('/contact', [ContactController::class, 'show'])->name('contact');
-Route::post('/contact', [ContactController::class, 'submit'])->name('contact.submit');
+Route::post('/contact', [ContactController::class, 'submit'])
+    ->middleware('throttle:contact')
+    ->name('contact.submit');
 Route::get('/privacy', [LegalController::class, 'privacy'])->name('legal.privacy');
 Route::get('/terms', [LegalController::class, 'terms'])->name('legal.terms');
 Route::get('/security', [LegalController::class, 'security'])->name('legal.security');

@@ -9,6 +9,7 @@ Route::get('/organizations', [BusinessSetupController::class, 'organizations'])-
 Route::post('/organizations/{tenant}/activate', [BusinessSetupController::class, 'activateOrganization'])->name('organizations.activate');
 Route::get('/organizations/{tenant}', [BusinessSetupController::class, 'organizationDetails'])->name('organizations.show');
 Route::delete('/organizations/{tenant}', [BusinessSetupController::class, 'destroyOrganization'])->name('organizations.destroy');
+Route::post('/organizations/{tenant}/reset', [BusinessSetupController::class, 'resetOrganization'])->name('organizations.reset');
 Route::get('/', [BusinessSetupController::class, 'index'])->name('index');
 Route::get('/online-store', [BusinessSetupController::class, 'onlineStore'])->name('online-store.index');
 Route::get('/online-store/address-availability', [BusinessSetupController::class, 'onlineStoreAddressAvailability'])->name('online-store.address-availability');

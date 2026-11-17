@@ -26,6 +26,10 @@ final class ContactMessageMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
+            from: new Address(
+                (string) config('mail.identities.contact.address'),
+                (string) config('mail.identities.contact.name'),
+            ),
             subject: 'New contact message: '.$this->subjectLine,
             replyTo: [new Address($this->senderEmail, $this->senderName)],
         );

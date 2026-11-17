@@ -9,11 +9,11 @@ use App\Mail\TenantWelcomeMail;
 use App\Mail\VerifyEmailMail;
 use App\Models\User;
 use App\Support\Geo;
+use App\Support\RecaptchaVerifier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -35,18 +35,18 @@ use Modules\Tenancy\Models\Tenant;
 
 final class RegisteredTenantController extends Controller
 {
-    public function create(): View
+    public function create(RecaptchaVerifier $recaptcha): View
     {
         return view('auth.register', [
             'businessCategories' => BusinessType::options(),
             'countries' => $this->countries(),
-            'recaptchaSiteKey' => config('services.recaptcha.site_key'),
-            'recaptchaEnabled' => $this->recaptchaEnabled(),
+            'recaptchaSiteKey' => $recaptcha->siteKey(),
+            'recaptchaEnabled' => $recaptcha->enabled(),
             'localSignupBypassEnabled' => $this->localSignupBypassEnabled(),
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, RecaptchaVerifier $recaptcha): RedirectResponse
     {
         $data = $request->validate([
             'business_name' => ['required', 'string', 'max:160'],
@@ -58,11 +58,11 @@ final class RegisteredTenantController extends Controller
             'phone' => ['required', 'string', 'max:40'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'g-recaptcha-response' => [
-                Rule::requiredIf($this->recaptchaEnabled()),
+                Rule::requiredIf($recaptcha->enabled()),
                 'nullable',
                 'string',
-                function (string $attribute, mixed $value, \Closure $fail) use ($request): void {
-                    if ($this->recaptchaEnabled() && ! $this->verifyRecaptcha($request, (string) $value)) {
+                function (string $attribute, mixed $value, \Closure $fail) use ($request, $recaptcha): void {
+                    if ($recaptcha->enabled() && ! $recaptcha->verify($request, (string) $value)) {
                         $fail('Please complete the captcha verification.');
                     }
                 },
@@ -229,33 +229,9 @@ final class RegisteredTenantController extends Controller
         Mail::to($user->email)->send(new VerifyEmailMail($user, $code));
     }
 
-    private function recaptchaEnabled(): bool
-    {
-        return ! $this->localSignupBypassEnabled()
-            && filled(config('services.recaptcha.site_key'))
-            && filled(config('services.recaptcha.secret_key'));
-    }
-
     private function localSignupBypassEnabled(): bool
     {
         return app()->environment('local');
-    }
-
-    private function verifyRecaptcha(Request $request, string $token): bool
-    {
-        if (trim($token) === '') {
-            return false;
-        }
-
-        $response = Http::asForm()
-            ->timeout(5)
-            ->post((string) config('services.recaptcha.verify_url'), [
-                'secret' => config('services.recaptcha.secret_key'),
-                'response' => $token,
-                'remoteip' => $request->ip(),
-            ]);
-
-        return $response->ok() && (bool) $response->json('success');
     }
 
     private function starterPlan(): Plan

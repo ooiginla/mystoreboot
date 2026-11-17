@@ -28,6 +28,10 @@ final class OnlineOrderPlacedMail extends Mailable
         $customerEmail = $this->order->customer?->email;
 
         return new Envelope(
+            from: new Address(
+                (string) config('mail.identities.orders.address'),
+                (string) config('mail.identities.orders.name'),
+            ),
             subject: "New order {$this->order->order_number} — {$this->store->store_name}",
             replyTo: filled($customerEmail)
                 ? [new Address($customerEmail, $this->order->customer?->name)]
